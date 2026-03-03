@@ -17,6 +17,10 @@ spec:
     repoURL: {{ .Values.spec.source.repoURL }}
     targetRevision: {{ .Values.spec.source.targetRevision }}
     path: ./helmcharts/system-charts/argocd-project
+    helm:
+      parameters:
+        - name: project.sourceRepos[0]
+          value: {{ .Values.spec.source.repoURL | quote }}
   syncPolicy:
     automated:
       prune: true
