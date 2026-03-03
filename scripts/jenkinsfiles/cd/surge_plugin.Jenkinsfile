@@ -26,7 +26,7 @@ pipeline {
     }
     parameters {
         string(name: 'DEPLOY_ARTIFACT', defaultValue: '', description: 'Git SHA that has been built docker image for the application.')
-        choice(name: 'ENVIRONMENT', choices: ['dev', 'test', 'prod'], description: 'Environment to build and deploy.')
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'stage', 'prod'], description: 'Environment to deploy to (maps to values-<env>.yaml in the Helm chart).')
 
     }
 
@@ -88,7 +88,6 @@ pipeline {
 
                             sh """
                                 yq eval '.helm-common.image.name=\"${dockerRepo}:${dockerImageTag}\"' -i ${helmChartPath}/values-${params.ENVIRONMENT}.yaml
-                                sed -i 's/HELM_USERNAME/${GIT_USER}/g; s/HELM_PASSWORD/${GIT_PASS}/g' ${helmChartPath}/Chart.yaml
 
                                 git config user.name ${env.GIT_COMMIT_USER}
                                 git config user.email ${env.GIT_COMMIT_EMAIL}
