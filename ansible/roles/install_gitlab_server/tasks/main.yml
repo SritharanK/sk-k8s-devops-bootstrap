@@ -1,5 +1,11 @@
 ---
 # tasks file for install_gitlab_server
+- name: Assert required secrets are provided
+  assert:
+    that:
+      - gitlab_root_password is defined
+      - gitlab_root_password | length > 0
+    fail_msg: "gitlab_root_password must be set via ansible-vault in the playbook vars."
 
 - name: Set variable default values based on user
   set_fact:

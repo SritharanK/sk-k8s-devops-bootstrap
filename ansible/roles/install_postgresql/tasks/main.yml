@@ -1,5 +1,12 @@
 ---
 # tasks file for install_postgresql
+- name: Assert required secrets are provided
+  assert:
+    that:
+      - postgres_password is defined
+      - postgres_password | length > 0
+    fail_msg: "postgres_password must be set via ansible-vault in the playbook vars."
+
 - name: Install PostgreSQL on Debian/Ubuntu
   apt:
     name: postgresql

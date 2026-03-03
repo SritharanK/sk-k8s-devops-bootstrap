@@ -2,4 +2,4 @@
 # defaults file for install_gitlab_server
 gitlab_edition: "gitlab-ce"
 gitlab_external_url: "https://gitlab.example.com/"
-gitlab_root_password: "root"
+# gitlab_root_password: required — must be set via ansible-vault in playbook vars

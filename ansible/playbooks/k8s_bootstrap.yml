@@ -15,6 +15,9 @@
   become: true
   gather_facts: true
 
+  vars_files:
+    - ../../config/defaults.yaml
+
   vars:
     rke_user: !vault |
           $ANSIBLE_VAULT;1.1;AES256
@@ -30,9 +33,7 @@
           30633739303733336432343461623431636264383733663564313734343632333834333662326630
           3531643139346435380a336663343166383264313164626464316630626465643566363637323462
           6438
-    master_nodes: "{{ master_nodes | default(['YOUR_MASTER_IP']) }}"
-    ssh_port: "{{ ssh_port | default('22') }}"
-    ansible_port: "{{ ansible_port | default('22') }}"
+    ansible_port: "{{ ssh_port | default('22') }}"
   roles:
   - role: "roles/k8s_bootstrap"
     when: inventory_hostname == groups['masters'][0] ### Run bootstrap in first host in a host group (masters)
