@@ -1,0 +1,10 @@
+# Default values — override via argocd-bootstrap/values.yaml or helm --set.
+# appNamespaces: namespaces that get the full default-deny + allow-list stack.
+# ingressNginxNamespace: namespace where ingress-nginx controller is deployed.
+
+appNamespaces:
+  - prod
+  - dev
+  - stage
+
+ingressNginxNamespace: "nginx"
