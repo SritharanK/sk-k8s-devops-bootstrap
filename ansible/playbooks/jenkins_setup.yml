@@ -2,6 +2,10 @@
   hosts: jenkins
   become: yes
   gather_facts: true
+
+  vars_files:
+    - ../../config/defaults.yaml
+
   vars:
     ansible_user: !vault |
           $ANSIBLE_VAULT;1.1;AES256
@@ -10,16 +14,9 @@
           30633739303733336432343461623431636264383733663564313734343632333834333662326630
           3531643139346435380a336663343166383264313164626464316630626465643566363637323462
           6438
-    ansible_port: "{{ ansible_port | default('22') }}"
-    
-    #### VARIABLES FOR INSTALL + SET UP JENKINS
-    jenkins_admin_password: admin ### THIS VALUE SHOULD BE ENCRYPTED WITH ANSIBLE VAULT
-    jenkins_port: "8081" ### CAN BE CHANGED TO ANY PORT YOU WANT
-    jenkins_dsl_git_repo: "{{ jenkins_dsl_git_repo | default('CHANGE_ME') }}" 
-    jenkins_dsl_git_branch: "main"
-    dsl_script_pattern: "scripts/**/*.groovy"
-    git_creds_id: "git-ssh-key"
-    num_executor: "5"
+    ansible_port: "{{ ssh_port | default('22') }}"
+
+    jenkins_dsl_git_repo: "{{ git_repo_ssh }}"
 
     jenkins_git_password: !vault |
       $ANSIBLE_VAULT;1.1;AES256
@@ -228,7 +225,6 @@
           34343230383064646538313165386162633464386439323065613232666364646239383262313335
           38306437626432376231316163356666323730333530323563316261333634643730663435656163
           6333373930376364316433306635633162343061303732613836
-    argocd_username: "admin"
     argocd_password: !vault |
       $ANSIBLE_VAULT;1.1;AES256
       65363962633136353662343562323064383134323434343232313532626235333435383130633336

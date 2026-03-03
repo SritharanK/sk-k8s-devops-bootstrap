@@ -2,9 +2,7 @@
 # defaults file for install_jenkins_server
 jenkins_owner: jenkins
 jenkins_group: jenkins
-jenkins_admin_password: admin
-jenkins_port: "8081"
-num_executor: "5"
+# jenkins_admin_password: required — must be set via ansible-vault in playbook vars
 jenkins_plugins:
   - configuration-as-code
   - git
@@ -51,9 +49,6 @@ jenkins_plugins:
   - git-client
 
 jenkins_dsl_git_repo: "CHANGE_ME"
-jenkins_dsl_git_branch: "main"
-dsl_script_pattern: "scripts/**/*.groovy"
-git_creds_id: "git-ssh-key"
 
 jenkins_git_password: !vault |
   $ANSIBLE_VAULT;1.1;AES256

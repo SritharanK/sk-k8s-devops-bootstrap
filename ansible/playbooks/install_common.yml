@@ -18,8 +18,10 @@
   become: true
   gather_facts: true
 
+  vars_files:
+    - ../../config/defaults.yaml
+
   vars:
-    rke_user: "root"
     ansible_user: !vault |
           $ANSIBLE_VAULT;1.1;AES256
           65303863633563663465313234613332333035613865336632373231323231366665653163383463
@@ -27,6 +29,6 @@
           30633739303733336432343461623431636264383733663564313734343632333834333662326630
           3531643139346435380a336663343166383264313164626464316630626465643566363637323462
           6438
-    ansible_port: "{{ ansible_port | default('22') }}"
+    ansible_port: "{{ ssh_port | default('22') }}"
   roles:
     - roles/common
