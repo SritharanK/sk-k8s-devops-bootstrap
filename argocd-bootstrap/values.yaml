@@ -41,6 +41,38 @@ namespaces:
   certManager: "cert-manager"
   kyverno: "kyverno"
 
+# ── ApplicationSet — scale-mode deployment ────────────────────────────────────
+# An alternative to the static Application manifests in templates/applications/.
+# Set enabled: true to activate the ApplicationSet generator, which creates one
+# ArgoCD Application per entry in the apps[] list below.
+#
+# When to prefer ApplicationSet over static Applications:
+#   - You manage 10+ microservices and want one object to rule them
+#   - You want to onboard new apps by adding a list entry (no new YAML file)
+#   - You want Git-driven app inventory with automatic pruning
+#
+# The static Applications (templates/applications/*.yaml) and this ApplicationSet
+# are independent and can coexist, but to avoid duplicate Applications you should
+# enable only one mode at a time in production.
+applicationSet:
+  enabled: false   # set to true to activate scale-mode deployment
+  apps:
+    - name: java-springboot
+      namespace: prod
+      valuesFile: values-prod.yaml
+    - name: laravel-example
+      namespace: prod
+      valuesFile: values-prod.yaml
+    - name: payments-example
+      namespace: prod
+      valuesFile: values-prod.yaml
+    - name: python-django
+      namespace: prod
+      valuesFile: values-prod.yaml
+    - name: surge-plugin
+      namespace: prod
+      valuesFile: values-prod.yaml
+
 # ── Policy engines ─────────────────────────────────────────────────────────────
 # Set enabled: false to skip the engine install (e.g. Kyverno already installed
 # out-of-band, or you prefer a different policy engine).
