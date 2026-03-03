@@ -7,10 +7,20 @@ helm-common:
     containerPort: 80
     imagePullSecrets: dockerhub-secret
   extraAnnotations:
-    configmap.reloader.stakater.com/reload: ""
+    configmap.reloader.stackater.com/reload: ""
   replicas: 1
-  livenessProbe: {}
-  readinessProbe: {}
+  livenessProbe:
+    tcpSocket:
+      port: 80
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    failureThreshold: 3
+  readinessProbe:
+    tcpSocket:
+      port: 80
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    failureThreshold: 3
   podAnnotations: {}
   resources:
     requests: { memory: "64Mi", cpu: "50m" }

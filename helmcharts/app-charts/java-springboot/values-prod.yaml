@@ -4,7 +4,7 @@ helm-common:
   image:
     name: "YOUR_REGISTRY/java-springboot:PLACEHOLDER_TAG"  # Set via CD or config
     pullPolicy: IfNotPresent
-    containerPort: 8080 ### Running Django at port 8080
+    containerPort: 8080
     imagePullSecrets: dockerhub-secret
   extraAnnotations:
     configmap.reloader.stakater.com/reload: ""
@@ -16,14 +16,26 @@ helm-common:
     - name: DB_USER
       value: root
     - name: DB_PASSWORD
-      value: "CHANGE_ME_OR_USE_SECRET"  # Use a secret in production; do not commit real password
+      value: "CHANGE_ME_OR_USE_SECRET"
     - name: DB_NAME
       value: "testdb"
     - name: DB_ENGINE
       value: django.db.backends.mysql
   replicas: 1
-  livenessProbe: {}
-  readinessProbe: {}
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    failureThreshold: 3
   podAnnotations: {}
   resources:
     requests: { memory: "64Mi", cpu: "50m" }
@@ -39,9 +51,6 @@ helm-common:
     enabled: false
     minReplicas: 1
     maxReplicas: 10
-    ## specify target CPU % utilization
-    # targetCPUUtilizationPercentage: 80 ## DISABLE TO AVOID HPA SCALE TOO MUCH PODS => AVOID COST INCREASING
-    ## specify target Memory % utilization
     targetMemoryUtilizationPercentage: 80
   service:
     type: ClusterIP

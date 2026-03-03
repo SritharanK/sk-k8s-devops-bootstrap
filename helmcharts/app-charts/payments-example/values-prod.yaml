@@ -18,8 +18,18 @@ helm-common:
     - name: WORDPRESS_DB_NAME
       value: surge
   replicas: 1
-  livenessProbe: {}
-  readinessProbe: {}
+  livenessProbe:
+    tcpSocket:
+      port: 80
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    failureThreshold: 3
+  readinessProbe:
+    tcpSocket:
+      port: 80
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    failureThreshold: 3
   podAnnotations: {}
   resources:
     requests: { memory: "64Mi", cpu: "50m" }
@@ -35,9 +45,6 @@ helm-common:
     enabled: false
     minReplicas: 1
     maxReplicas: 10
-    ## specify target CPU % utilization
-    # targetCPUUtilizationPercentage: 80 ## DISABLE TO AVOID HPA SCALE TOO MUCH PODS => AVOID COST INCREASING
-    ## specify target Memory % utilization
     targetMemoryUtilizationPercentage: 80
   service:
     type: ClusterIP
