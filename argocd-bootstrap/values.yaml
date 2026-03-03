@@ -17,8 +17,25 @@ spec:
     app_ns: prod
     argo_ns: argocd
   source:
-    repoURL: CHANGE_ME  # Set your GitOps repo URL (e.g. https://github.com/YOUR_ORG/k8s-devops-bootstrap.git)
-    targetRevision: main
+    repoURL: CHANGE_ME  # git_repo_url from config/defaults.yaml
+    targetRevision: main  # git_branch from config/defaults.yaml
     helm:
       valueFiles:
         - values-prod.yaml
+
+# ── Platform-level values ─────────────────────────────────────────────────────
+# Passed as Helm parameters to toolchain charts (00_misc, network-policies,
+# kyverno-policies). Match these with your config/defaults.yaml values.
+platform:
+  certManagerEmail: "CHANGE_ME"           # cert_manager_email from config/defaults.yaml
+  adminGroup: "YOUR_PLATFORM_ADMIN_GROUP" # platform_admin_group from config/defaults.yaml
+  deployersGroup: "deployers"             # platform_deployers_group from config/defaults.yaml
+  clusterCidr: "10.42.0.0/16"            # cluster_cidr from config/defaults.yaml
+
+namespaces:
+  prod: "prod"
+  dev: "dev"
+  stage: "stage"
+  argocd: "argocd"
+  nginx: "nginx"
+  certManager: "cert-manager"

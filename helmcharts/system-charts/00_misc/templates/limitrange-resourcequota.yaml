@@ -1,0 +1,33 @@
+{{- range $env, $quota := .Values.quotas }}
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default
+  namespace: {{ index $.Values.namespaces $env }}
+spec:
+  limits:
+    - default:
+        cpu: "500m"
+        memory: "256Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "128Mi"
+      max:
+        cpu: "2"
+        memory: "2Gi"
+      type: Container
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: default
+  namespace: {{ index $.Values.namespaces $env }}
+spec:
+  hard:
+    requests.cpu: {{ $quota.requestsCpu | quote }}
+    requests.memory: {{ $quota.requestsMemory }}
+    limits.cpu: {{ $quota.limitsCpu | quote }}
+    limits.memory: {{ $quota.limitsMemory }}
+    pods: {{ $quota.pods | quote }}
+{{- end }}
