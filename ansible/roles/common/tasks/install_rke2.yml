@@ -1,0 +1,109 @@
+---
+# Install RKE2 (Rancher Kubernetes Engine v2) — the recommended provisioner.
+# RKE2 is a fully CNCF-conformant Kubernetes distribution that embeds
+# containerd, has built-in security hardening (CIS benchmark), and does not
+# require Docker as a runtime.
+#
+# This task installs the RKE2 binary and systemd service via the official
+# install script. The first host in the rke2_server_hosts group bootstraps
+# the control plane; additional hosts join as agents or additional servers.
+#
+# Variables (set in group_vars or config/defaults.yaml):
+#   rke2_version      — e.g. "v1.31.2+rke2r1"  (CHANGE_ME placeholder by default)
+#   rke2_channel      — "stable" | "latest" | "testing"
+#   rke2_install_type — "server" (control plane) | "agent" (worker)
+#   rke2_server_url   — required for agent nodes: https://<server-ip>:9345
+#   rke2_token        — cluster join token (use ansible-vault encrypt_string)
+
+- name: Assert required RKE2 variables are set
+  assert:
+    that:
+      - rke2_version is defined
+      - rke2_version != "CHANGE_ME"
+      - rke2_channel is defined
+      - rke2_install_type in ['server', 'agent']
+    fail_msg: >
+      rke2_version, rke2_channel, and rke2_install_type must be set.
+      rke2_version must not be CHANGE_ME. Set these in group_vars or
+      ansible/inventories/<env>/group_vars/all.yml.
+
+- name: Assert rke2_server_url is set for agent nodes
+  assert:
+    that:
+      - rke2_server_url is defined
+      - rke2_server_url | length > 0
+    fail_msg: "rke2_server_url is required when rke2_install_type == 'agent'"
+  when: rke2_install_type == 'agent'
+
+- name: Assert rke2_token is set
+  assert:
+    that:
+      - rke2_token is defined
+      - rke2_token | length > 0
+    fail_msg: >
+      rke2_token must be set and encrypted with ansible-vault.
+      Generate a token with: openssl rand -hex 32
+
+- name: Download RKE2 install script
+  get_url:
+    url: https://get.rke2.io
+    dest: /tmp/install_rke2.sh
+    mode: "0755"
+
+- name: Install RKE2 ({{ rke2_install_type }})
+  command: /tmp/install_rke2.sh
+  environment:
+    INSTALL_RKE2_CHANNEL: "{{ rke2_channel }}"
+    INSTALL_RKE2_VERSION: "{{ rke2_version }}"
+    INSTALL_RKE2_TYPE: "{{ rke2_install_type }}"
+  args:
+    creates: /usr/local/bin/rke2
+
+- name: Create RKE2 config directory
+  file:
+    path: /etc/rancher/rke2
+    state: directory
+    mode: "0750"
+
+- name: Write RKE2 server config
+  template:
+    src: rke2-config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    mode: "0640"
+
+- name: Enable and start rke2-{{ rke2_install_type }} service
+  systemd:
+    name: "rke2-{{ rke2_install_type }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Wait for RKE2 kubeconfig (server nodes only)
+  wait_for:
+    path: /etc/rancher/rke2/rke2.yaml
+    timeout: 120
+  when: rke2_install_type == 'server'
+
+- name: Copy kubeconfig to standard location (server nodes only)
+  copy:
+    src: /etc/rancher/rke2/rke2.yaml
+    dest: "{{ ansible_env.HOME }}/.kube/config"
+    remote_src: true
+    mode: "0600"
+  when: rke2_install_type == 'server'
+
+- name: Symlink kubectl from RKE2 bundle
+  file:
+    src: /var/lib/rancher/rke2/bin/kubectl
+    dest: /usr/local/bin/kubectl
+    state: link
+    force: true
+
+- name: Verify RKE2 installation
+  command: rke2 --version
+  register: rke2_version_output
+  changed_when: false
+
+- name: Display RKE2 version
+  debug:
+    msg: "RKE2 installed: {{ rke2_version_output.stdout_lines[0] }}"

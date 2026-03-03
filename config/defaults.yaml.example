@@ -23,6 +23,13 @@ cluster_name: "YOUR_CLUSTER_NAME"
 # kubernetes_provisioner: rke2 is the default and recommended.
 # Set to rke1 only for legacy environments (RKE1 is EOL upstream).
 kubernetes_provisioner: "rke2"         # rke2 (recommended) | rke1 (legacy_compatibility: true)
+
+# RKE2 settings (used when kubernetes_provisioner: rke2)
+rke2_version: "CHANGE_ME"             # e.g. v1.31.2+rke2r1 — pin to a specific release
+rke2_channel: "stable"                # stable | latest | testing
+rke2_cni: "canal"                     # canal | calico | cilium | flannel
+
+# RKE1 settings (legacy — used when kubernetes_provisioner: rke1)
 rke_network_plugin: "flannel"          # flannel | calico
 cluster_cidr: "10.42.0.0/16"          # Pod CIDR — Flannel/RKE2 default
 service_cidr: "10.43.0.0/16"          # Service CIDR — RKE2 default
