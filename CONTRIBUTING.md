@@ -7,6 +7,21 @@ Updates and improvements are welcome via pull request.
 - **No secrets:** Do not commit real credentials, tokens, or unsealed secrets. Use placeholders (e.g. `YOUR_*`) or document "set locally." See [docs/SECURITY.md](docs/SECURITY.md).
 - **Config:** Keep `config/defaults.yaml.example` and `ansible/inventories/dev/hosts.ini.example` as the single source of placeholders; do not add new hardcoded IPs or URLs in code.
 
+## Local dev setup
+
+This repo ships a [pre-commit](https://pre-commit.com) configuration that runs YAML lint, secret scanning, and Helm lint automatically before every `git commit`.
+
+```bash
+pip install pre-commit   # or: pipx install pre-commit
+pre-commit install       # register the hooks in your local clone
+```
+
+After that, hooks run on every `git commit`. To run them manually across all files:
+
+```bash
+pre-commit run --all-files
+```
+
 ## Code quality checks
 
 Run these locally before pushing to catch errors early:

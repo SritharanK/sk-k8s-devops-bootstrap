@@ -1,0 +1,56 @@
+# pre-commit hook configuration
+# Install: pip install pre-commit  &&  pre-commit install
+# Run manually: pre-commit run --all-files
+#
+# Hooks are intentionally fast — no network calls, no container pulls.
+# Heavy scans (Trivy image, full Gitleaks history) remain in CI only.
+
+repos:
+  # ── Generic file hygiene ────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ["--unsafe"]   # allow custom YAML tags (e.g. Helm, Kyverno)
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+
+  # ── YAML lint ───────────────────────────────────────────────────────────────
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.37.1
+    hooks:
+      - id: yamllint
+        args: ["-d", "relaxed"]
+        files: \.(yaml|yml)$
+        exclude: |
+          (?x)^(
+            helmcharts/.*/charts/.*|
+            helmcharts/.*/Chart\.lock
+          )$
+
+  # ── Secrets scanning (local, fast — full history scan runs in CI) ───────────
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.2
+    hooks:
+      - id: gitleaks
+
+  # ── Helm lint (charts only; run make helm-deps first if dependencies missing)
+  - repo: local
+    hooks:
+      - id: helm-lint-app-charts
+        name: helm lint (app charts)
+        language: system
+        entry: bash -c 'for d in helmcharts/app-charts/*/; do helm lint --strict "$d" || exit 1; done'
+        pass_filenames: false
+        files: ^helmcharts/app-charts/
+
+      - id: helm-lint-system-charts
+        name: helm lint (managed system charts)
+        language: system
+        entry: bash -c 'for d in helmcharts/system-charts/platform-misc helmcharts/system-charts/network-policies helmcharts/system-charts/kyverno-policies; do helm lint --strict "$d" || exit 1; done'
+        pass_filenames: false
+        files: ^helmcharts/system-charts/(platform-misc|network-policies|kyverno-policies)/
