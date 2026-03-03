@@ -11,6 +11,9 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  # Allows manual runs from the GitHub Actions tab — useful for verifying the
+  # pipeline passes on demand without a code change (e.g. after dependency bumps).
+  workflow_dispatch:
 
 jobs:
   helm-lint:
