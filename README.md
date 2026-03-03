@@ -1,12 +1,15 @@
 # Kubernetes DevOps Bootstrap
 
-**A config-driven GitOps platform: Ansible → Kubernetes (RKE) → Argo CD + Jenkins.** Clone, set your IPs and URLs in one place, and run.
+**A config-driven GitOps platform: Ansible → Kubernetes (RKE2) → Argo CD + Jenkins.**  
+Clone, fill in `config/defaults.yaml`, and run.
 
 ---
 
 ## What this is
 
-A reusable template to provision a Kubernetes cluster with RKE, install Jenkins for CI/CD, and deploy workloads via **Argo CD** from Git. All settings are driven from a single configuration layer—no hardcoded IPs or credentials in code. Suited for platform engineers and teams adopting GitOps.
+A reusable template to provision a Kubernetes cluster, install Jenkins for CI/CD, and deploy workloads via **Argo CD** from Git. Every environment-specific value (IPs, ports, namespace names, credential IDs) flows from a single configuration file — no hardcoded values anywhere in the codebase.
+
+Designed as an enterprise-grade starting point for platform engineers adopting GitOps.
 
 ---
 
@@ -15,9 +18,9 @@ A reusable template to provision a Kubernetes cluster with RKE, install Jenkins 
 ```mermaid
 flowchart LR
   subgraph Provisioning
-    A[Ansible] --> B[RKE]
+    A[Ansible] --> B[RKE2]
     B --> C[Kubernetes Cluster]
-    A --> D[Jenkins]
+    A --> D[Jenkins JCasC]
   end
 
   subgraph GitOps
@@ -31,80 +34,97 @@ flowchart LR
   subgraph CI/CD
     D --> H[Build & Push Images]
     H --> I[Registry]
-    D --> J[Trigger Sync]
+    D --> J[Update image tag in Git]
     J --> E
   end
 
   I --> F
 ```
 
-- **Ansible** provisions servers and bootstraps the cluster (and optionally Jenkins, GitLab, DB).
-- **Argo CD** syncs applications from this Git repo to the cluster (App of Apps pattern).
-- **Jenkins** builds images, pushes to a registry, and can trigger Argo CD to sync.
-
-More detail: [docs/architecture.md](docs/architecture.md).
-
-Design intent (security, GitOps, maturity): [docs/PLATFORM_DESIGN.md](docs/PLATFORM_DESIGN.md).
+- **Ansible** provisions nodes and bootstraps the cluster + optional tooling (Jenkins, GitLab, DB).
+- **Argo CD** syncs system charts and applications from this Git repo (App of Apps pattern).
+- **Jenkins** builds images, scans them with Trivy, pushes to a registry, then commits the new tag to Git — Argo CD picks it up automatically.
 
 ---
 
-## Prerequisites
+## Configuration flow
 
-- **Ansible** (2.15+ recommended), **kubectl**, **helm**
-- SSH key-based access to your server(s)
-- Optional: **kubeseal** for sealing secrets; **ansible-vault** for encrypting playbook variables
+All settings flow from **one file** through the entire stack:
 
-Install notes: [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
+```
+config/defaults.yaml
+      │
+      ├─► Ansible playbooks (vars_files)
+      │         └─► Jenkins JCasC template (jenkins.yaml)
+      │                   └─► Jenkinsfiles (global env vars — no hardcoded IDs)
+      │
+      └─► argocd-bootstrap/values.yaml
+                └─► Helm charts (system-charts, app-charts)
+                          └─► Running workloads
+```
+
+Copy `config/defaults.yaml.example` → `config/defaults.yaml`, fill in your values, and everything else inherits from there.
 
 ---
 
 ## Quick start
 
-1. **Clone and configure**
-   ```bash
-   git clone https://github.com/YOUR_ORG/k8s-devops-bootstrap.git && cd k8s-devops-bootstrap
-   ./scripts/bootstrap_config.sh   # optional: copies config/inventory examples and prints next steps
-   # Or manually:
-   cp config/defaults.yaml.example config/defaults.yaml
-   cp ansible/inventories/dev/hosts.ini.example ansible/inventories/dev/hosts.ini
-   ```
-   Edit `config/defaults.yaml` and `ansible/inventories/dev/hosts.ini`: set `YOUR_MASTER_IP`, `YOUR_WORKER_IP`, `YOUR_SSH_USER`, Git repo URL, and any other placeholders.
+**1. Clone and configure**
+```bash
+git clone https://github.com/YOUR_ORG/k8s-devops-bootstrap.git
+cd k8s-devops-bootstrap
+cp config/defaults.yaml.example config/defaults.yaml
+cp ansible/inventories/dev/hosts.ini.example ansible/inventories/dev/hosts.ini
+```
+Edit `config/defaults.yaml` — replace every `YOUR_*` / `CHANGE_ME` placeholder.
 
-2. **Prepare secrets**
-   - Create `ansible/.ansible_vault_pass` with your vault password (do not commit). Encrypt playbook variables (e.g. `ansible_user`, `jenkins_git_password`) with `ansible-vault encrypt_string "VALUE"`.
-   - See [docs/SECURITY.md](docs/SECURITY.md) for what must never be committed and how to generate sealed secrets.
+**2. Prepare secrets**
+- Create `ansible/.ansible_vault_pass` (do not commit).
+- Encrypt sensitive values with `ansible-vault encrypt_string "VALUE"` and paste into playbook `vars:`.
+- See [docs/SECURITY.md](docs/SECURITY.md).
 
-3. **Provision cluster and Jenkins**
-   ```bash
-   make bootstrap-k8s    # install common packages + RKE bootstrap
-   make install-jenkins  # install Jenkins (optional)
-   ```
-   Use your kubeconfig (e.g. `ansible/data/kube_config_cluster.yaml`) and set `KUBECONFIG` for the next steps.
+**3. Provision**
+```bash
+make bootstrap-k8s    # common packages + RKE2 cluster
+make install-jenkins  # optional
+```
 
-4. **Install Argo CD and seal secrets**
-   ```bash
-   make install-argocd
-   # After sealed-secrets controller is running:
-   make seal-secrets
-   ```
-   Bootstrap the Argo CD app-of-apps using the script in `scripts/misc/argocd_prerequisite.sh` (set `ARGO_URL`, `KUBECONFIG_PATH`, `GIT_REPO` from your config).
+**4. Bootstrap Argo CD**
+```bash
+make install-argocd
+# Script reads config/defaults.yaml automatically:
+ARGO_PASS=yourpassword KUBECONFIG=~/.kube/config bash scripts/misc/argocd_prerequisite.sh
+```
 
-5. **Push your config to Git** so Argo CD can sync. Only sealed secrets and placeholder manifests should be committed—see [docs/SECURITY.md](docs/SECURITY.md).
+**5. Push to Git** — Argo CD will sync everything from this repo.
 
 ---
 
-## Configuration
+## Deployment modes
 
-All settings live in one place:
+### Static Applications — simple mode
 
-| What to set | Where |
-|-------------|--------|
-| Cluster IPs, SSH user, ports | `config/defaults.yaml` and `ansible/inventories/dev/hosts.ini` |
-| Git repo URL (this repo or fork) | `config/defaults.yaml` → Argo CD bootstrap script and playbooks |
-| Argo CD URL, admin password | `config/defaults.yaml`; Argo CD Helm values in `helmcharts/system-charts/argo-cd/values-lab.yaml` (lab) or `values-production.yaml` (production, Ingress+TLS only) |
-| Docker registry, Helm chart repo | `config/defaults.yaml`; unseal secret templates under `helmcharts/system-charts/argocd-config/unseal/` |
+`argocd-bootstrap/templates/applications/*.yaml` contains one Application manifest per service. This is the default and is easiest to understand. Each file maps a Helm chart to a namespace.
 
-Copy `config/defaults.yaml.example` to `config/defaults.yaml` and replace every `YOUR_*` placeholder. Do not commit `config/defaults.yaml` if it contains real credentials.
+**Use this when:** you have a small, stable set of services.
+
+### ApplicationSet — scale mode
+
+An [Argo CD ApplicationSet](https://argo-cd.readthedocs.io/en/stable/user-guide/application-set/) generates Application objects automatically from a template + a generator (list, cluster, Git directory, etc.). It eliminates the need to write a separate Application manifest for each service or environment.
+
+**Use this when:** you have many services, multiple clusters, or want to onboard new apps by adding a single entry to a list.
+
+Both patterns coexist in this repo. Static Applications are production-ready today. ApplicationSet is opt-in via `applicationset.enabled: true` in `argocd-bootstrap/values.yaml`.
+
+---
+
+## What is core, optional, and demo-only
+
+| Category | Components |
+|----------|-----------|
+| **Core** | RKE2 cluster provisioning, Argo CD App of Apps, system charts (ingress-nginx, cert-manager, sealed-secrets), network policies, Kyverno admission control, RBAC |
+| **Optional** | Jenkins (can use any CI), GitLab CE, PostgreSQL, MariaDB, kube-prometheus-stack, Loki, phpMyAdmin, ApplicationSet |
+| **Demo-only** | 5 sample app charts (java-springboot, python-django, laravel-example, payments-example, surge-plugin) — these illustrate the deployment pattern; replace with your real services |
 
 ---
 
@@ -112,68 +132,62 @@ Copy `config/defaults.yaml.example` to `config/defaults.yaml` and replace every 
 
 | Path | Purpose |
 |------|---------|
-| `ansible/` | Playbooks and roles: common packages, RKE bootstrap, Jenkins, optional GitLab/DB |
-| `helmcharts/` | `helm-common`, `system-charts` (Argo CD, ingress, cert-manager, sealed-secrets, …), `app-charts` |
-| `argocd-bootstrap/` | Argo CD App of Apps definitions (GitOps source) |
-| `scripts/` | Jenkinsfiles, Jenkins Job DSL, misc (Argo CD bootstrap script, seal-secrets) |
-| `config/` | Central config example; copy and fill for your environment |
-| `docs/` | Architecture, getting started, security, production setup, operations |
+| `config/` | Central config example — single source of truth for all environment values |
+| `ansible/` | Playbooks and roles: common packages, RKE2 bootstrap, Jenkins, optional GitLab/DB |
+| `helmcharts/` | `helm-common` (library), `system-charts` (platform tooling), `app-charts` (sample services) |
+| `argocd-bootstrap/` | Argo CD App of Apps — root Application definitions and Helm values |
+| `scripts/` | Jenkinsfiles (CI + CD), Jenkins Job DSL, misc bootstrap scripts |
+| `docs/` | Architecture, security, operations, platform design |
 
 ---
 
-## Optional components
+## Kubernetes provisioner
 
-The following are **optional** and not tested in every combination:
-
-- **GitLab CE** (Step 0 in the detailed guide)
-- **PostgreSQL / MariaDB** (Step 4)
-- **Extra system charts** (e.g. kube-prometheus-stack, Loki, phpMyAdmin)
-
-You can enable or skip them via playbook roles and Argo CD; see the detailed steps in [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
-
-**ApplicationSet (optional):** If you add many apps or multiple environments, consider [Argo CD ApplicationSet](https://argo-cd.readthedocs.io/en/stable/user-guide/application-set/) to generate Applications from a template (e.g. list generator for namespaces or cluster generator). The repo currently uses static Application manifests under `argocd-bootstrap/templates/`; an ApplicationSet Controller can be installed alongside Argo CD and a generator template added when you need it.
+| Provisioner | Status | Use when |
+|-------------|--------|----------|
+| **RKE2** | Default (recommended) | All new environments |
+| RKE1 | `legacy_compatibility: true` in config | Existing clusters only — RKE1 is upstream EOL |
 
 ---
 
-## Security and sanitization
+## Security highlights
 
-- **Never commit:** vault password, kubeconfig, RKE state file, or unsealed secrets. See [docs/SECURITY.md](docs/SECURITY.md).
-- **Sealed secrets:** generate unsealed manifests locally, run `make seal-secrets`, commit only the sealed YAML.
+- All secrets encrypted with **Ansible Vault** — no plaintext in any committed file
+- **Sealed Secrets** for Kubernetes secrets in Git (encrypted at rest, safe to commit)
+- **Kyverno** admission control: blocks privileged containers, enforces non-root, requires probes and resource limits, disallows `:latest` / untagged images
+- **Network policies**: default-deny in all app namespaces; explicit allow-list for DNS and ingress
+- **Pod Security Standards**: baseline enforced, restricted audited/warned
+- **Trivy**: container image scans in Jenkins CI (blocking) and config scans in GitHub Actions (advisory)
+- **Gitleaks**: secret scanning on every push and PR
+
+See [docs/SECURITY.md](docs/SECURITY.md) and [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
 ---
 
 ## Docs
 
-- [Getting started](docs/GETTING_STARTED.md) (detailed steps)
-- [**Full features and flow**](docs/FEATURES.md) (code-based feature list and diagram)
+- [Getting started](docs/GETTING_STARTED.md)
+- [Features](docs/FEATURES.md)
 - [Architecture](docs/architecture.md)
-- [Security & sanitization](docs/SECURITY.md) (what not to commit, sealed secrets, Trivy policy)
-- [Threat model](docs/THREAT_MODEL.md) (risk → mitigation, policy rejection example)
-- [Observability contract](docs/OBSERVABILITY_CONTRACT.md) (health, readiness/liveness, optional metrics)
-- [Production setup](docs/PRODUCTION_SETUP.md) (config, secrets, Argo CD, RBAC, quotas)
-- [Platform capabilities](docs/PLATFORM_CAPABILITIES.md) (controls, threat model — summary)
-- [Platform design](docs/PLATFORM_DESIGN.md) (architect intent: security, GitOps, maturity)
-- [Operations](docs/OPERATIONS.md) (RKE EOL, backup, audit)
-- [Argo CD SSO](docs/ARGOCD_SSO.md) (optional OIDC/OAuth)
-- [Deployment policy](docs/DEPLOYMENT_POLICY.md) (image tags, CD via Git)
-- [Versions](docs/VERSIONS.md) (component versions)
-
----
-
-## Versions
-
-Validated at publish time. See [docs/VERSIONS.md](docs/VERSIONS.md) for where each component version is defined (Ansible defaults, Chart.yaml, sample Dockerfiles). Updates welcome via PR.
+- [Security](docs/SECURITY.md)
+- [Threat model](docs/THREAT_MODEL.md)
+- [Observability contract](docs/OBSERVABILITY_CONTRACT.md)
+- [Production setup](docs/PRODUCTION_SETUP.md)
+- [Platform capabilities](docs/PLATFORM_CAPABILITIES.md)
+- [Platform design](docs/PLATFORM_DESIGN.md)
+- [Operations](docs/OPERATIONS.md)
+- [Deployment policy](docs/DEPLOYMENT_POLICY.md)
+- [Versions](docs/VERSIONS.md)
 
 ---
 
 ## Author
 
-**Sritharan K**  
-Lead Platform Engineer & Software Architect  
+**Sritharan K** — Lead Platform Engineer & Software Architect  
 🌐 https://www.skengineer.be
 
 ---
 
 ## License
 
-See [LICENSE](LICENSE) in the repository root.
+See [LICENSE](LICENSE).
