@@ -6,7 +6,11 @@
   include_tasks: create_linux_user.yml
   when: enable_create_linux_user | bool
 
-- name: Install RKE CLI
+- name: Install RKE2 (recommended provisioner)
+  include_tasks: install_rke2.yml
+  when: enable_install_rke2 | bool
+
+- name: Install RKE CLI (legacy RKE1)
   include_tasks: install_rke.yml
   when: enable_install_rke | bool
 

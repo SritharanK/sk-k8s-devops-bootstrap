@@ -1,5 +1,20 @@
 ---
+# ── RKE1 (legacy) ─────────────────────────────────────────────────────────────
+# Use enable_install_rke: true only for legacy RKE1 clusters.
+# For new clusters, prefer RKE2 (see below).
 rke_version: v1.8.10
+
+# ── RKE2 (recommended) ────────────────────────────────────────────────────────
+# Set enable_install_rke2: true and configure the variables below in
+# ansible/inventories/<env>/group_vars/ or via ansible-vault.
+rke2_version: "CHANGE_ME"       # e.g. "v1.31.2+rke2r1" — pin to a specific release
+rke2_channel: "stable"          # stable | latest | testing
+rke2_install_type: "server"     # server (control-plane) | agent (worker)
+rke2_server_url: ""             # required for agent nodes: https://<server-ip>:9345
+rke2_token: ""                  # set via ansible-vault — openssl rand -hex 32
+rke2_cni: "canal"               # canal | calico | cilium | flannel
+rke2_tls_san_extra: []          # additional TLS SANs (load-balancer IP, public DNS)
+
 kubectl_version: "v1.31.2"
 docker_compose_version: "1.29.2"
 java_version: "21"
@@ -13,7 +28,8 @@ php_packages:
   - php-curl
 
 enable_create_linux_user: false
-enable_install_rke: false
+enable_install_rke: false         # RKE1 — legacy; use enable_install_rke2 for new clusters
+enable_install_rke2: false        # RKE2 — recommended default provisioner
 enable_install_docker: true
 enable_install_nfs: false
 enable_install_kubectl: true
