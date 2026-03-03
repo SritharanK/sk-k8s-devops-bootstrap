@@ -27,8 +27,10 @@ certManager:
 rbac:
   # platform_admin_group from config/defaults.yaml
   platformAdminGroup: "YOUR_PLATFORM_ADMIN_GROUP"
-  # platform_deployers_group from config/defaults.yaml
+  # platform_deployers_group from config/defaults.yaml — CI/CD and operators
   deployersGroup: "deployers"
+  # platform_viewers_group from config/defaults.yaml — read-only access for devs/SREs
+  viewersGroup: "viewers"
 
 quotas:
   prod:
