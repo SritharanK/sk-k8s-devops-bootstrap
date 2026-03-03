@@ -3,9 +3,9 @@
 # Author : Sritharan K (https://www.skengineer.be)
 # License: MIT
 # -----------------------------------------------------------------------------
-def dockerRegistry = env.DOCKER_REGISTRY ?: "YOUR_DOCKER_REGISTRY/foggypay"
+def dockerRegistry = env.DOCKER_REGISTRY ?: "YOUR_DOCKER_REGISTRY/payments-example"
 def dockerFile = "Dockerfile"
-def serviceName = "foggypay"
+def serviceName = "payments-example"
 def serviceGitRepoUrl = env.SERVICE_GIT_REPO ?: "git@github.com:YOUR_ORG/payments-example.git"
 def gitCredsId = env.GIT_CREDS_ID ?: error("GIT_CREDS_ID not set in Jenkins global env")
 def dockerCredsId = env.DOCKER_CREDS_ID ?: error("DOCKER_CREDS_ID not set in Jenkins global env")

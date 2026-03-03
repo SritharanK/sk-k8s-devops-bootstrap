@@ -1,8 +1,8 @@
 helm-common:
-  name: foggypay
+  name: payments-example
   tier: application
   image:
-    name: "YOUR_REGISTRY/foggypay:PLACEHOLDER_TAG"  # Set via CD or config
+    name: "YOUR_REGISTRY/payments-example:PLACEHOLDER_TAG"  # Set via CD or config
     pullPolicy: IfNotPresent
     containerPort: 80
     imagePullSecrets: dockerhub-secret

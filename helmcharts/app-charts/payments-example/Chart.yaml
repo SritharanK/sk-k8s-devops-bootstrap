@@ -1,6 +1,6 @@
 apiVersion: v2
-name: foggypay
-description: A Helm chart k8s
+name: payments-example
+description: Example payments service Helm chart (WordPress-based demo)
 type: application
 version: 0.0.1
 dependencies:
