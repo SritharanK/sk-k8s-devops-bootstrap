@@ -1,10 +1,13 @@
 apiVersion: v2
 name: java-springboot
-description: A Helm chart k8s
+description: Spring Boot application Helm chart (uses helm-common library)
 type: application
 version: 0.0.1
 dependencies:
   - name: helm-common
     version: 0.1.1
-    repository: "file://../../helm-common" ### Use local helm chart if you don't want to publish common helmchart to helm registry (Github or Gitlab,...)
+    # Local path — works out of the box without any registry setup.
+    # To publish helm-common via OCI, set: oci://ghcr.io/YOUR_ORG/helm-charts
+    # and update helm_chart_repo_url in config/defaults.yaml.
+    repository: "file://../../helm-common"
     alias: helm-common
