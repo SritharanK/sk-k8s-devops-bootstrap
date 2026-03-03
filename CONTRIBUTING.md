@@ -15,7 +15,8 @@ Run these locally before pushing to catch errors early:
 |-------|------------------|
 | **Helm (argocd-bootstrap)** | From repo root: `helm template argocd-bootstrap ./argocd-bootstrap --set spec.source.repoURL=https://github.com/example/repo.git --set spec.destination.server=https://kubernetes.default.svc --set spec.destination.app_ns=prod --set spec.destination.argo_ns=argocd --set spec.source.targetRevision=main` |
 | **YAML lint** | `yamllint -d relaxed config/defaults.yaml.example argocd-bootstrap/values.yaml` (optional; install with `pip install yamllint`) |
-| **CI workflow** | On push/PR, [.github/workflows/validate.yml](.github/workflows/validate.yml) runs Helm template, Trivy on sample-services Dockerfiles, and optional yamllint; fix any failures. |
+| **CI workflow** | On push/PR, [.github/workflows/validate.yml](.github/workflows/validate.yml) runs Helm template, **Trivy config scan** (advisory), and optional yamllint; fix any failures. |
+| **Trivy policy** | **Enforcement:** Jenkins CI pipelines (see `scripts/jenkinsfiles/ci/*.Jenkinsfile`) run Trivy image scan and **block** the build on CRITICAL/HIGH. **Advisory:** GitHub Actions Trivy step runs config scan on `sample-services/` but does not fail the workflow; use the job log to fix findings. To make CI blocking, set `exit-code: '1'` and remove `continue-on-error` in the workflow. See [docs/SECURITY.md](docs/SECURITY.md). |
 
 If you add new Ansible playbooks or Helm charts, run `ansible-playbook --syntax-check` or `helm template` as appropriate so the repo stays in a good state for contributors.
 

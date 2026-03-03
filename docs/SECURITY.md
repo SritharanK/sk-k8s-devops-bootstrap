@@ -68,6 +68,15 @@ Never commit unsealed secrets, vault passwords, or kubeconfig. Use placeholders 
 
 ---
 
+## Trivy (vulnerability and config scanning)
+
+- **Enforcement (blocking):** Jenkins CI pipelines (`scripts/jenkinsfiles/ci/*.Jenkinsfile`) run a Trivy **image** scan on the built container and **fail the build** on CRITICAL or HIGH vulnerabilities. No image is pushed if the gate fails.
+- **Advisory (non-blocking):** The GitHub Actions workflow [.github/workflows/validate.yml](../.github/workflows/validate.yml) runs a Trivy **config** scan on `sample-services/` (Dockerfiles and related config). The job does not fail the workflow; use the job log to fix findings. To make this gate blocking, set `exit-code: '1'` and remove `continue-on-error` in the workflow.
+
+This split avoids ambiguity: Jenkins is the deployment gate; GitHub Actions provides visibility without blocking PRs until config findings are resolved. **PRs show advisory findings; merges are gated by Jenkins in the reference pipeline.** That is an explicit governance choice, not weak security.
+
+---
+
 ## RBAC
 
 We do **not** use cluster-admin for routine operations. Argo CD and platform admins use namespace-scoped or custom cluster roles. Argo CD does not manage cluster-wide resources except CRDs defined in the platform namespace. Restrict Argo CD via AppProject destination namespaces first; then reduce cluster-scope permissions gradually (see `helmcharts/system-charts/argocd-project/` and `00_misc/platform-admin-rbac.yaml`).

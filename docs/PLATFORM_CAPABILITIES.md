@@ -21,6 +21,20 @@ One-page executive summary: what this platform provides and what risks it mitiga
 
 ---
 
+## Enforcement matrix
+
+| Control | Enforced by | Where | Mode |
+|---------|-------------|--------|------|
+| Container vulnerability scan | Jenkins | CI (image build) | Blocking |
+| IaC / config scan | GitHub Actions | PR | Advisory |
+| PSS (Pod Security Standards) | Namespace labels | Cluster (prod, dev) | Blocking |
+| Pod hardening (privileged, non-root, limits, readiness) | Kyverno | Cluster (admission) | Blocking |
+| Egress / ingress control | NetworkPolicy | Namespace | Blocking |
+
+This documents the governance model: PRs show advisory findings; deployment is gated by Jenkins and cluster admission.
+
+---
+
 ## Threat model (overview)
 
 | Threat | Mitigation |
@@ -53,4 +67,4 @@ One-page executive summary: what this platform provides and what risks it mitiga
 
 ---
 
-For design intent and implementation details, see [PLATFORM_DESIGN.md](PLATFORM_DESIGN.md).
+For design intent and implementation details, see [PLATFORM_DESIGN.md](PLATFORM_DESIGN.md). For a dedicated risk → mitigation table and **policy rejection example** (e.g. Kyverno blocking a privileged pod), see [THREAT_MODEL.md](THREAT_MODEL.md). For health and metrics contract, see [OBSERVABILITY_CONTRACT.md](OBSERVABILITY_CONTRACT.md).

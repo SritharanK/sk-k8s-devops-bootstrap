@@ -47,8 +47,8 @@ jobs:
           yamllint -d relaxed argocd-bootstrap/values.yaml 2>/dev/null || true
         continue-on-error: true
 
-  # Trivy config scan on sample-services (Dockerfiles etc.). exit-code 0 + continue-on-error
-  # so the workflow passes until findings are fixed; then set exit-code to '1' and remove continue-on-error.
+  # Trivy config scan (advisory in CI). Enforcement: Jenkins pipelines block on CRITICAL/HIGH image scan.
+  # See CONTRIBUTING.md and docs/SECURITY.md for Trivy policy. To make this job blocking, set exit-code: '1' and remove continue-on-error.
   trivy-dockerfiles:
     name: Trivy (Dockerfiles)
     runs-on: ubuntu-latest

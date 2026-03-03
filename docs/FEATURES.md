@@ -21,17 +21,18 @@ This document lists all features of the project and describes the end-to-end flo
 | **GitOps** | Sample applications: python-django, java-springboot, laravel-example, surge-plugin, foggypay | `argocd-bootstrap/templates/applications/*.yaml` |
 | **Secrets** | Sealed Secrets: seal unsealed YAML with kubeseal | `scripts/misc/seal_k8s_secrets.sh` |
 | **Secrets** | Docker registry pull secret (create + seal) | `scripts/misc/create_k8s_docker_secret_seal.sh`; templates in `helmcharts/system-charts/argocd-config/unseal/` |
-| **CI/CD** | Jenkins pipelines: build, test, Trivy scan, push image, trigger Argo CD sync | `scripts/jenkinsfiles/ci/*.Jenkinsfile` and `scripts/jenkinsfiles/cd/*.Jenkinsfile` |
+| **CI/CD** | Jenkins pipelines: build, test, Trivy image scan (blocking on CRITICAL/HIGH), push image, trigger Argo CD sync | `scripts/jenkinsfiles/ci/*.Jenkinsfile` and `scripts/jenkinsfiles/cd/*.Jenkinsfile` |
+| **CI/CD** | GitHub Actions: Helm template, Trivy config scan (advisory), Gitleaks | `.github/workflows/validate.yml`; see [SECURITY.md](SECURITY.md#trivy-vulnerability-and-config-scanning) for enforcement vs advisory |
 | **Security** | Pod Security Standards (PSS) on namespaces | `helmcharts/system-charts/00_misc/namespaces-pss.yaml` |
 | **Security** | Default-deny network policies + allow DNS/ingress | `helmcharts/system-charts/network-policies/` |
 | **Security** | Platform admin RBAC | `helmcharts/system-charts/00_misc/platform-admin-rbac.yaml` |
 | **Security** | Argo CD AppProject (restrict destination namespaces) | `helmcharts/system-charts/argocd-project/prod.yml` |
-| **Security** | Optional Kyverno: block privileged, require resource limits, require runAsNonRoot, require readinessProbe | `helmcharts/system-charts/kyverno-policies/*.yaml` |
-| **Security** | Optional LimitRange and ResourceQuota | `helmcharts/system-charts/00_misc/limitrange-resourcequota.yaml` |
-| **Apps** | Shared Helm chart for apps (securityContext, probes, env, configMap) | `helmcharts/helm-common/` |
-| **Apps** | Shared Helm chart for apps (securityContext, probes, env, configMap) | `helmcharts/helm-common/` |
+| **Security** | Kyverno (when installed): block privileged, require resource limits, runAsNonRoot, readinessProbe | `helmcharts/system-charts/kyverno-policies/*.yaml` |
+| **Security** | LimitRange and ResourceQuota per namespace | `helmcharts/system-charts/00_misc/limitrange-resourcequota.yaml` |
+| **Apps** | Shared Helm chart (securityContext, probes, env, configMap, resources) | `helmcharts/helm-common/` |
+| **Apps** | App charts with prod values (resources, probes) compliant with Kyverno | `helmcharts/app-charts/*/values-prod.yaml` |
 | **Apps** | App charts (python-django, java-springboot, laravel, foggypay, surge-plugin) | `helmcharts/app-charts/*/` |
-| **Apps** | Per-environment values: **values-prod.yaml** (used by Argo CD today), **values-dev.yaml** (optional overrides for a dev namespace; add an Argo Application with `valueFiles: [values-dev.yaml]` and `destination.namespace: dev` to use it) | `helmcharts/app-charts/<app>/values-*.yaml` |
+| **Apps** | Per-environment values: **values-prod.yaml** (used by Argo CD; includes resources for Kyverno), **values-dev.yaml** | `helmcharts/app-charts/<app>/values-*.yaml` |
 | **Samples** | Sample services (Dockerfiles, source) | `sample-services/` |
 | **Entrypoints** | One-command bootstrap (config + inventory copy + next steps) | `scripts/bootstrap_config.sh` |
 | **Entrypoints** | Make targets: install-common, bootstrap-k8s, install-jenkins, install-argocd, seal-secrets | `Makefile` |
@@ -123,7 +124,7 @@ flowchart TB
 | Add or change an application | `argocd-bootstrap/templates/applications/` and `helmcharts/app-charts/` |
 | Seal secrets | `scripts/misc/seal_k8s_secrets.sh`; unseal templates in `helmcharts/system-charts/argocd-config/unseal/` |
 | Add a CI pipeline | `scripts/jenkinsfiles/ci/` and `scripts/jenkinsfiles/cd/`; Jenkins Job DSL in `ansible/roles/install_jenkins/` |
-| Understand security controls | `docs/PLATFORM_CAPABILITIES.md`; `helmcharts/system-charts/00_misc/`, `network-policies/`, `kyverno-policies/` |
+| Understand security controls | [PLATFORM_CAPABILITIES.md](PLATFORM_CAPABILITIES.md) (enforcement matrix); [THREAT_MODEL.md](THREAT_MODEL.md) (risk → mitigation, policy rejection demo); [OBSERVABILITY_CONTRACT.md](OBSERVABILITY_CONTRACT.md); `helmcharts/system-charts/00_misc/`, `network-policies/`, `kyverno-policies/` |
 
 ---
 
@@ -132,5 +133,8 @@ flowchart TB
 - [Architecture](architecture.md) — High-level overview and diagram.
 - [Getting started](GETTING_STARTED.md) — Step-by-step setup.
 - [Production setup](PRODUCTION_SETUP.md) — Checklist for production.
-- [Platform capabilities](PLATFORM_CAPABILITIES.md) — Controls and threat model.
+- [Platform capabilities](PLATFORM_CAPABILITIES.md) — Controls, enforcement matrix, threat overview.
+- [Threat model](THREAT_MODEL.md) — Risk → mitigation, policy rejection examples.
+- [Observability contract](OBSERVABILITY_CONTRACT.md) — Health/probes and optional metrics.
+- [Security & Trivy policy](SECURITY.md) — What not to commit; Jenkins (blocking) vs GitHub Actions (advisory).
 - [Versions](VERSIONS.md) — Component versions.
