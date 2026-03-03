@@ -1,0 +1,56 @@
+# -----------------------------------------------------------------------------
+# Stage environment overrides for python-django.
+# Stage mirrors production configuration but targets stage-specific services.
+# Use with an Argo CD Application that has destination.namespace: stage
+# and valueFiles: [values-stage.yaml].
+# -----------------------------------------------------------------------------
+
+helm-common:
+  name: python-django
+  tier: application
+  image:
+    name: "YOUR_REGISTRY/python-django:PLACEHOLDER_TAG"  # Overridden by CD pipeline
+    pullPolicy: IfNotPresent
+    containerPort: 8080
+    imagePullSecrets: dockerhub-secret
+  extraAnnotations:
+    configmap.reloader.stakater.com/reload: ""
+  env:
+    - name: DB_HOST
+      value: "mysql.stage.svc.cluster.local"
+    - name: DB_PORT
+      value: "3306"
+    - name: DB_USER
+      value: root
+    - name: DB_PASSWORD
+      value: "CHANGE_ME_OR_USE_SECRET"
+    - name: DB_NAME
+      value: "testdb_stage"
+    - name: DB_ENGINE
+      value: django.db.backends.mysql
+  replicas: 1
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    failureThreshold: 3
+  resources:
+    requests: { memory: "64Mi", cpu: "50m" }
+    limits:   { memory: "256Mi", cpu: "300m" }
+  nodeSelector:
+    node-role.kubernetes.io/worker: "true"
+  autoscaling:
+    enabled: false
+  service:
+    type: ClusterIP
+    port: 80
+  enabledDeployment: true
