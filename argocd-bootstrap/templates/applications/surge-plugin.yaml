@@ -4,6 +4,7 @@ metadata:
   name: surge-plugin
   namespace: argocd
   annotations:
+    argocd.argoproj.io/sync-wave: "10"
     argocd.argoproj.io/manifest-generate-paths: ./helmcharts/app-charts/surge-plugin
   finalizers:
     - resources-finalizer.argocd.argoproj.io
