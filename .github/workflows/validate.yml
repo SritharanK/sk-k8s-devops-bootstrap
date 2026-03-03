@@ -1,5 +1,8 @@
-# Minimal validation: ensure Helm templates and key YAML render without errors.
-# Run on push/PR to main. Does not require cluster or secrets.
+# Validation workflow — runs on every push and PR to main/master.
+# Does not require a cluster, registry credentials, or secrets.
+#
+# Trivy scans here are ADVISORY (exit-code: 0, continue-on-error: true).
+# ENFORCEMENT happens in Jenkins CI pipelines which block on CRITICAL/HIGH.
 
 name: Validate
 
@@ -47,21 +50,73 @@ jobs:
           yamllint -d relaxed argocd-bootstrap/values.yaml 2>/dev/null || true
         continue-on-error: true
 
-  # Trivy config scan (advisory in CI). Enforcement: Jenkins pipelines block on CRITICAL/HIGH image scan.
-  # See CONTRIBUTING.md and docs/SECURITY.md for Trivy policy. To make this job blocking, set exit-code: '1' and remove continue-on-error.
+  # ── Trivy scans (advisory) ──────────────────────────────────────────────────
+  # Scans are split by target so findings are clearly attributed.
+  # Enforcement is in Jenkins CI (exit-code: 1, blocks merge).
+  # To harden CI, set exit-code: '1' and remove continue-on-error on any job.
+
   trivy-dockerfiles:
-    name: Trivy (Dockerfiles)
+    name: Trivy — Dockerfiles (sample-services)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run Trivy on Dockerfiles (config/misconfig)
-        uses: aquasecurity/trivy-action@0.33.1
+      - name: Scan Dockerfiles for misconfigurations
+        uses: aquasecurity/trivy-action@0.34.2
         with:
-          scan-type: 'config'
-          scan-ref: 'sample-services/'
+          scan-type: config
+          scan-ref: sample-services/
           exit-code: '0'
-          severity: 'CRITICAL,HIGH'
+          severity: CRITICAL,HIGH
+          format: table
+        continue-on-error: true
+
+  trivy-helmcharts:
+    name: Trivy — Helm charts (helmcharts/)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan Helm charts for Kubernetes misconfigurations
+        uses: aquasecurity/trivy-action@0.34.2
+        with:
+          scan-type: config
+          scan-ref: helmcharts/
+          exit-code: '0'
+          severity: CRITICAL,HIGH
+          format: table
+        continue-on-error: true
+
+  trivy-kyverno-policies:
+    name: Trivy — Kyverno policies (helmcharts/system-charts/kyverno-policies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan Kyverno policy templates for misconfigurations
+        uses: aquasecurity/trivy-action@0.34.2
+        with:
+          scan-type: config
+          scan-ref: helmcharts/system-charts/kyverno-policies/
+          exit-code: '0'
+          severity: CRITICAL,HIGH
+          format: table
+        continue-on-error: true
+
+  trivy-iac-argocd:
+    name: Trivy — IaC (argocd-bootstrap)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan ArgoCD bootstrap manifests for misconfigurations
+        uses: aquasecurity/trivy-action@0.34.2
+        with:
+          scan-type: config
+          scan-ref: argocd-bootstrap/
+          exit-code: '0'
+          severity: CRITICAL,HIGH
+          format: table
         continue-on-error: true
 
   gitleaks:
