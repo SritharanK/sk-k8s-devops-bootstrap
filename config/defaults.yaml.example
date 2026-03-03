@@ -1,66 +1,152 @@
 # -----------------------------------------------------------------------------
-# Kubernetes DevOps Bootstrap - Central configuration example
+# Kubernetes DevOps Bootstrap — Central configuration
 # -----------------------------------------------------------------------------
-#
-# PURPOSE: Single place for all environment-specific settings (IPs, URLs,
-#          registry, Argo CD). No hardcoded values in playbooks or scripts.
 #
 # HOW TO USE:
-#   1. Copy this file:  cp config/defaults.yaml.example config/defaults.yaml
-#   2. Replace every YOUR_* placeholder with your real values.
-#   3. Do NOT commit config/defaults.yaml if it contains real IPs or secrets.
+#   1. cp config/defaults.yaml.example config/defaults.yaml
+#   2. Fill every YOUR_* / CHANGE_ME placeholder with your real values.
+#   3. Never commit config/defaults.yaml — it is gitignored.
 #
-# WHERE USED: Ansible playbooks (via group_vars or passed vars), scripts that
-#             read config, and documentation. See README and docs/GETTING_STARTED.md.
+# CONFIGURATION FLOW:
+#   This file is the single source of truth. Values flow to:
+#     • Ansible playbooks (via vars_files: ../../config/defaults.yaml)
+#     • Jenkins JCasC (via Ansible-templated jenkins.yaml)
+#     • Jenkinsfiles (via Jenkins global env vars — never hardcoded in pipelines)
+#     • Helm chart values (via argocd-bootstrap/values.yaml)
+#     • Kubernetes manifests (via Helm templating)
 # -----------------------------------------------------------------------------
 
-# ---- Cluster (Ansible / RKE) ----
-# Master node IP(s). For single-node, use the same IP as worker.
-master_ip: "YOUR_MASTER_IP"
-worker_ip: "YOUR_WORKER_IP"   # Can be same as master_ip for single-node
-ssh_port: "22"                 # SSH port for Ansible and RKE
-ansible_user: "YOUR_SSH_USER"  # OS user for SSH (set in playbook vars with vault)
 
-# ---- Git (DevOps repo - this repo or your fork) ----
-# URL of the Git repository that contains Helm charts and Argo CD bootstrap.
+# ── Cluster identity ─────────────────────────────────────────────────────────
+cluster_name: "YOUR_CLUSTER_NAME"
+
+# kubernetes_provisioner: rke2 is the default and recommended.
+# Set to rke1 only for legacy environments (RKE1 is EOL upstream).
+kubernetes_provisioner: "rke2"         # rke2 (recommended) | rke1 (legacy_compatibility: true)
+rke_network_plugin: "flannel"          # flannel | calico
+cluster_cidr: "10.42.0.0/16"          # Pod CIDR — Flannel/RKE2 default
+service_cidr: "10.43.0.0/16"          # Service CIDR — RKE2 default
+
+
+# ── Node access ──────────────────────────────────────────────────────────────
+master_ip: "YOUR_MASTER_IP"
+worker_ip: "YOUR_WORKER_IP"           # May be the same as master_ip for single-node
+ssh_port: "22"
+ansible_user: "YOUR_SSH_USER"         # OS user for Ansible SSH (password/key via vault)
+
+
+# ── Platform namespaces ───────────────────────────────────────────────────────
+namespace_prod: "prod"
+namespace_dev: "dev"
+namespace_stage: "stage"
+namespace_argocd: "argocd"
+namespace_cert_manager: "cert-manager"
+namespace_ingress: "nginx"
+
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress_class_name: "nginx"
+ingress_external_ip: "YOUR_MASTER_IP" # External IP or hostname for ingress controller
+
+
+# ── Git (this repo or your fork) ─────────────────────────────────────────────
 git_repo_url: "https://github.com/YOUR_ORG/k8s-devops-bootstrap.git"
 git_repo_ssh: "git@github.com:YOUR_ORG/k8s-devops-bootstrap.git"
 git_branch: "main"
 
-# ---- Argo CD ----
-argocd_host: "YOUR_MASTER_IP"   # Host or IP where Argo CD NodePort is reachable
+
+# ── Argo CD ───────────────────────────────────────────────────────────────────
+argocd_host: "YOUR_MASTER_IP"
 argocd_port: "31980"
 argocd_url: "http://YOUR_MASTER_IP:31980"
 argocd_admin_user: "admin"
-# Generate with: ARGO_PWD='yourpassword' && htpasswd -nbBC 10 "" $ARGO_PWD | tr -d ':\n' | sed 's/$2y/$2a/'
+# Generate password hash with:
+#   ARGO_PWD='yourpassword' && htpasswd -nbBC 10 "" $ARGO_PWD | tr -d ':\n' | sed 's/$2y/$2a/'
 argocd_admin_password_hash: "YOUR_BCRYPT_HASH"
+argocd_project_name: "prod"
 
-# ---- Docker registry ----
-docker_registry: "registry.example.com"  # e.g. index.docker.io for Docker Hub
+
+# ── Jenkins ───────────────────────────────────────────────────────────────────
+jenkins_port: "8081"
+jenkins_admin_username: "admin"
+# jenkins_admin_password: set via ansible-vault — never plain text here
+jenkins_num_executors: "5"
+jenkins_agent_label: "default"
+
+# Credential IDs — must match what is configured in Jenkins credentials store
+jenkins_git_creds_id: "git-ssh-key"
+jenkins_docker_creds_id: "dockerhub"
+jenkins_git_user_creds_id: "jenkins_git_user"
+jenkins_argocd_creds_id: "argocd-creds"
+
+# Git commit identity used by Jenkins CD pipelines when pushing image tag updates
+jenkins_git_commit_user: "jenkins"
+jenkins_git_commit_email: "jenkins@YOUR_DOMAIN"
+
+# Job DSL: glob pattern for pipeline scripts
+jenkins_dsl_script_pattern: "scripts/**/*.groovy"
+
+
+# ── Docker / container registry ──────────────────────────────────────────────
+docker_registry: "registry.example.com"   # e.g. index.docker.io for Docker Hub
 docker_username: "YOUR_DOCKER_USERNAME"
-docker_email: "admin@example.com"
-# Set password via env or vault; do not put in this file if committed.
+docker_email: "YOUR_DOCKER_EMAIL"
+# docker_password: set via ansible-vault — never plain text here
+registry_pull_secret_name: "dockerhub-secret"
 
-# ---- Helm chart repo (for helm-common) ----
-# If you publish helm-common to a registry (GitHub Pages, GitLab, etc.)
-helm_chart_repo_url: "https://raw.githubusercontent.com/YOUR_ORG/helm-common/main"
-# Or GitLab: https://gitlab.example.com/api/v4/projects/PROJECT_ID/packages/helm/stable
 
-# ---- Optional: GitLab CE ----
-gitlab_external_url: "https://gitlab.example.com/"
-# gitlab_root_password: set in playbook with ansible-vault
+# ── Helm chart registry (helm-common library) ────────────────────────────────
+# Published via OCI to GitHub Packages:
+helm_chart_repo_url: "oci://ghcr.io/YOUR_ORG/helm-charts"
+# helm_chart_repo_url: "https://YOUR_ORG.github.io/helm-common"  # GitHub Pages alternative
 
-# ---- Optional: NFS (for dynamic provisioning) ----
+
+# ── RBAC ─────────────────────────────────────────────────────────────────────
+platform_admin_group: "YOUR_PLATFORM_ADMIN_GROUP"
+platform_deployers_group: "deployers"
+
+
+# ── Cert-manager (Let's Encrypt) ─────────────────────────────────────────────
+# Set to your real email — Let's Encrypt uses this for certificate expiry notices.
+cert_manager_email: "CHANGE_ME"
+
+
+# ── Database (optional) ──────────────────────────────────────────────────────
+postgresql_version: "15"
+postgresql_port: "5432"
+# postgresql_password: set via ansible-vault — never plain text here
+# Restrict to cluster_cidr in production
+postgresql_allowed_cidr: "0.0.0.0/0"
+
+mysql_port: "3306"
+# mysql_root_password: set via ansible-vault — never plain text here
+
+
+# ── NFS (optional — for dynamic PV provisioning) ─────────────────────────────
 nfs_server: "YOUR_MASTER_IP"
 nfs_path: "/srv/nfs"
 
-# ---- Optional: Ingress / Load balancer ----
-# External IP or hostname for ingress controller (if using LoadBalancer or externalIPs)
-ingress_external_ip: "YOUR_MASTER_IP"
 
-# ---- Optional: Cert-manager (Let's Encrypt) ----
-cert_manager_email: "admin@example.com"
+# ── Optional: GitLab CE ───────────────────────────────────────────────────────
+gitlab_external_url: "https://gitlab.example.com/"
+# gitlab_root_password: set via ansible-vault — never plain text here
 
-# ---- Local paths (do not commit real paths) ----
-# kubeconfig_path: "~/.kube/kube_config_cluster.yaml"
-# ssh_private_key_path: "~/.ssh/id_rsa"
+
+# ── Resource quotas ───────────────────────────────────────────────────────────
+quota_prod_requests_cpu: "10"
+quota_prod_limits_cpu: "20"
+quota_prod_requests_memory: "20Gi"
+quota_prod_limits_memory: "40Gi"
+quota_prod_pods: "50"
+
+quota_dev_requests_cpu: "5"
+quota_dev_limits_cpu: "10"
+quota_dev_requests_memory: "10Gi"
+quota_dev_limits_memory: "20Gi"
+quota_dev_pods: "30"
+
+quota_stage_requests_cpu: "8"
+quota_stage_limits_cpu: "16"
+quota_stage_requests_memory: "16Gi"
+quota_stage_limits_memory: "32Gi"
+quota_stage_pods: "40"
