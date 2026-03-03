@@ -1,11 +1,15 @@
 {{- range $key, $ns := .Values.namespaces }}
+{{- $pss := index $.Values.namespacePss $key | default dict }}
+{{- $enforceLevel := $pss.enforce | default "baseline" }}
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: {{ $ns }}
   labels:
-    pod-security.kubernetes.io/enforce: baseline
+    # enforce: blocks pods that violate the policy.
+    # audit/warn: surface violations in audit logs and admission warnings.
+    pod-security.kubernetes.io/enforce: {{ $enforceLevel }}
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
 {{- end }}

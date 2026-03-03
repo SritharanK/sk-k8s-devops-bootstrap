@@ -6,6 +6,19 @@ namespaces:
   dev: "dev"
   stage: "stage"
 
+# Per-namespace Pod Security Standards enforcement level.
+# enforce: the level that BLOCKS non-conformant pods.
+# audit/warn default to "restricted" for all namespaces (surfaced in logs/events).
+# prod uses "restricted" enforce — strongest hardening, no privileged containers.
+# dev/stage use "baseline" enforce — allows common workload patterns during development.
+namespacePss:
+  prod:
+    enforce: "restricted"
+  dev:
+    enforce: "baseline"
+  stage:
+    enforce: "baseline"
+
 certManager:
   # cert_manager_email from config/defaults.yaml — set to your real email, never example.com
   email: "CHANGE_ME"
