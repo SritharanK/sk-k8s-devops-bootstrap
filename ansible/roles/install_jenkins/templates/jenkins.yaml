@@ -1,6 +1,49 @@
 jenkins:
-  systemMessage: "Welcome to Jenkins configured by Code!"
+  systemMessage: "{{ cluster_name }} Jenkins — managed by Ansible JCasC"
   labelString: "master linux default"
+  numExecutors: "{{ jenkins_num_executors }}"
+  mode: EXCLUSIVE
+  disableRememberMe: false
+  markupFormatter: "plainText"
+  myViewsTabBar: "standard"
+  primaryView:
+    all:
+      name: "all"
+  projectNamingStrategy: "standard"
+  quietPeriod: 5
+  remotingSecurity:
+    enabled: true
+  scmCheckoutRetryCount: 1
+  slaveAgentPort: -1
+  views:
+    - all:
+        name: "all"
+  viewsTabBar: "standard"
+
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "DOCKER_REGISTRY"
+            value: "{{ docker_registry }}"
+          - key: "OPS_GIT_REPO"
+            value: "{{ git_repo_ssh }}"
+          - key: "ARGOCD_SERVER"
+            value: "{{ argocd_url }}"
+          - key: "GIT_CREDS_ID"
+            value: "{{ jenkins_git_creds_id }}"
+          - key: "DOCKER_CREDS_ID"
+            value: "{{ jenkins_docker_creds_id }}"
+          - key: "JENKINS_GIT_USER_CREDS_ID"
+            value: "{{ jenkins_git_user_creds_id }}"
+          - key: "ARGOCD_CREDS_ID"
+            value: "{{ jenkins_argocd_creds_id }}"
+          - key: "JENKINS_AGENT_LABEL"
+            value: "{{ jenkins_agent_label }}"
+          - key: "GIT_COMMIT_USER"
+            value: "{{ jenkins_git_commit_user }}"
+          - key: "GIT_COMMIT_EMAIL"
+            value: "{{ jenkins_git_commit_email }}"
+
   authorizationStrategy:
     projectMatrix:
       entries:
@@ -21,39 +64,7 @@ jenkins:
             permissions:
               - Overall/Read
         - user:
-            name: testuser
-            permissions:
-              - Agent/Build
-              - Agent/Configure
-              - Agent/Connect
-              - Agent/Create
-              - Agent/Delete
-              - Agent/Disconnect
-              - Credentials/Create
-              - Credentials/Delete
-              - Credentials/ManageDomains
-              - Credentials/Update
-              - Credentials/View
-              - Job/Build
-              - Job/Cancel
-              - Job/Configure
-              - Job/Create
-              - Job/Delete
-              - Job/Discover
-              - Job/Move
-              - Job/Read
-              - Job/Workspace
-              - Overall/Administer
-              - Overall/Read
-              - Run/Delete
-              - Run/Replay
-              - Run/Update
-              - View/Configure
-              - View/Create
-              - View/Delete
-              - View/Read
-        - user:
-            name: admin
+            name: "{{ jenkins_admin_username }}"
             permissions:
               - Agent/Build
               - Agent/Configure
@@ -94,28 +105,9 @@ jenkins:
     local:
       allowsSignup: false
       users:
-        - id: "admin"
-          password: "admin"
-        - id: "testuser"
-          password: "123456"
-  disableRememberMe: false
-  markupFormatter: "plainText"
-  mode: EXCLUSIVE
-  myViewsTabBar: "standard"
-  numExecutors: "{{ num_executor }}"
-  primaryView:
-    all:
-      name: "all"
-  projectNamingStrategy: "standard"
-  quietPeriod: 5
-  remotingSecurity:
-    enabled: true
-  scmCheckoutRetryCount: 1
-  slaveAgentPort: -1
-  views:
-    - all:
-        name: "all"
-  viewsTabBar: "standard"
+        - id: "{{ jenkins_admin_username }}"
+          name: "Jenkins Administrator"
+          password: "{{ jenkins_admin_password }}"
 
 unclassified:
   buildDiscarders:
@@ -134,8 +126,6 @@ unclassified:
     defaultSubject: "$PROJECT_NAME - Build # $BUILD_NUMBER - $BUILD_STATUS!"
     defaultTriggerIds:
       - "hudson.plugins.emailext.plugins.trigger.FailureTrigger"
-    mailAccount:
-      smtpPassword: "{AQAAABAAAAAQ9p6h/Sgk0zF7eCCk6ZRVyESg1jZzAn5afPqfR8vmM9g=}"
     maxAttachmentSize: -1
     maxAttachmentSizeMb: -1
     precedenceBulk: false
@@ -153,8 +143,8 @@ unclassified:
   junitTestResultStorage:
     storage: "file"
   location:
-    adminAddress: "address not configured yet <nobody@nowhere>"
-    url: "http://jenkins:8081/"
+    adminAddress: "{{ jenkins_git_commit_email }}"
+    url: "http://{{ ansible_host }}:{{ jenkins_port }}/"
   mailer:
     charset: "UTF-8"
     useSsl: false
@@ -165,6 +155,7 @@ unclassified:
     allPipelines: false
     elapsedTimeFormat: "'<b>'HH:mm:ss.S'</b> '"
     systemTimeFormat: "'<b>'HH:mm:ss'</b> '"
+
 tool:
   git:
     installations:
@@ -180,30 +171,28 @@ credentials:
     domainCredentials:
       - credentials:
           - usernamePassword:
-              id: "jenkins_git_user"
+              id: "{{ jenkins_git_user_creds_id }}"
               username: "{{ jenkins_git_username }}"
               password: "{{ jenkins_git_password }}"
-              description: "Jenkins Gitlab User"
+              description: "Jenkins Git User"
               scope: GLOBAL
           - usernamePassword:
-              id: "dockerhub"
+              id: "{{ jenkins_docker_creds_id }}"
               username: "{{ docker_registry_username }}"
               password: "{{ docker_registry_password }}"
-              description: "Dockerhub user/pass"
+              description: "Docker registry credentials"
               scope: GLOBAL
           - basicSSHUserPrivateKey:
               scope: GLOBAL
-              id: "{{ git_creds_id }}"
+              id: "{{ jenkins_git_creds_id }}"
               description: "Git SSH credentials"
               username: "jenkins"
               privateKeySource:
                 directEntry:
                   privateKey: "${readFile:/var/lib/jenkins/creds/ssh_privkey}"
           - usernamePassword:
-              id: "argocd-creds"
-              username: "{{ argocd_username }}"
+              id: "{{ jenkins_argocd_creds_id }}"
+              username: "{{ argocd_admin_user }}"
               password: "{{ argocd_password }}"
-              description: "ArgoCD user/pass"
+              description: "ArgoCD credentials"
               scope: GLOBAL
-
-          

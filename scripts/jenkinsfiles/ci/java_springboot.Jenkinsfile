@@ -7,12 +7,13 @@ def dockerRegistry = env.DOCKER_REGISTRY ?: "YOUR_DOCKER_REGISTRY/java-springboo
 def dockerFile = "Dockerfile"
 def serviceName = "java-springboot"
 def serviceGitRepoUrl = env.SERVICE_GIT_REPO ?: "git@github.com:YOUR_ORG/java-springboot.git"
-def gitCredsId = "git-ssh-key"
+def gitCredsId = env.GIT_CREDS_ID ?: error("GIT_CREDS_ID not set in Jenkins global env")
+def dockerCredsId = env.DOCKER_CREDS_ID ?: error("DOCKER_CREDS_ID not set in Jenkins global env")
 
 
 pipeline {
     agent {
-        label 'default'
+        label (env.JENKINS_AGENT_LABEL ?: "default")
     }
     options {
         ansiColor('xterm')
@@ -21,7 +22,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                sshagent (credentials: ['git-ssh-key']) {
+                sshagent(credentials: [gitCredsId]) {
                     git url: "${serviceGitRepoUrl}", branch: 'main', credentialsId: "${gitCredsId}"
                 }
                 script {
@@ -46,7 +47,7 @@ pipeline {
         stage('Docker build & push') {
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub', passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER')]) {
+                    withCredentials([usernamePassword(credentialsId: dockerCredsId, passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER')]) {
                         sh """
                             docker build -t ${dockerRegistry}:${dockerImageTag} -f ${dockerFile} .
                         """
@@ -73,7 +74,7 @@ pipeline {
         stage('Push image') {
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub', passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER')]) {
+                    withCredentials([usernamePassword(credentialsId: dockerCredsId, passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER')]) {
                         sh """
                             docker login -u \${DOCKER_USER} -p \${DOCKER_PASS}
                             docker push ${dockerRegistry}:${dockerImageTag}
