@@ -1,8 +1,8 @@
 enable_create_linux_user: false
-enable_install_rke: true
+enable_install_rke: false
 enable_install_docker: true
-enable_install_nfs: true
-enable_install_kubectl: true
+enable_install_nfs: false
+enable_install_kubectl: false
 enable_install_python: true
-enable_install_java: true
-enable_install_yq: true
+enable_install_java: false
+enable_install_yq: false
