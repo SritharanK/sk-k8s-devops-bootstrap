@@ -1,0 +1,20 @@
+# Default values — override via argocd-bootstrap/values.yaml or helm --set.
+
+project:
+  name: "prod"
+  # sourceRepos: restrict to your own repo for production. "*" is permissive.
+  sourceRepos:
+    - "CHANGE_ME"  # git_repo_url from config/defaults.yaml
+
+  # Namespaces this project may deploy into.
+  # Add toolchain namespaces (cert-manager, nginx, kube-system) here only if
+  # the bootstrap chart needs to manage resources in those namespaces directly.
+  destinations:
+    - namespace: "prod"
+    - namespace: "dev"
+    - namespace: "stage"
+    - namespace: "cert-manager"
+    - namespace: "nginx"
+    - namespace: "kube-system"
+    - namespace: "argocd"
+  destinationServer: "https://kubernetes.default.svc"
