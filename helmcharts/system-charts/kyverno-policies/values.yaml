@@ -1,0 +1,10 @@
+# Default values — override via argocd-bootstrap/values.yaml or helm --set.
+#
+# enforcedNamespaces: namespaces where namespace-scoped policies are enforced.
+# Do NOT include system namespaces (kube-system, argocd, cert-manager, nginx) here.
+# block-privileged applies cluster-wide (no namespace filter) and is not affected by this list.
+
+enforcedNamespaces:
+  - prod
+  - dev
+  - stage

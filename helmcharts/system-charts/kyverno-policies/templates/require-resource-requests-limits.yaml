@@ -13,8 +13,9 @@ spec:
               kinds:
                 - Pod
               namespaces:
-                - prod
-                - dev
+                {{- range .Values.enforcedNamespaces }}
+                - {{ . }}
+                {{- end }}
       validate:
         message: "All containers must have resources.requests and resources.limits (memory and cpu)."
         pattern:
