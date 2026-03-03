@@ -89,6 +89,19 @@ pipeline {
                 }
             }
         }
+
+        stage('Generate SBOM (syft)') {
+            steps {
+                sh """
+                    syft ${dockerRegistry}:${dockerImageTag} \\
+                      --output cyclonedx-json \\
+                      > sbom-${serviceName}-${dockerImageTag}.cdx.json
+                """
+                archiveArtifacts artifacts: "sbom-${serviceName}-${dockerImageTag}.cdx.json",
+                                 fingerprint: true,
+                                 onlyIfSuccessful: true
+            }
+        }
     }
 
     post {
