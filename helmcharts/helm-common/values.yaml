@@ -110,6 +110,15 @@ autoscaling:
   ## specify target Memory % utilization
   targetMemoryUtilizationPercentage: 75
 
+# PodDisruptionBudget — controls the minimum number of pods that must remain
+# available during voluntary disruptions (node drain, rolling upgrades, etc.).
+# Enable in production when replicas > 1 to ensure zero-downtime maintenance.
+# Use minAvailable OR maxUnavailable — not both.
+pdb:
+  enabled: false
+  minAvailable: 1       # keep at least N pods running (recommended for prod)
+  # maxUnavailable: 1   # alternative: allow at most N pods to be unavailable
+
 service:
   ## Service type
   ##
