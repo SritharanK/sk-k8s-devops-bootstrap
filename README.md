@@ -18,32 +18,33 @@ Designed as an enterprise-grade starting point for platform engineers adopting G
 ```mermaid
 flowchart LR
   subgraph Provisioning
-    A[Ansible] --> B[RKE2]
-    B --> C[Kubernetes Cluster]
-    A --> D[Jenkins JCasC]
+    A[Ansible] -->|RKE2 install| B[Kubernetes Cluster]
+    A -->|JCasC + Job DSL| J[Jenkins]
   end
 
-  subgraph GitOps
-    G[(Git Repo)]
-    G --> E[Argo CD]
-    E --> C
-    E --> F[Apps / System Charts]
-    F --> C
+  subgraph Git["Git repo"]
+    G[(helmcharts/\nargocd-bootstrap/)]
   end
 
-  subgraph CI/CD
-    D --> H[Build & Push Images]
-    H --> I[Registry]
-    D --> J[Update image tag in Git]
-    J --> E
+  subgraph GitOps["GitOps — Argo CD App of Apps"]
+    E[Argo CD] -->|wave 1–6\nplatform tooling| SYS["ingress · cert-manager\nKyverno · network-policies\nRBAC · PSS · sealed-secrets"]
+    E -->|wave 10\napplications| APPS[dev / stage / prod\nHelm releases]
   end
 
-  I --> F
+  subgraph CICD["CI/CD — Jenkins"]
+    J -->|build| SC[Trivy scan\n+ SBOM]
+    SC -->|push| R[(Registry)]
+    R -->|image tag → Git| G
+  end
+
+  G -->|App of Apps sync| E
+  APPS -.->|pull images| R
+  B --- E
 ```
 
-- **Ansible** provisions nodes and bootstraps the cluster + optional tooling (Jenkins, GitLab, DB).
-- **Argo CD** syncs system charts and applications from this Git repo (App of Apps pattern).
-- **Jenkins** builds images, scans them with Trivy, pushes to a registry, then commits the new tag to Git — Argo CD picks it up automatically.
+- **Ansible** provisions nodes with RKE2 (default) and optionally installs Jenkins via JCasC + Job DSL.
+- **Argo CD** (App of Apps) syncs from this Git repo in ordered sync waves: platform tooling first (Kyverno engine, cert-manager, network policies, RBAC), then application workloads across dev / stage / prod.
+- **Jenkins** builds images, runs Trivy (blocking on CRITICAL/HIGH), generates an SBOM, pushes to the registry, then commits the new image tag to Git — Argo CD detects the change and rolls it out automatically.
 
 ---
 
