@@ -30,6 +30,11 @@ helm-common:
     initialDelaySeconds: 10
     periodSeconds: 5
     failureThreshold: 3
+  # ── Prometheus scraping (uncomment to enable pod-level metrics collection) ───
+  # podAnnotations:
+  #   prometheus.io/scrape: "true"
+  #   prometheus.io/port: "80"      # must match containerPort above
+  #   prometheus.io/path: "/metrics"
   podAnnotations: {}
   resources:
     requests: { memory: "64Mi", cpu: "50m" }
