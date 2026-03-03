@@ -1,0 +1,33 @@
+# Kyverno policy engine values.
+# Full reference: https://artifacthub.io/packages/helm/kyverno/kyverno
+#
+# This chart installs the Kyverno admission controller only.
+# ClusterPolicy resources are managed separately by the kyverno-policies chart
+# (argocd-bootstrap/templates/toolchains/kyverno-policies.yaml, sync-wave 6).
+
+kyverno:
+  admissionController:
+    replicas: 1          # increase to 3 for production HA
+
+  backgroundController:
+    enabled: true
+
+  cleanupController:
+    enabled: true
+
+  reportsController:
+    enabled: true
+
+  # Exclude the argocd and kube-system namespaces from policy enforcement
+  # to prevent the admission controller from blocking its own startup.
+  config:
+    webhooks:
+      - namespaceSelector:
+          matchExpressions:
+            - key: kubernetes.io/metadata.name
+              operator: NotIn
+              values:
+                - kube-system
+                - kyverno
+                - argocd
+                - cert-manager

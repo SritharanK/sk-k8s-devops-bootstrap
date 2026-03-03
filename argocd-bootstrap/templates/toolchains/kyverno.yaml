@@ -1,0 +1,40 @@
+{{- if .Values.policies.kyverno.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/manifest-generate-paths: ./helmcharts/system-charts/kyverno
+    # Wave 4: installs before kyverno-policies (wave 6) so the admission
+    # controller is healthy and its CRDs are registered before any
+    # ClusterPolicy resources are applied.
+    argocd.argoproj.io/sync-wave: "4"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ .Values.spec.project }}
+  destination:
+    server: {{ .Values.spec.destination.server }}
+    namespace: {{ .Values.policies.kyverno.namespace }}
+  source:
+    repoURL: {{ .Values.spec.source.repoURL }}
+    targetRevision: {{ .Values.spec.source.targetRevision }}
+    path: ./helmcharts/system-charts/kyverno
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
+      - PruneLast=true
+      - CreateNamespace=true
+      - Validate=false
+      - ServerSideApply=true   # required for Kyverno CRDs (large annotations)
+    retry:
+      limit: 5
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

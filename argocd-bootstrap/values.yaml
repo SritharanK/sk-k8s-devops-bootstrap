@@ -39,3 +39,12 @@ namespaces:
   argocd: "argocd"
   nginx: "nginx"
   certManager: "cert-manager"
+  kyverno: "kyverno"
+
+# ── Policy engines ─────────────────────────────────────────────────────────────
+# Set enabled: false to skip the engine install (e.g. Kyverno already installed
+# out-of-band, or you prefer a different policy engine).
+policies:
+  kyverno:
+    enabled: true
+    namespace: "kyverno"   # must match namespaces.kyverno above
