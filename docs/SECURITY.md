@@ -13,7 +13,7 @@ The following must **never** be committed to the repository:
 | **Ansible Vault password** | `ansible/.ansible_vault_pass` | Used to decrypt vault-encrypted variables in playbooks. Anyone with this file can decrypt all vault secrets. |
 | **Kubeconfig** | `ansible/data/kube_config_cluster.yaml` (or any path you copy it to) | Contains cluster API endpoint and credentials. Grants full access to the cluster. |
 | **RKE cluster state** | `ansible/data/k8s_cluster.rkestate` | Sensitive cluster state; required for RKE operations. |
-| **Unsealed Kubernetes secrets** | Any file under `helmcharts/system-charts/argocd-config/unseal/` that contains real credentials | Plaintext secrets (Docker registry, Helm repo tokens, etc.). Only **templates with placeholders** (e.g. `YOUR_DOCKER_USERNAME`) or generated files that you never commit should live here. |
+| **Unsealed Kubernetes secrets** | Any locally-generated YAML secret that contains real credentials | Plaintext secrets (Docker registry, Helm repo tokens, etc.). Use `argocd-config/templates/*.yaml.example` as starting points; fill in values locally and seal before committing. Never commit the plain YAML. |
 | **Environment or config with real values** | `config/defaults.yaml` (if it contains real IPs/tokens) or `.env` | Use `config/defaults.yaml.example` and `.env.example` only in the repo; users copy and fill locally. |
 
 These paths are listed in `.gitignore`. Before pushing, ensure they are not staged.
@@ -26,21 +26,29 @@ Sealed Secrets allow you to commit **encrypted** secrets to Git; the Sealed Secr
 
 ### 1. Use placeholder templates in the repo
 
-- Under `helmcharts/system-charts/argocd-config/unseal/`, keep only **templates** with placeholders (e.g. `YOUR_DOCKER_USERNAME`, `YOUR_HELM_REPO_URL`) or document that users generate files locally with `kubectl create secret ... --dry-run=client -o yaml`.
-- Do not commit unseal files that contain real passwords, tokens, or keys.
+`argocd-config/templates/` contains four annotated `*.yaml.example` files covering every secret the platform needs:
+
+| Template | Secret |
+|----------|--------|
+| `docker-registry-secret.yaml.example` | Image pull secret (per namespace) |
+| `argocd-repo-secret.yaml.example` | Git SSH deploy key for Argo CD |
+| `jenkins-credentials-secret.yaml.example` | Jenkins Git + Docker + Argo CD credentials |
+| `db-credentials-secret.yaml.example` | PostgreSQL / MySQL credentials (per namespace) |
+
+Copy the relevant example locally, fill in real values — **never commit the filled copy**.
 
 ### 2. Generate unsealed secrets locally (never commit)
 
 On your machine, with `kubectl` configured against the target cluster:
 
-- Create the secret YAML (e.g. Docker registry, Helm repo) using your real credentials, **or** fill in the placeholder template with real values.
-- Save to a **local** file (e.g. under `unseal/` but ensure that path is in `.gitignore` for real secrets, or use a temp directory).
+- Copy `argocd-config/templates/<secret>.yaml.example` to a location outside the repo, **or** generate from scratch with `kubectl create secret ... --dry-run=client -o yaml`.
+- Fill in real credentials and keep the file local only.
 
 ### 3. Seal and commit only the sealed output
 
 - Ensure the cluster has the Sealed Secrets controller installed (see main README / Argo CD bootstrap).
-- Run the seal script (e.g. `make seal-secrets` or `scripts/misc/seal_k8s_secrets.sh`) with `KUBECONFIG` set so it can fetch the controller’s public certificate.
-- The script reads from the unseal directory and writes **encrypted** YAML into `helmcharts/system-charts/argocd-config/sealed/`.
+- Run the seal script (`make seal-secrets` or `scripts/misc/seal_k8s_secrets.sh`) with `KUBECONFIG` set so it can fetch the controller's public certificate.
+- The script reads from `helmcharts/system-charts/argocd-config/unseal/` and writes **encrypted** YAML into `helmcharts/system-charts/argocd-config/sealed/`.
 - Commit only the **sealed** files; the controller in the cluster will reconcile them into normal secrets.
 
 ### 4. Rotate if exposed
@@ -71,7 +79,7 @@ Never commit unsealed secrets, vault passwords, or kubeconfig. Use placeholders 
 ## Trivy (vulnerability and config scanning)
 
 - **Enforcement (blocking):** Jenkins CI pipelines (`scripts/jenkinsfiles/ci/*.Jenkinsfile`) run a Trivy **image** scan on the built container and **fail the build** on CRITICAL or HIGH vulnerabilities. No image is pushed if the gate fails.
-- **Advisory (non-blocking):** The GitHub Actions workflow [.github/workflows/validate.yml](../.github/workflows/validate.yml) runs a Trivy **config** scan on `sample-services/` (Dockerfiles and related config). The job does not fail the workflow; use the job log to fix findings. To make this gate blocking, set `exit-code: '1'` and remove `continue-on-error` in the workflow.
+- **Advisory (non-blocking):** The GitHub Actions workflow [.github/workflows/validate.yml](../.github/workflows/validate.yml) runs four Trivy **config** scans covering `sample-services/` (Dockerfiles), `helmcharts/` (all Helm templates), `helmcharts/system-charts/kyverno-policies/` (admission policies), and `argocd-bootstrap/` (Argo CD manifests). None of these jobs fail the workflow; use the job log to fix findings. To make any gate blocking, set `exit-code: '1'` and remove `continue-on-error` on that job.
 
 This split avoids ambiguity: Jenkins is the deployment gate; GitHub Actions provides visibility without blocking PRs until config findings are resolved. **PRs show advisory findings; merges are gated by Jenkins in the reference pipeline.** That is an explicit governance choice, not weak security.
 
