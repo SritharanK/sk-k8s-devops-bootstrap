@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  wordpress:
+    image: PLACE_HOLDER
+    ports:
+      - "8888:80"
+    restart: always
+    
+    environment:
+      WORDPRESS_DB_HOST: "YOUR_MYSQL_HOST:3306"
+      WORDPRESS_DB_USER: wp_admin
+      WORDPRESS_DB_PASSWORD: "CHANGE_ME"
+      WORDPRESS_DB_NAME: wordpress
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    ports:
+      - "8080:80"
+   
+    environment:
+      PMA_HOST: "YOUR_MYSQL_HOST:3306"
+      PMA_USER: wp_admin
+      PMA_PASSWORD: "CHANGE_ME"
+    restart: always
+  
+  mailhog:
+    image: mailhog/mailhog
+    container_name: mailhog
+    restart: always
+    environment:
+      MH_AUTH_FILE: /mailhog.auth
+      # MH_MAILDIR_PATH: /data
+      MH_STORAGE: maildir
+    volumes:
+      - ./config/mailhog.auth:/mailhog.auth:ro
+      # - ./data:/data:rw
+    ports:
+      - "1025:1025" #127.0.0.1:1025:1025  
+      - "8025:8025"
+

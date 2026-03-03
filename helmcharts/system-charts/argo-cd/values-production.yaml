@@ -1,0 +1,65 @@
+# Production: Ingress + TLS only. NodePort must NEVER be enabled in production.
+# Use this file for production installs. For local lab only, use values-lab.yaml.
+configs:
+  secret:
+    argocdServerAdminPassword: $2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy  # bcrypt of "changeme" — replace for production
+
+controller:
+  name: application-controller
+  replicas: 1
+
+dex:
+  enabled: true
+  name: dex-server
+
+redis:
+  enabled: true
+  name: redis
+
+redis-ha:
+  enabled: false
+
+repoServer:
+  name: repo-server
+  replicas: 1
+
+applicationSet:
+  enabled: true
+  name: applicationset-controller
+  replicas: 1
+
+notifications:
+  enabled: false
+  name: notifications-controller
+  argocdUrl: ""
+
+server:
+  name: server
+  replicas: 1
+  service:
+    type: ClusterIP
+    servicePortHttp: 80
+    servicePortHttps: 443
+    servicePortHttpName: http
+    servicePortHttpsName: https
+  ingress:
+    enabled: true
+    ingressClassName: "nginx"
+    hostname: "argocd.YOUR_DOMAIN"  # Set to your domain (e.g. argocd.example.com)
+    tls: true
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/configuration-snippet: |
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    # Optional: IP whitelist or OIDC proxy — see docs/ARGOCD_SSO.md
+  # Optional: gRPC Ingress for Argo CD CLI/UI (same host or grpc.argocd.YOUR_DOMAIN)
+  # ingressGrpc:
+  #   enabled: true
+  #   ingressClassName: "nginx"
+  #   hostname: "grpc.argocd.YOUR_DOMAIN"
+  #   tls: true
+  #   annotations:
+  #     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  #     nginx.ingress.kubernetes.io/ssl-redirect: "true"

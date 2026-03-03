@@ -1,0 +1,34 @@
+---
+- name: Update apt package index (Debian/Ubuntu)
+  apt:
+    update_cache: yes
+  when: ansible_distribution in ['Debian', 'Ubuntu']
+
+- name: Install dependencies (Debian/Ubuntu)
+  apt:
+    name:
+      - curl
+      - apt-transport-https
+      - ca-certificates
+      - software-properties-common
+      - zip
+      - unzip
+    state: present
+  when: ansible_distribution in ['Debian', 'Ubuntu']
+
+- name: Update yum package index (RHEL/CentOS)
+  yum:
+    update_cache: yes
+  when: ansible_distribution in ['RedHat', 'CentOS', 'Fedora']
+
+- name: Install dependencies (RHEL/CentOS)
+  yum:
+    name:
+      - curl
+      - yum-utils
+      - device-mapper-persistent-data
+      - lvm2
+      - unzip
+      - zip
+    state: present
+  when: ansible_distribution in ['RedHat', 'CentOS', 'Fedora']

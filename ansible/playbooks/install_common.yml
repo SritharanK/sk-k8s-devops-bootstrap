@@ -1,0 +1,32 @@
+---
+# -----------------------------------------------------------------------------
+# Install common packages on target hosts (masters, and optionally workers/jenkins).
+# Installs: Docker, RKE CLI, kubectl, Java, Python, yq, NFS client/server, optional
+# Argo CD CLI and PHP tools. Used as a prerequisite before k8s_bootstrap.
+#
+# HOSTS: Edit ansible/inventories/dev/hosts.ini and set [masters], [workers], etc.
+# VAULT: Encrypt ansible_user and other secrets with ansible-vault encrypt_string
+#        and put the result in vars below (or in group_vars). Do not commit plaintext.
+# RUN:   make install-common   (or ansible-playbook -i inventories/dev/hosts.ini
+#        playbooks/install_common.yml --vault-password-file .ansible_vault_pass)
+# -----------------------------------------------------------------------------
+- name: Ansible Playbook to install some common packages
+  hosts:
+  # - jenkins
+  - masters
+  # - workers
+  become: true
+  gather_facts: true
+
+  vars:
+    rke_user: "root"
+    ansible_user: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          65303863633563663465313234613332333035613865336632373231323231366665653163383463
+          6466353664633431313934393162623939366339653733630a306339653836636234373837636530
+          30633739303733336432343461623431636264383733663564313734343632333834333662326630
+          3531643139346435380a336663343166383264313164626464316630626465643566363637323462
+          6438
+    ansible_port: "{{ ansible_port | default('22') }}"
+  roles:
+    - roles/common

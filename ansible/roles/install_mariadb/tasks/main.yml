@@ -1,0 +1,46 @@
+---
+# tasks file for install_mariadb
+- name: Install MariaDB on Debian/Ubuntu
+  apt:
+    name: mariadb-server
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install MariaDB on RedHat/CentOS
+  yum:
+    name: mariadb-server
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install MariaDB on SUSE
+  zypper:
+    name: mariadb
+    state: present
+  when: ansible_os_family == "Suse"
+
+- name: Configure MariaDB
+  template:
+    src: my.cnf.j2
+    dest: /etc/my.cnf
+  notify: restart mariadb
+
+- name: Start and enable MariaDB service on Debian/Ubuntu
+  service:
+    name: mariadb
+    state: started
+    enabled: true
+  when: ansible_os_family == "Debian"
+
+- name: Start and enable MariaDB service on RedHat/CentOS
+  service:
+    name: mariadb
+    state: started
+    enabled: true
+
+
+- name: Start and enable MariaDB service on SUSE
+  service:
+    name: mariadb
+    state: started
+    enabled: true
+  when: ansible_os_family == "Suse"

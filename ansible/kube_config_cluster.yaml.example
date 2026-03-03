@@ -1,0 +1,19 @@
+# Example kubeconfig — copy to kube_config_cluster.yaml or use ansible/data/ (gitignored). Do not commit real credentials.
+# Set server to your API endpoint and add your user cert/token.
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: "https://YOUR_MASTER_IP:6443"
+  name: your-cluster
+contexts:
+- context:
+    cluster: your-cluster
+    user: your-user
+  name: your-context
+current-context: your-context
+users:
+- name: your-user
+  user:
+    client-certificate: /path/to/client.crt
+    client-key: /path/to/client.key

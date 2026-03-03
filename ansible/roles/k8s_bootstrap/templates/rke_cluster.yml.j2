@@ -1,0 +1,77 @@
+##############################################################################
+# For more information: https://rke.docs.rancher.com/config-options/nodes
+##############################################################################
+cluster_name: "{{ rke_cluster_name }}"
+kubernetes_version: "{{ rke_kubernetes_version }}"
+
+nodes:
+{% for host in master_nodes %}
+- address: "{{ host }}"
+  user: "{{ rke_user }}"
+  role:
+    - controlplane
+    - etcd
+    - worker
+  port: "{{ ssh_port }}"
+  ssh_key_path: "{{ ssh_key_path }}"
+  hostname_override: "k8s-master-{{ loop.index }}"
+  labels:
+    node_role: controlplane
+{% endfor %}
+{% for host in worker_nodes %}
+- address: "{{ host }}"
+  user: "{{ rke_user }}"
+  role:
+    - worker
+  port: "{{ ssh_port }}"
+  ssh_key_path: "{{ ssh_key_path }}"
+  hostname_override: "k8s-worker-{{ loop.index }}"
+  labels:
+    node_role: worker
+{% endfor %}
+
+ignore_docker_version: true
+enable_cri_dockerd: true
+
+authorization:
+  mode: rbac
+
+# Specify network plugin-in (canal, calico, flannel or none)
+network:
+  plugin: flannel
+  options:
+    flannel_backend_type: vxlan
+    flannel_autoscaler_priority_class_name: system-cluster-critical # Available as of RKE v1.2.6+
+    flannel_priority_class_name: system-cluster-critical # Available as of RKE v1.2.6+
+  tolerations:
+    - key: "node.kubernetes.io/unreachable"
+      operator: "Exists"
+      effect: "NoExecute"
+      tolerationseconds: 300
+    - key: "node.kubernetes.io/not-ready"
+      operator: "Exists"
+      effect: "NoExecute"
+      tolerationseconds: 300
+  update_strategy:
+    strategy: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 6
+
+# Specify DNS provider (coredns or kube-dns)
+dns:
+  provider: coredns
+  update_strategy:
+    strategy: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 20%
+      maxSurge: 15%
+  linear_autoscaler_params:
+    cores_per_replica: 0.34
+    nodes_per_replica: 4
+    prevent_single_point_failure: true
+    min: 2
+    max: 3
+
+ingress:
+  provider: none
+

@@ -1,0 +1,144 @@
+---
+# tasks file for install_jenkins
+- name: Add Jenkins repository
+  get_url:
+    url: https://pkg.jenkins.io/redhat-stable/jenkins.repo
+    dest: /etc/yum.repos.d/jenkins.repo
+
+- name: Import Jenkins repository key
+  rpm_key:
+    key: https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+    state: present
+
+- name: Install Jenkins
+  yum:
+    name: jenkins
+    state: present
+
+- name: Copy the init groovy files
+  copy:
+    dest: "/var/lib/jenkins/init.groovy.d/"
+    src: "init.groovy.d/"
+
+- name: Generate and copy the init groovy template files
+  template:
+    dest: "/var/lib/jenkins/init.groovy.d/init_create_admin_user.groovy"
+    src: "init_create_admin_user.groovy.j2"
+
+- name: Clean Jenkins Casc file (jenkins.yaml) in case there's any wrong configuration
+  file:
+    state: absent
+    path: /var/lib/jenkins/jenkins.yaml
+
+- name: Start and enable Jenkins service
+  systemd:
+    name: jenkins
+    state: stopped
+    enabled: yes
+  ignore_errors: true
+
+- name: Change Jenkins PORT
+  lineinfile: dest=/usr/lib/systemd/system/jenkins.service
+    regexp='^Environment="JENKINS_PORT=8080"'
+    line='Environment="JENKINS_PORT={{ jenkins_port }}"'
+  register: result_skip_startup_wizard
+
+- name: update JENKINS_HOME ownership
+  file:
+    path: /var/lib/jenkins
+    owner: "{{ jenkins_owner }}"
+    group: "{{ jenkins_group }}"
+    state: directory
+    recurse: yes
+  notify: Restart Jenkins
+
+# - name: Get the content of the file initialAdminPassword
+#   slurp:
+#     src: /var/lib/jenkins/secrets/initialAdminPassword
+#   register: file_content
+
+# - name: Set_fact Jenkins admin initialPassword
+#   set_fact:
+#     initialAdminPassword: "{{ file_content.content | b64decode | trim }}"
+
+# - name: debug
+#   debug:
+#     msg: "Initial admin password: {{ initialAdminPassword }}. This password is overwritten by Jenkins configuration-as-code"
+
+
+
+- name: Update JENKINS_JAVA_OPTIONS
+  lineinfile:
+    path: "/usr/lib/systemd/system/jenkins.service"
+    regexp: ".*-Djava.awt.headless=true.*"
+    line: 'JENKINS_JAVA_OPTIONS="-Djava.awt.headless=true -Djava.net.preferIPv4Stack=true -Djenkins.install.runSetupWizard=false -Djava.io.tmpdir=/var/cache/jenkins/tmp/ -Dorg.apache.commons.jelly.tags.fmt.timeZone=America/New_York -Duser.timezone=America/New_York"'
+    state: present
+
+- name: Restart Jenkins to update service configuration
+  systemd:
+    name: jenkins
+    state: restarted
+    daemon_reload: true
+
+- name: Install necessary plugins
+  jenkins_plugin:
+    name: "{{ item }}"
+    state: present
+    url: "http://{{ ansible_host }}:8081/"
+    url_username: "admin"
+    url_password: "{{ jenkins_admin_password }}"
+    force_basic_auth: yes
+  with_items: "{{ jenkins_plugins }}"
+  notify: Restart Jenkins
+
+- name: Restart Jenkins to update Plugins
+  systemd:
+    name: jenkins
+    state: restarted
+    daemon_reload: true
+
+- name: Make sure credentials directory exists
+  file:
+    path: "/var/lib/jenkins/creds"
+    state: directory
+
+- name: Generate Git private key template
+  template:
+    src: ssh_privkey.j2
+    dest: /var/lib/jenkins/creds/ssh_privkey
+    owner: "{{ jenkins_owner }}"
+    group: "{{ jenkins_group }}"
+    mode: "0644"
+
+- name: Generate Jenkins CasC template
+  template:
+    src: jenkins.yaml
+    dest: /var/lib/jenkins/jenkins.yaml
+    owner: "{{ jenkins_owner }}"
+    group: "{{ jenkins_group }}"
+    mode: "0644"
+
+- name: Make sure custom data directory exists
+  file:
+    path: "/var/lib/jenkins/custom_data"
+    state: directory
+
+- name: Copy the bootstrap files to init groovy folder
+  copy:
+    dest: "/var/lib/jenkins/init.groovy.d/"
+    src: "bootstrap/"
+
+- name: Copy bootstrap Jenkinsfile to custom data folder
+  template:
+    src: job_seeder.Jenkinsfile.j2
+    dest: /var/lib/jenkins/custom_data/job_seeder.Jenkinsfile
+    owner: "{{ jenkins_owner }}"
+    group: "{{ jenkins_group }}"
+    mode: "0644"
+  notify: Restart Jenkins
+
+- name: Restart Jenkins to execute init groovy script
+  systemd:
+    name: jenkins
+    state: restarted
+    daemon_reload: true

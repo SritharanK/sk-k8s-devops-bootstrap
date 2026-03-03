@@ -1,0 +1,76 @@
+# Minimal validation: ensure Helm templates and key YAML render without errors.
+# Run on push/PR to main. Does not require cluster or secrets.
+
+name: Validate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  helm:
+    name: Helm template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.13.0"
+
+      - name: Template argocd-bootstrap
+        run: |
+          helm template argocd-bootstrap ./argocd-bootstrap \
+            --set spec.source.repoURL=https://github.com/example/repo.git \
+            --set spec.destination.server=https://kubernetes.default.svc \
+            --set spec.destination.app_ns=prod \
+            --set spec.destination.argo_ns=argocd \
+            --set spec.source.targetRevision=main \
+            > /dev/null
+        working-directory: .
+
+  yamllint:
+    name: YAML lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Lint key YAML (relaxed)
+        run: |
+          yamllint -d relaxed config/defaults.yaml.example 2>/dev/null || true
+          yamllint -d relaxed argocd-bootstrap/values.yaml 2>/dev/null || true
+        continue-on-error: true
+
+  trivy-dockerfiles:
+    name: Trivy (Dockerfiles)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy on Dockerfiles (config/misconfig)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: 'config'
+          scan-ref: 'sample-services/'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+
+  gitleaks:
+    name: Secrets scan (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        continue-on-error: true

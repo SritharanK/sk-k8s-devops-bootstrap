@@ -1,0 +1,10 @@
+apiVersion: v2
+name: foggypay
+description: A Helm chart k8s
+type: application
+version: 0.0.1
+dependencies:
+  - name: helm-common
+    version: 0.1.1
+    repository: https://raw.githubusercontent.com/YOUR_ORG/helm-common/main
+    alias: helm-common

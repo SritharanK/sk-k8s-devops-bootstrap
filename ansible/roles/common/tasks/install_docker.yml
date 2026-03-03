@@ -1,0 +1,110 @@
+- name: Ensure required packages are installed (Debian)
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg-agent
+      - software-properties-common
+    state: present
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Add Docker GPG key (Debian)
+  apt_key:
+    url: https://download.docker.com/linux/debian/gpg
+    state: present
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Add Docker repository (Debian)
+  apt_repository:
+    repo: deb [arch=amd64] https://download.docker.com/linux/debian {{ ansible_facts['distribution_release'] }} stable
+    state: present
+    update_cache: yes
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Ensure required packages are installed (RedHat)
+  yum:
+    name:
+      - yum-utils
+      - device-mapper-persistent-data
+      - lvm2
+    state: present
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Add Docker repository (RedHat)
+  get_url:
+    url: https://download.docker.com/linux/centos/docker-ce.repo
+    dest: /etc/yum.repos.d/docker-ce.repo
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Ensure required packages are installed (SUSE)
+  zypper:
+    name:
+      - curl
+      - ca-certificates
+      - libseccomp2
+    state: present
+  when: ansible_facts['os_family'] == 'Suse'
+
+- name: Add Docker repository (SUSE)
+  zypper_repository:
+    name: Docker
+    description: "Docker Repository"
+    repo: https://download.docker.com/linux/static/stable/x86_64/
+    state: present
+  when: ansible_facts['os_family'] == 'Suse'
+
+- name: Install Docker (Debian)
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+    state: present
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Install Docker (RedHat)
+  yum:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+    state: present
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Install Docker (SUSE)
+  zypper:
+    name: docker
+    state: present
+  when: ansible_facts['os_family'] == 'Suse'
+
+- name: Ensure Docker is started and enabled
+  service:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Add users to the docker group
+  user:
+    name: "{{ item }}"
+    groups: docker
+    append: yes
+  with_items: "{{ docker_users }}"
+  when: docker_users is defined
+
+- name: Set Docker Compose URL
+  set_fact:
+    docker_compose_url: >-
+      https://github.com/docker/compose/releases/download/{{ docker_compose_version }}/docker-compose-{{ ansible_system }}-{{ ansible_architecture }}
+
+- name: Install Docker Compose
+  get_url:
+    url: "{{ docker_compose_url }}"
+    dest: /usr/local/bin/docker-compose
+    mode: "0755"
+
+- name: Create symlink for Docker Compose
+  file:
+    src: /usr/local/bin/docker-compose
+    dest: /usr/bin/docker-compose
+    state: link

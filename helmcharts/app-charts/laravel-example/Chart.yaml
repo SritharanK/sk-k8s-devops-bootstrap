@@ -1,0 +1,10 @@
+apiVersion: v2
+name: laravel-example
+description: A Helm chart k8s
+type: application
+version: 0.0.1
+dependencies:
+  - name: helm-common
+    version: 0.1.1
+    repository: file://../../helm-common
+    alias: helm-common

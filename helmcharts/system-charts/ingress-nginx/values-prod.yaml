@@ -1,0 +1,60 @@
+controller:
+  ingressClassByName: true
+  ingressClassResource:
+    name: nginx
+    enabled: true
+  nodeSelector:
+    node_role: "controlplane"
+
+  service:
+    externalIPs: ["YOUR_INGRESS_IP"]   # Set via config or values overlay
+    loadBalancerIP: "YOUR_INGRESS_IP"
+
+  config:
+    enable-underscores-in-headers: "true"
+    retry-non-idempotent: "true"
+    http-snippet: >
+      server {
+        listen 2443;
+        return 308 http://$host$request_uri;
+      }
+    server-tokens: "false"
+    force-ssl-redirect: "true"
+    use-forwarded-headers: "true"
+    #proxy-body-size: "10m",
+    limit-req-status-code: "403"
+    enable-real-ip: "true"
+    proxy-real-ip-cidr: "10.0.0.0/8"
+    log-format-escape-json: "true"
+    log-format-upstream: '{
+      "time_local":"$time_local",
+      "remote_addr":"$remote_addr",
+      "client_ip":"$http_x_forwarded_for",
+      "remote_user":"$remote_user",
+      "request":"$request",
+      "request_uri":"$request_uri",
+      "method":"$request_method",
+      "status_code": "$status",
+      "body_bytes_sent":"$body_bytes_sent",
+      "request_time":"$request_time",
+      "total_time": $request_time,
+      "http_referrer":"$http_referer",
+      "host":"$host",
+      "request_length":"$request_length",
+      "proxy_alternative_upstream_name":"$proxy_alternative_upstream_name",
+      "upstream_response_length":"$upstream_response_length",
+      "upstream_response_time":"$upstream_response_time",
+      "upstream_status":"$upstream_status",
+      "proxy_upstream_name":"$proxy_upstream_name",
+      "http_user_agent":"$http_user_agent",
+      "http_host":"$http_host",
+      "req_id":"$req_id",
+      "namespace":"$namespace",
+      "ingress":"$ingress_name",
+      "service_name":"$service_name",
+      "service_port":"$service_port",
+      "upstream_addr":"$upstream_addr"
+      }'
+
+  admissionWebhooks:
+    enabled: false

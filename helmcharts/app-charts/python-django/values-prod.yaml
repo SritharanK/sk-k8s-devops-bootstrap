@@ -1,0 +1,49 @@
+helm-common:
+  name: python-django
+  tier: application
+  image:
+    name: "YOUR_REGISTRY/python-django:PLACEHOLDER_TAG"  # Set via CD or config
+    pullPolicy: IfNotPresent
+    containerPort: 8080 ### Running Django at port 8080
+    imagePullSecrets: dockerhub-secret
+  extraAnnotations:
+    configmap.reloader.stakater.com/reload: ""
+  env:
+    - name: DB_HOST
+      value: "mysql"  # Set to your DB service name (e.g. mysql, db) in prod
+    - name: DB_PORT
+      value: "3306"
+    - name: DB_USER
+      value: root
+    - name: DB_PASSWORD
+      value: "CHANGE_ME_OR_USE_SECRET"  # Use a secret in production; do not commit real password
+    - name: DB_NAME
+      value: "testdb"
+    - name: DB_ENGINE
+      value: django.db.backends.mysql
+  replicas: 1
+  livenessProbe: {}
+  readinessProbe: {}
+  podAnnotations: {}
+  resources: {}
+  lifecycle: {}
+  affinity: {}
+  tolerations: []
+  nodeSelector:
+    node-role.kubernetes.io/worker: "true"
+  configMapMounts: []
+  hostPathVolumes: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 10
+    ## specify target CPU % utilization
+    # targetCPUUtilizationPercentage: 80 ## DISABLE TO AVOID HPA SCALE TOO MUCH PODS => AVOID COST INCREASING
+    ## specify target Memory % utilization
+    targetMemoryUtilizationPercentage: 80
+  service:
+    type: ClusterIP
+    port: 80
+    nodePorts: {}
+    annotations: {}
+  enabledDeployment: true

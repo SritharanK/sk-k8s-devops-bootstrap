@@ -1,0 +1,47 @@
+---
+- name: Install dependecies
+  include_tasks: install_dependencies.yml
+
+- name: Create Linux user for bootstraping cluster purpose
+  include_tasks: create_linux_user.yml
+  when: enable_create_linux_user | bool
+
+- name: Install RKE CLI
+  include_tasks: install_rke.yml
+  when: enable_install_rke | bool
+
+- name: Install Docker
+  include_tasks: install_docker.yml
+  when: enable_install_docker | bool
+
+- name: Install NFS
+  include_tasks: install_nfs.yml
+  when: enable_install_nfs | bool
+
+- name: Install Kubectl
+  include_tasks: install_kubectl.yml
+  when: enable_install_kubectl | bool
+
+- name: Install python3
+  include_tasks: install_python.yml
+  when: enable_install_python | bool
+
+- name: Install Java
+  include_tasks: install_java.yml
+  when: enable_install_java | bool
+
+- name: Install yq
+  include_tasks: install_yq.yml
+  when: enable_install_yq | bool
+
+- name: Install ansible
+  include_tasks: install_ansible.yml
+  when: enable_install_ansible | bool
+
+- name: Install Argocd CLI
+  include_tasks: install_argocd.yml
+  when: enable_install_argocd | bool
+
+- name: Install PHP tools
+  include_tasks: install_php_tools.yml
+  when: enable_install_php_tools

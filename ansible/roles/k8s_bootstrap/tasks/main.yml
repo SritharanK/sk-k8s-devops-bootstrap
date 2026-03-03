@@ -1,0 +1,103 @@
+---
+# tasks file for k8s_bootstrap
+
+- name: Set variable default values based on user
+  set_fact:
+    rke_config_dir: "{{ '/root/rke' if rke_user == 'root' else '/home/' + rke_user + '/rke' }}"
+    ssh_key_path: "{{ '/root/.ssh/id_rsa' if rke_user == 'root' else '/home/' + rke_user + '/rke/.ssh/id_rsa' }}"
+    kube_config_path: "{{ '/root/.kube/config' if rke_user == 'root' else '/home/' + rke_user + '/.kube/config' }}"
+
+
+- name: Check if the master_nodes list is not empty
+  assert:
+    that:
+      - master_nodes | length > 0
+    fail_msg: "The master_nodes list is empty. Please provide at least one master node."
+
+
+- name: Check if RKE CLI exists
+  command: "which rke"
+  register: rke_check
+  ignore_errors: true
+
+- name: RKE Print Result
+  debug:
+    msg: "RKE CLI exists: {{ rke_check.rc == 0 }}"
+
+- name: Ensure config directory exists
+  file:
+    path: "{{ rke_config_dir }}"
+    state: directory
+
+- name: Create/update RKE config file
+  template:
+    src: rke_cluster.yml.j2
+    dest: "{{ rke_config_dir }}/cluster.yml"
+    mode: u=rw,g=r,o=
+  register: rke_cluster_config
+
+- name: Change mode of config directory
+  shell: |
+    chmod -R 777 {{ rke_config_dir }}
+
+- name: Clean RKE before installing
+  shell: |
+    set -e
+    rke remove --ignore-docker-version --force | tee /var/log/rke-remove.log
+  args:
+    chdir: "{{ rke_config_dir }}"
+  when: (rke_enabled_clean == true)
+
+- name: Run RKE installer
+  shell: |
+    set -e
+    rke up --ignore-docker-version | tee /var/log/rke-up.log
+  args:
+    chdir: "{{ rke_config_dir }}"
+
+- name: Copy kubeconfig to default location
+  fetch:
+    src: "{{ rke_config_dir }}/kube_config_cluster.yml"
+    dest: "../data/kube_config_cluster.yaml"
+    flat: yes
+  register: copy_kubeconfig_out
+
+- name: "[DEBUG] Copy kubeconfig to default location output"
+  debug:
+    msg: "{{ copy_kubeconfig_out }}"
+  ignore_errors: true
+
+- name: Copy rke statefile to ansible host
+  fetch:
+    src: "{{ rke_config_dir }}/cluster.rkestate"
+    dest: "../data/{{ rke_statefile }}"
+    flat: yes
+  register: copy_state_out
+
+- name: "[DEBUG] Copy rke statefile to ansible host output"
+  debug:
+    msg: "{{ copy_state_out }}"
+  ignore_errors: true
+
+- name: Change file permissions
+  file:
+    path: "{{ rke_config_dir }}/kube_config_cluster.yml"
+    mode: "0666"
+
+- name: Ensure default kubeconfig directory exists
+  file:
+    path: "{{ kube_config_path }} | dirname"
+    state: directory
+
+- name: Checking Cluster
+  shell: |
+    cp {{ rke_config_dir }}/kube_config_cluster.yml {{ kube_config_path }}
+    export KUBECONFIG={{ kube_config_path }}
+    kubectl get nodes
+  register: check_cluster_out
+  ignore_errors: true
+
+- name: "[DEBUG] Checking cluster output"
+  debug:
+    msg: "{{ check_cluster_out.stdout }}"
+  ignore_errors: true

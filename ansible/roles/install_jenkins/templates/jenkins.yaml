@@ -1,0 +1,209 @@
+jenkins:
+  systemMessage: "Welcome to Jenkins configured by Code!"
+  labelString: "master linux default"
+  authorizationStrategy:
+    projectMatrix:
+      entries:
+        - group:
+            name: authenticated
+            permissions:
+              - Credentials/View
+              - Job/Build
+              - Job/Cancel
+              - Job/Discover
+              - Job/Read
+              - Job/Workspace
+              - Overall/Read
+              - Run/Replay
+              - View/Read
+        - user:
+            name: anonymous
+            permissions:
+              - Overall/Read
+        - user:
+            name: testuser
+            permissions:
+              - Agent/Build
+              - Agent/Configure
+              - Agent/Connect
+              - Agent/Create
+              - Agent/Delete
+              - Agent/Disconnect
+              - Credentials/Create
+              - Credentials/Delete
+              - Credentials/ManageDomains
+              - Credentials/Update
+              - Credentials/View
+              - Job/Build
+              - Job/Cancel
+              - Job/Configure
+              - Job/Create
+              - Job/Delete
+              - Job/Discover
+              - Job/Move
+              - Job/Read
+              - Job/Workspace
+              - Overall/Administer
+              - Overall/Read
+              - Run/Delete
+              - Run/Replay
+              - Run/Update
+              - View/Configure
+              - View/Create
+              - View/Delete
+              - View/Read
+        - user:
+            name: admin
+            permissions:
+              - Agent/Build
+              - Agent/Configure
+              - Agent/Connect
+              - Agent/Create
+              - Agent/Delete
+              - Agent/Disconnect
+              - Credentials/Create
+              - Credentials/Delete
+              - Credentials/ManageDomains
+              - Credentials/Update
+              - Credentials/View
+              - Job/Build
+              - Job/Cancel
+              - Job/Configure
+              - Job/Create
+              - Job/Delete
+              - Job/Discover
+              - Job/Move
+              - Job/Read
+              - Job/Workspace
+              - Overall/Administer
+              - Overall/Read
+              - Run/Delete
+              - Run/Replay
+              - Run/Update
+              - View/Configure
+              - View/Create
+              - View/Delete
+              - View/Read
+  agentProtocols:
+    - "JNLP4-connect"
+    - "Ping"
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: false
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "admin"
+        - id: "testuser"
+          password: "123456"
+  disableRememberMe: false
+  markupFormatter: "plainText"
+  mode: EXCLUSIVE
+  myViewsTabBar: "standard"
+  numExecutors: "{{ num_executor }}"
+  primaryView:
+    all:
+      name: "all"
+  projectNamingStrategy: "standard"
+  quietPeriod: 5
+  remotingSecurity:
+    enabled: true
+  scmCheckoutRetryCount: 1
+  slaveAgentPort: -1
+  views:
+    - all:
+        name: "all"
+  viewsTabBar: "standard"
+
+unclassified:
+  buildDiscarders:
+    configuredBuildDiscarders:
+      - "jobBuildDiscarder"
+  email-ext:
+    adminRequiredForTemplateTesting: false
+    allowUnregisteredEnabled: false
+    charset: "UTF-8"
+    debugMode: false
+    defaultBody: |-
+      $PROJECT_NAME - Build # $BUILD_NUMBER - $BUILD_STATUS:
+
+      Check console output at $BUILD_URL to view the results.
+    defaultContentType: "text/plain"
+    defaultSubject: "$PROJECT_NAME - Build # $BUILD_NUMBER - $BUILD_STATUS!"
+    defaultTriggerIds:
+      - "hudson.plugins.emailext.plugins.trigger.FailureTrigger"
+    mailAccount:
+      smtpPassword: "{AQAAABAAAAAQ9p6h/Sgk0zF7eCCk6ZRVyESg1jZzAn5afPqfR8vmM9g=}"
+    maxAttachmentSize: -1
+    maxAttachmentSizeMb: -1
+    precedenceBulk: false
+    watchingEnabled: false
+  fingerprints:
+    fingerprintCleanupDisabled: false
+    storage: "file"
+  scmGit:
+    allowSecondFetch: false
+    createAccountBasedOnEmail: false
+    disableGitToolChooser: false
+    hideCredentials: false
+    showEntireCommitSummaryInChanges: false
+    useExistingAccountWithSameEmail: false
+  junitTestResultStorage:
+    storage: "file"
+  location:
+    adminAddress: "address not configured yet <nobody@nowhere>"
+    url: "http://jenkins:8081/"
+  mailer:
+    charset: "UTF-8"
+    useSsl: false
+    useTls: false
+  pollSCM:
+    pollingThreadCount: 10
+  timestamper:
+    allPipelines: false
+    elapsedTimeFormat: "'<b>'HH:mm:ss.S'</b> '"
+    systemTimeFormat: "'<b>'HH:mm:ss'</b> '"
+tool:
+  git:
+    installations:
+      - home: "git"
+        name: "Default"
+
+security:
+  gitHostKeyVerificationConfiguration:
+    sshHostKeyVerificationStrategy: "noHostKeyVerificationStrategy"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              id: "jenkins_git_user"
+              username: "{{ jenkins_git_username }}"
+              password: "{{ jenkins_git_password }}"
+              description: "Jenkins Gitlab User"
+              scope: GLOBAL
+          - usernamePassword:
+              id: "dockerhub"
+              username: "{{ docker_registry_username }}"
+              password: "{{ docker_registry_password }}"
+              description: "Dockerhub user/pass"
+              scope: GLOBAL
+          - basicSSHUserPrivateKey:
+              scope: GLOBAL
+              id: "{{ git_creds_id }}"
+              description: "Git SSH credentials"
+              username: "jenkins"
+              privateKeySource:
+                directEntry:
+                  privateKey: "${readFile:/var/lib/jenkins/creds/ssh_privkey}"
+          - usernamePassword:
+              id: "argocd-creds"
+              username: "{{ argocd_username }}"
+              password: "{{ argocd_password }}"
+              description: "ArgoCD user/pass"
+              scope: GLOBAL
+
+          

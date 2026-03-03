@@ -1,0 +1,34 @@
+# - name: Download RKE binary
+#   get_url:
+#     url: "{{ rke_binary_url }}"
+#     dest: /usr/local/bin/rke
+#     mode: "+rx"
+#   register: rke_binary
+#   when: inventory_hostname == "{{ rke_host_bootstraper }}"
+
+# - name: Install kubectl
+#   get_url:
+#     url: https://storage.googleapis.com/kubernetes-release/release/{{ rke_kubernetes_version.split('-', 1)[0] }}/bin/linux/amd64/kubectl
+#     dest: /usr/local/bin/kubectl
+#     force: yes
+#     mode: "+rx"
+
+---
+- name: Determine download URL
+  set_fact:
+    rke_url: "https://github.com/rancher/rke/releases/download/{{ rke_version }}/rke_linux-amd64"
+
+- name: Download RKE CLI
+  get_url:
+    url: "{{ rke_url }}"
+    dest: /usr/local/bin/rke
+    mode: "0755"
+  when: ansible_os_family in ['Debian', 'RedHat', 'Fedora']
+
+- name: Verify RKE installation
+  command: rke --version
+  register: rke_version_output
+
+- name: Display RKE version
+  debug:
+    msg: "RKE version installed: {{ rke_version_output.stdout }}"

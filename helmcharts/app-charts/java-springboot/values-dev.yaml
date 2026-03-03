@@ -1,0 +1,16 @@
+# -----------------------------------------------------------------------------
+# Dev environment overrides for java-springboot.
+# Use this file when deploying to a "dev" namespace (e.g. create an Argo CD
+# Application with destination.namespace: dev and valueFiles: [values-dev.yaml]).
+# These values override the chart defaults; keep dev-friendly settings here
+# (e.g. fewer replicas, optional resource limits).
+# -----------------------------------------------------------------------------
+
+helm-common:
+  replicas: 1
+  # Override image tag for dev if needed (e.g. latest or branch-based tag)
+  # image:
+  #   name: "YOUR_REGISTRY/java-springboot:dev"
+  # env:
+  #   - name: DB_HOST
+  #     value: "mysql.dev.svc.cluster.local"

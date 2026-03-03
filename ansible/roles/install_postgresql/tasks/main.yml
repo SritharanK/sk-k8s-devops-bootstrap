@@ -1,0 +1,104 @@
+---
+# tasks file for install_postgresql
+- name: Install PostgreSQL on Debian/Ubuntu
+  apt:
+    name: postgresql
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install PostgreSQL on RedHat/CentOS
+  yum:
+    name: postgresql-server
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install PostgreSQL on SUSE
+  zypper:
+    name: postgresql-server
+    state: present
+  when: ansible_os_family == "Suse"
+
+- name: Initialize PostgreSQL database on RedHat/CentOS
+  command: /usr/bin/postgresql-setup initdb
+  when: ansible_os_family == "RedHat"
+  ignore_errors: true
+
+- name: Initialize PostgreSQL database on SUSE
+  command: /usr/bin/postgresql-init initdb
+  when: ansible_os_family == "Suse"
+  ignore_errors: true
+
+- name: Configure PostgreSQL
+  template:
+    src: postgresql.conf.j2
+    dest: /etc/postgresql/{{ postgresql_version }}/main/postgresql.conf
+  when: ansible_os_family == "Debian"
+
+- name: Configure PostgreSQL
+  template:
+    src: postgresql.conf.j2
+    dest: /var/lib/pgsql/data/postgresql.conf
+  when: ansible_os_family == "RedHat" or ansible_os_family == "Suse"
+  notify: restart postgresql
+
+- name: Determine pg_hba.conf path on Debian/Ubuntu
+  set_fact:
+    pg_hba_conf_path: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+  when: ansible_os_family == "Debian"
+
+- name: Determine pg_hba.conf path on RedHat/CentOS
+  set_fact:
+    # pg_hba_conf_path: "/var/lib/pgsql/{{ postgresql_version }}/data/pg_hba.conf"
+    pg_hba_conf_path: "/var/lib/pgsql/data/pg_hba.conf"
+  when: ansible_os_family == "RedHat"
+
+- name: Determine pg_hba.conf path on SUSE
+  set_fact:
+    pg_hba_conf_path: "/var/lib/pgsql/data/pg_hba.conf"
+  when: ansible_os_family == "Suse"
+
+- name: Make sure pg_hpa.conf directory exists
+  file:
+    path: "{{ pg_hba_conf_path | dirname }}"
+    state: directory
+
+- name: Configure pg_hba.conf
+  template:
+    src: pg_hba.conf.j2
+    dest: "{{ pg_hba_conf_path }}"
+  notify: restart postgresql
+
+
+- name: Start and enable PostgreSQL service on Debian/Ubuntu
+  service:
+    name: postgresql
+    state: started
+    enabled: true
+  when: ansible_os_family == "Debian"
+
+- name: Start and enable PostgreSQL service on RedHat/CentOS
+  service:
+    name: postgresql
+    state: started
+    enabled: true
+  when: ansible_os_family == "RedHat"
+
+- name: Start and enable PostgreSQL service on SUSE
+  service:
+    name: postgresql
+    state: started
+    enabled: true
+  when: ansible_os_family == "Suse"
+
+- name: Make sure psycopg2-binary is present
+  become: true
+  pip:
+    name: psycopg2-binary
+    state: present
+
+- name: Set PostgreSQL password
+  become_user: postgres
+  postgresql_user:
+    name: postgres
+    db: postgres
+    password: "{{ postgres_password }}"

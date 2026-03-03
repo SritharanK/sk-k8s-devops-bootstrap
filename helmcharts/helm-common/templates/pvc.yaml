@@ -1,0 +1,21 @@
+# -----------------------------------------------------------------------------
+# Author : Sritharan K (https://www.skengineer.be)
+# License: MIT
+# -----------------------------------------------------------------------------
+{{- if .Values.hostPathVolumes }}
+{{- range $i := .Values.hostPathVolumes }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: "{{ template "chart.fullname" $ }}-{{ $i.name }}-host-path"
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ $i.size | default "1Gi" }}
+  storageClassName:  {{ $i.storageClassName | default "nfs-storage" }}
+  volumeMode: Filesystem
+{{- end }}
+{{- end }}

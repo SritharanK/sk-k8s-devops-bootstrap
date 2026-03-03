@@ -1,0 +1,17 @@
+# Copy to all.yml and set your values. Do not commit all.yml with real credentials.
+# Use ansible-vault to encrypt sensitive values (ansible_user, jenkins_git_password, etc.).
+
+# Bootstrap / SSH
+master_nodes:
+  - YOUR_MASTER_IP
+worker_nodes:
+  - YOUR_WORKER_IP
+ssh_port: "22"
+ansible_port: "22"
+
+# Jenkins
+jenkins_dsl_git_repo: "git@github.com:YOUR_ORG/YOUR_DEVOPS_REPO.git"
+jenkins_dsl_git_branch: "main"
+
+# GitLab
+gitlab_external_url: "https://git.example.com/"

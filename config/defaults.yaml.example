@@ -1,0 +1,66 @@
+# -----------------------------------------------------------------------------
+# Kubernetes DevOps Bootstrap - Central configuration example
+# -----------------------------------------------------------------------------
+#
+# PURPOSE: Single place for all environment-specific settings (IPs, URLs,
+#          registry, Argo CD). No hardcoded values in playbooks or scripts.
+#
+# HOW TO USE:
+#   1. Copy this file:  cp config/defaults.yaml.example config/defaults.yaml
+#   2. Replace every YOUR_* placeholder with your real values.
+#   3. Do NOT commit config/defaults.yaml if it contains real IPs or secrets.
+#
+# WHERE USED: Ansible playbooks (via group_vars or passed vars), scripts that
+#             read config, and documentation. See README and docs/GETTING_STARTED.md.
+# -----------------------------------------------------------------------------
+
+# ---- Cluster (Ansible / RKE) ----
+# Master node IP(s). For single-node, use the same IP as worker.
+master_ip: "YOUR_MASTER_IP"
+worker_ip: "YOUR_WORKER_IP"   # Can be same as master_ip for single-node
+ssh_port: "22"                 # SSH port for Ansible and RKE
+ansible_user: "YOUR_SSH_USER"  # OS user for SSH (set in playbook vars with vault)
+
+# ---- Git (DevOps repo - this repo or your fork) ----
+# URL of the Git repository that contains Helm charts and Argo CD bootstrap.
+git_repo_url: "https://github.com/YOUR_ORG/k8s-devops-bootstrap.git"
+git_repo_ssh: "git@github.com:YOUR_ORG/k8s-devops-bootstrap.git"
+git_branch: "main"
+
+# ---- Argo CD ----
+argocd_host: "YOUR_MASTER_IP"   # Host or IP where Argo CD NodePort is reachable
+argocd_port: "31980"
+argocd_url: "http://YOUR_MASTER_IP:31980"
+argocd_admin_user: "admin"
+# Generate with: ARGO_PWD='yourpassword' && htpasswd -nbBC 10 "" $ARGO_PWD | tr -d ':\n' | sed 's/$2y/$2a/'
+argocd_admin_password_hash: "YOUR_BCRYPT_HASH"
+
+# ---- Docker registry ----
+docker_registry: "registry.example.com"  # e.g. index.docker.io for Docker Hub
+docker_username: "YOUR_DOCKER_USERNAME"
+docker_email: "admin@example.com"
+# Set password via env or vault; do not put in this file if committed.
+
+# ---- Helm chart repo (for helm-common) ----
+# If you publish helm-common to a registry (GitHub Pages, GitLab, etc.)
+helm_chart_repo_url: "https://raw.githubusercontent.com/YOUR_ORG/helm-common/main"
+# Or GitLab: https://gitlab.example.com/api/v4/projects/PROJECT_ID/packages/helm/stable
+
+# ---- Optional: GitLab CE ----
+gitlab_external_url: "https://gitlab.example.com/"
+# gitlab_root_password: set in playbook with ansible-vault
+
+# ---- Optional: NFS (for dynamic provisioning) ----
+nfs_server: "YOUR_MASTER_IP"
+nfs_path: "/srv/nfs"
+
+# ---- Optional: Ingress / Load balancer ----
+# External IP or hostname for ingress controller (if using LoadBalancer or externalIPs)
+ingress_external_ip: "YOUR_MASTER_IP"
+
+# ---- Optional: Cert-manager (Let's Encrypt) ----
+cert_manager_email: "admin@example.com"
+
+# ---- Local paths (do not commit real paths) ----
+# kubeconfig_path: "~/.kube/kube_config_cluster.yaml"
+# ssh_private_key_path: "~/.ssh/id_rsa"

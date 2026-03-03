@@ -1,0 +1,76 @@
+- name: Install PHP and required packages on Debian-based systems
+  apt:
+    name: "{{ item }}"
+    state: present
+    update_cache: yes
+  loop: "{{ php_packages }}"
+  when: ansible_os_family == 'Debian'
+
+- name: Install PHP and required packages on RedHat-based systems
+  yum:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ php_packages }}"
+  when: ansible_os_family == 'RedHat'
+
+- name: Install PHP and required packages on SUSE-based systems
+  zypper:
+    name: "{{ item }}"
+    state: present
+    update_cache: yes
+  loop: "{{ php_packages }}"
+  when: ansible_os_family == 'Suse'
+
+- name: Download and install Composer
+  get_url:
+    url: https://getcomposer.org/installer
+    dest: /tmp/composer-setup.php
+    mode: "0755"
+
+- name: Install Composer
+  shell: php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+  args:
+    creates: /usr/local/bin/composer
+
+- name: Install PHPUnit globally using Composer
+  shell: composer global require phpunit/phpunit --dev
+  environment:
+    COMPOSER_HOME: "{{ ansible_env.HOME }}/.composer"
+
+- name: Install PHP_CodeSniffer globally using Composer
+  shell: composer global require squizlabs/php_codesniffer
+  environment:
+    COMPOSER_HOME: "{{ ansible_env.HOME }}/.composer"
+
+- name: Ensure Composer bin directory is in PATH
+  lineinfile:
+    path: /etc/profile.d/composer.sh
+    line: 'export PATH="$PATH:{{ ansible_env.HOME }}/.composer/vendor/bin"'
+    create: yes
+
+- name: Source profile.d to update PATH
+  shell: source /etc/profile.d/composer.sh
+
+- name: Verify installation of Composer
+  command: composer --version
+  register: composer_version
+
+- name: Debug Composer version
+  debug:
+    msg: "Composer version installed: {{ composer_version.stdout }}"
+
+- name: Verify installation of PHPUnit
+  command: "{{ ansible_env.HOME }}/.composer/vendor/bin/phpunit --version"
+  register: phpunit_version
+
+- name: Debug PHPUnit version
+  debug:
+    msg: "PHPUnit version installed: {{ phpunit_version.stdout }}"
+
+- name: Verify installation of PHP_CodeSniffer
+  command: "{{ ansible_env.HOME }}/.composer/vendor/bin/phpcs --version"
+  register: phpcs_version
+
+- name: Debug PHP_CodeSniffer version
+  debug:
+    msg: "PHP_CodeSniffer version installed: {{ phpcs_version.stdout }}"

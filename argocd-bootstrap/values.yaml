@@ -1,0 +1,24 @@
+# -----------------------------------------------------------------------------
+# Argo CD bootstrap - Helm values
+# -----------------------------------------------------------------------------
+# This chart is used to render the root Application(s) that Argo CD syncs.
+# Replace CHANGE_ME with your Git repo URL (this repo or your fork). The same
+# URL is used by scripts/misc/argocd_prerequisite.sh when creating the
+# argocd-bootstraper Application.
+#
+# destination.app_ns: namespace where application workloads are deployed (e.g. prod).
+# destination.argo_ns: namespace where Argo CD is installed (argocd).
+# -----------------------------------------------------------------------------
+
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    app_ns: prod
+    argo_ns: argocd
+  source:
+    repoURL: CHANGE_ME  # Set your GitOps repo URL (e.g. https://github.com/YOUR_ORG/k8s-devops-bootstrap.git)
+    targetRevision: main
+    helm:
+      valueFiles:
+        - values-prod.yaml

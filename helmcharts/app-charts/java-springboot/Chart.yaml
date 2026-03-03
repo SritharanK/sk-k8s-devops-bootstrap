@@ -1,0 +1,10 @@
+apiVersion: v2
+name: java-springboot
+description: A Helm chart k8s
+type: application
+version: 0.0.1
+dependencies:
+  - name: helm-common
+    version: 0.1.1
+    repository: "file://../../helm-common" ### Use local helm chart if you don't want to publish common helmchart to helm registry (Github or Gitlab,...)
+    alias: helm-common

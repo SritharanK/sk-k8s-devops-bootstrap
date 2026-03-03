@@ -1,0 +1,68 @@
+- name: Check if user exists
+  command: "getent passwd {{ rke_user }}"
+  register: user_check
+  ignore_errors: true
+
+- name: Create a new user if not exist
+  user:
+    name: "{{ rke_user }}"
+    password: "{{ rke_password | password_hash('sha512', 'mysecretsalt') }}"
+    shell: /bin/bash
+    createhome: yes
+  when: user_check.rc != 0
+
+- name: Add the user to the sudo group
+  user:
+    name: "{{ rke_user }}"
+    groups: sudo
+  when: user_check.rc != 0
+
+- name: Allow sudo access without password
+  lineinfile:
+    path: "{{ sudoers_file }}"
+    line: "{{ rke_user }} ALL=(ALL:ALL) NOPASSWD:ALL"
+    validate: "visudo -cf %s"
+  when: user_check.rc != 0
+
+- name: Print user information
+  debug:
+    msg: "User '{{ rke_user }}' has been created with sudo access."
+
+- name: Install SSH
+  package:
+    name: ssh
+    state: present
+
+- name: Check if SSH directory exists
+  stat:
+    path: "/home/{{ rke_user }}/.ssh"
+  register: ssh_directory_check
+
+- name: Create SSH directory
+  file:
+    path: "/home/{{ rke_user }}/.ssh"
+    state: directory
+  when: not ssh_directory_check.stat.exists
+
+- name: Generate SSH keypair
+  ansible.builtin.openssh_keypair:
+    path: "/home/{{ rke_user }}/.ssh/id_rsa"
+    force: yes
+    owner: "{{ rke_user }}"
+    group: "{{ rke_user }}"
+    size: 2048
+  when: not ssh_directory_check.stat.exists
+
+- name: Fetch SSH key from source machine
+  fetch:
+    src: /home/{{ rke_user }}/.ssh/id_rsa.pub
+    dest: /tmp/id_rsa.pub
+    flat: yes
+  delegate_to: "{{ rke_host_bootstraper }}"
+  become: true
+
+- name: Copy SSH key to remote hosts
+  authorized_key:
+    user: "{{ rke_user }}"
+    key: "{{ lookup('file', '/tmp/id_rsa.pub') }}"
+    state: present

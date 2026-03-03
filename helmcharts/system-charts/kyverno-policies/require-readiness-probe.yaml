@@ -1,0 +1,24 @@
+# Optional: require readinessProbe on pods in prod/dev (deploy only when Kyverno is installed).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-readiness-probe
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: require-readiness-probe
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - prod
+                - dev
+      validate:
+        message: "Pods must define a readinessProbe."
+        pattern:
+          spec:
+            containers:
+              - readinessProbe: {}

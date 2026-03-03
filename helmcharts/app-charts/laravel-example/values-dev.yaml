@@ -1,0 +1,8 @@
+# -----------------------------------------------------------------------------
+# Dev environment overrides for laravel-example.
+# Use with an Argo CD Application that has destination.namespace: dev and
+# valueFiles: [values-dev.yaml].
+# -----------------------------------------------------------------------------
+
+helm-common:
+  replicas: 1

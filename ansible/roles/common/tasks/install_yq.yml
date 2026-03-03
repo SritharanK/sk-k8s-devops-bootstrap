@@ -1,0 +1,30 @@
+---
+
+- name: Install prerequisites on Debian
+  when: ansible_os_family == 'Debian'
+  apt:
+    name: curl
+    state: present
+    update_cache: yes
+
+- name: Install prerequisites on RedHat
+  when: ansible_os_family == 'RedHat'
+  yum:
+    name: curl
+    state: present
+
+- name: Download yq binary
+  get_url:
+    url: "https://github.com/mikefarah/yq/releases/download/{{ yq_version }}/yq_linux_amd64"
+    dest: /usr/local/bin/yq
+    mode: "0755"
+    owner: root
+    group: root
+
+- name: Verify yq installation
+  command: yq --version
+  register: yq_version_output
+
+- name: Display yq version
+  debug:
+    msg: "yq version installed: {{ yq_version_output.stdout }}"

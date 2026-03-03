@@ -1,0 +1,92 @@
+# -----------------------------------------------------------------------------
+# Author : Sritharan K (https://www.skengineer.be)
+# License: MIT
+# -----------------------------------------------------------------------------
+#{{- $pathType  := .Values.ingress.pathType -}}
+{{- if .Values.enabledDeployment }}
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: "{{ template "chart.fullname" $ }}-ingress"
+  annotations:
+    {{- range $key, $value := .Values.ingress.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+    {{ if .Values.ingress.basicAuth }}
+    {{ if .Values.ingress.useSpecificBasicAuth }}
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: basic-auth-{{ template "chart.fullname" $ }}
+    nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required'
+    {{ else }}
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required'
+    {{- end }}
+    {{- end }}
+
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    - hosts:
+      {{- range $i :=.Values.ingress.hostname }}
+      - {{ $i.host }}
+      {{- end }}
+      secretName: "{{ template "chart.fullname" $ }}-ingress-tls"
+  {{- end }}
+  rules:
+    {{- if .Values.ingress.enabled }}
+    {{- range $i :=.Values.ingress.hostname }}
+    - host: {{ $i.host }}
+      http:
+        paths:
+        {{- range $i.paths }}
+          - backend:
+              service:
+                name: {{ template "chart.fullname" $ }}
+                port:
+                  number: {{ template "serviceport" $  }}
+            path: {{ . }}
+            pathType: {{ $i.pathType | default "Prefix" }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+{{- if and (.Values.ingress.basicAuth) (.Values.ingress.basicAuthExceptions) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: "{{ template "chart.fullname" $ }}-ingress-basic-auth-exceptions"
+  annotations:
+    {{- range $key, $value := .Values.ingress.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- end }}
+  rules:
+    {{- if .Values.ingress.enabled }}
+    {{- range $i := .Values.ingress.basicAuthExceptions }}
+    - host: {{ $i.host }}
+      http:
+        paths:
+        {{- range $i.paths }}
+          - backend:
+              service:
+                name: {{ template "chart.fullname" $ }}
+                port:
+                  number: {{ template "serviceport" $  }}
+            path: {{ . }}
+            pathType: {{ $i.pathType | default "Prefix" }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+

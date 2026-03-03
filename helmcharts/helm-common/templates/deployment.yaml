@@ -1,0 +1,146 @@
+# -----------------------------------------------------------------------------
+# Author : Sritharan K (https://www.skengineer.be)
+# License: MIT
+# -----------------------------------------------------------------------------
+{{- if .Values.enabledDeployment }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "chart.fullname" $ }}
+  labels:
+    app: {{ .Values.name }}
+    tier: {{ .Values.tier }}
+  {{- with .Values.extraAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app: {{ .Values.name }}
+      tier: {{ .Values.tier }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.name }}
+        tier: {{ .Values.tier }}
+    spec:
+      restartPolicy: {{ .Values.image.restartPolicy | default "Always" }}
+      {{- if .Values.securityContext.pod }}
+      securityContext:
+        runAsNonRoot: {{ .Values.securityContext.pod.runAsNonRoot | default true }}
+        runAsUser: {{ .Values.securityContext.pod.runAsUser | default 1000 }}
+        runAsGroup: {{ .Values.securityContext.pod.runAsGroup | default 1000 }}
+        {{- if .Values.securityContext.pod.seccompProfile }}
+        seccompProfile:
+          {{- toYaml .Values.securityContext.pod.seccompProfile | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- end }}
+      {{- if .Values.hostAliases }}
+      hostAliases:
+      {{- range .Values.hostAliases }}
+        - ip: {{ .ip }}
+          hostnames:
+          {{- range .hostnames }}
+            - {{ . }}
+          {{- end}}
+      {{- end }}
+      {{- end }}
+      {{- if .Values.image.imagePullSecrets }}
+      imagePullSecrets: 
+        - name: {{ .Values.image.imagePullSecrets | quote }}
+      {{- end }}
+      containers:
+        - name: {{ template "chart.fullname" $ }}
+          image: {{ .Values.image.name | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+          {{- if .Values.securityContext.container }}
+          securityContext:
+            allowPrivilegeEscalation: {{ .Values.securityContext.container.allowPrivilegeEscalation | default false }}
+            readOnlyRootFilesystem: {{ .Values.securityContext.container.readOnlyRootFilesystem | default true }}
+            {{- if .Values.securityContext.container.capabilities }}
+            capabilities:
+              {{- toYaml .Values.securityContext.container.capabilities | nindent 14 }}
+            {{- end }}
+          {{- end }}
+          ports:
+            - containerPort: {{ .Values.image.containerPort }}
+          {{- if .Values.livenessProbe }}
+          livenessProbe: {{- toYaml .Values.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.readinessProbe }}
+          readinessProbe: {{- toYaml .Values.readinessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.resources }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
+          {{- if .Values.lifecycle }}
+          lifecycle: {{- toYaml .Values.lifecycle | nindent 12 }}
+          {{- end }}
+          {{- if .Values.env }}
+          env:
+            {{- toYaml .Values.env | default "" | nindent 12 }}
+          {{- end }}
+          {{- if .Values.configMapMounts }}
+          envFrom:
+            {{- range $i := .Values.configMapMounts }}
+            {{- if $i.asEnvFrom }}
+            - configMapRef:
+                name: "{{ template "chart.fullname" $ }}-{{ $i.name }}"
+            {{- end }}
+            {{- end }}
+          {{- end }}
+          {{- if or (.Values.configMapMounts) (.Values.hostPathVolumes) }}
+          volumeMounts:
+            {{- if .Values.configMapMounts }}
+            {{- range $i :=.Values.configMapMounts }}
+            {{- if not $i.asEnvFrom }}
+            - name: "{{ $i.name }}-config-map"
+              mountPath: "{{ $i.mountPath }}"
+              subPath: "{{ $i.subPath }}"
+              readOnly: {{ $i.readOnly }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.hostPathVolumes }}
+            {{- range $i := .Values.hostPathVolumes }}
+            - name: "{{ $i.name }}-host-path"
+              mountPath: "{{ $i.mountPath }}"
+            {{- end }}
+            {{- end }}
+          {{- end }}
+      {{- if or (.Values.configMapMounts) (.Values.hostPathVolumes) }}
+      volumes:
+        {{- if .Values.configMapMounts }}
+        {{- range $i :=.Values.configMapMounts }}
+        {{- if not $i.asEnvFrom }}
+        - name: "{{ $i.name }}-config-map"
+          configMap:
+            name: "{{ template "chart.fullname" $ }}-{{ $i.name }}"
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- if .Values.hostPathVolumes }}
+        {{- range $i := .Values.hostPathVolumes }}
+        - name: "{{ $i.name }}-host-path"
+          persistentVolumeClaim:
+            claimName: "{{ template "chart.fullname" $ }}-{{ $i.name }}-host-path"
+        {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.affinity }}
+      affinity: {{- toYaml .Values.affinity | nindent 8 }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector: {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations: {{- toYaml .Values.tolerations | nindent 6 }}
+      {{- end }}
+
+{{- end }}

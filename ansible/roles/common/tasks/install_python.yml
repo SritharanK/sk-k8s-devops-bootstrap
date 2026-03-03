@@ -1,0 +1,20 @@
+- name: Ensure Python is installed
+  package:
+    name: python3
+    state: present
+
+- name: Ensure pip is installed
+  package:
+    name: python3-pip
+    state: present
+
+- name: Ensure pip is upgraded to the latest version
+  pip:
+    name: pip
+    state: latest
+    executable: pip3
+# - name: Install Ansible via pip
+#   pip:
+#     name: ansible
+#     state: latest
+#     executable: pip3

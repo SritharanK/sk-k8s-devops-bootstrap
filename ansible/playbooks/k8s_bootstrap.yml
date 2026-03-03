@@ -1,0 +1,38 @@
+---
+# -----------------------------------------------------------------------------
+# Bootstrap a Kubernetes cluster using RKE (Rancher Kubernetes Engine).
+# Runs on the first host in [masters]. Creates the cluster and writes kubeconfig
+# to ansible/data/kube_config_cluster.yaml. Requires install_common first.
+#
+# HOSTS: Set master_nodes in vars (or group_vars) to your master IP(s); workers
+#        optional. Match ansible/inventories/dev/hosts.ini.
+# VAULT: rke_user and ansible_user should be encrypted with ansible-vault.
+# RUN:   make bootstrap-k8s   (after make install-common)
+# -----------------------------------------------------------------------------
+- name: Ansible Playbook to bootstrap kubernetes cluster
+  hosts:
+  - masters
+  become: true
+  gather_facts: true
+
+  vars:
+    rke_user: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          35313566633363623464373731666231313165306166636139303737323935623335393435353664
+          3439393331343337323738393266326264356263633266350a373663636166316662643032653138
+          32636531333732666633626632303436356362383333336561616631623463323131663132613561
+          6631613436306537390a656639303132313562346639393265623066623635336662366664633766
+          3137
+    ansible_user: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          65303863633563663465313234613332333035613865336632373231323231366665653163383463
+          6466353664633431313934393162623939366339653733630a306339653836636234373837636530
+          30633739303733336432343461623431636264383733663564313734343632333834333662326630
+          3531643139346435380a336663343166383264313164626464316630626465643566363637323462
+          6438
+    master_nodes: "{{ master_nodes | default(['YOUR_MASTER_IP']) }}"
+    ssh_port: "{{ ssh_port | default('22') }}"
+    ansible_port: "{{ ansible_port | default('22') }}"
+  roles:
+  - role: "roles/k8s_bootstrap"
+    when: inventory_hostname == groups['masters'][0] ### Run bootstrap in first host in a host group (masters)

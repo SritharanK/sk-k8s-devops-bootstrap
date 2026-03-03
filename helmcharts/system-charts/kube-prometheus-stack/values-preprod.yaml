@@ -1,0 +1,60 @@
+grafana:
+  enabled: true
+  adminPassword: aoqHFAfiT5B2XRGP
+
+prometheus:
+  prometheusSpec:
+    additionalScrapeConfigs:
+      - job_name: "preprod_onprem_federation"
+        scrape_interval: 30s
+        honor_labels: true
+        metrics_path: "/federate"
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        params:
+          "match[]":
+            - '{job=~"kube-state-metrics"}'
+            - '{job=~"node-exporter"}'
+            - '{job=~"apiserver"}'
+            - '{job=~"kubelet"}'
+            - '{job=~"kubernetes-pods"}'
+            - '{job=~"kubernetes-apiservers"}'
+            - '{job=~"kubennetes-nodes"}'
+            - '{job=~"kubernetes-service-endpoints"}'
+            - '{job=~"kubernetes-service-endpoints-slow"}'
+            - '{job=~"prometheus-pushgateway"}'
+            - '{job=~"kubernetes-services"}'
+            - '{__name__=~"job:.*"}'
+        static_configs:
+          - targets: ["preprod-prometheus.arckipel.net:443"]
+            labels:
+              cluster: "arckipel-preprod"
+              environment: preprod
+
+      - job_name: "prod_eks_federation"
+        scrape_interval: 30s
+        honor_labels: true
+        metrics_path: "/federate"
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        params:
+          "match[]":
+            - '{job=~"kube-state-metrics"}'
+            - '{job=~"node-exporter"}'
+            - '{job=~"apiserver"}'
+            - '{job=~"kubelet"}'
+            - '{job=~"kubernetes-pods"}'
+            - '{job=~"kubernetes-apiservers"}'
+            - '{job=~"kubennetes-nodes"}'
+            - '{job=~"kubernetes-service-endpoints"}'
+            - '{job=~"kubernetes-service-endpoints-slow"}'
+            - '{job=~"prometheus-pushgateway"}'
+            - '{job=~"kubernetes-services"}'
+            - '{__name__=~"job:.*"}'
+        static_configs:
+          - targets: ["prod-prometheus.arckipel.net:443"]
+            labels:
+              cluster: "arckipel-prod"
+              environment: prod

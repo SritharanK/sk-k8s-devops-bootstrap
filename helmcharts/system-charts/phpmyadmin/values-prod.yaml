@@ -1,0 +1,21 @@
+image:
+  registry: docker.io
+  repository: bitnami/phpmyadmin
+  tag: 5.2.1-debian-11-r131
+replicas: 1
+
+ingress:
+  enabled: false
+
+db:
+  allowArbitraryServer: true
+  port: 3306
+  chartName: ""
+  host: "mysql"
+
+metrics:
+  enabled: false
+
+extraEnvVars:
+  - name: PHP_MAX_INPUT_VARS
+    value: "10000"

@@ -1,0 +1,25 @@
+---
+rke_version: v1.8.10
+kubectl_version: "v1.31.2"
+docker_compose_version: "1.29.2"
+java_version: "21"
+yq_version: "v4.44.1"
+
+php_packages:
+  - php
+  - php-cli
+  - php-mbstring
+  - php-xml
+  - php-curl
+
+enable_create_linux_user: false
+enable_install_rke: false
+enable_install_docker: true
+enable_install_nfs: false
+enable_install_kubectl: true
+enable_install_python: true
+enable_install_java: true
+enable_install_yq: true
+enable_install_ansible: false
+enable_install_argocd: false
+enable_install_php_tools: false

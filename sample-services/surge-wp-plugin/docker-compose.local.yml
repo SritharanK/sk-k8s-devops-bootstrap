@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  wordpress:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8888:80"
+    restart: always
+    depends_on:
+    - db
+    environment:
+      WORDPRESS_DB_HOST: "db:3306"
+      WORDPRESS_DB_USER: wp_admin
+      WORDPRESS_DB_PASSWORD: "CHANGE_ME"
+      WORDPRESS_DB_NAME: surge
+
+  db:
+    image: mysql:8.0
+    restart: always
+    environment:
+      - MYSQL_DATABASE=surge
+      - MYSQL_ROOT_PASSWORD=CHANGE_ME
+      - MYSQL_USER=wp_admin
+      - MYSQL_PASSWORD=CHANGE_ME
+    ports:
+      - '3306:3306'
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    ports:
+      - "8080:80"
+    depends_on:
+    - db
+    environment:
+      PMA_HOST: "db:3306"
+      PMA_USER: wp_admin
+      PMA_PASSWORD: "CHANGE_ME"
+    restart: always
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: mailhog
+    restart: always
+    environment:
+      MH_AUTH_FILE: /mailhog.auth
+      # MH_MAILDIR_PATH: /data
+      MH_STORAGE: maildir
+    volumes:
+      - ./config/mailhog.auth:/mailhog.auth:ro
+      # - ./data:/data:rw
+    ports:
+      - "1025:1025" #127.0.0.1:1025:1025  
+      - "8025:8025"
+

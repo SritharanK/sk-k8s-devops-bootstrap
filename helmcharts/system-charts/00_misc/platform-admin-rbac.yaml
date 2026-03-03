@@ -1,0 +1,32 @@
+# Platform admin: bounded cluster role (not cluster-admin). Bind YOUR_PLATFORM_ADMIN_GROUP or users.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: platform-admin
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "nodes", "persistentvolumes", "persistentvolumeclaims", "configmaps", "secrets", "services", "pods", "pods/log"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: platform-admin-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: platform-admin
+subjects:
+  - kind: Group
+    name: YOUR_PLATFORM_ADMIN_GROUP
+    apiGroup: rbac.authorization.k8s.io
+  # Or use a User: add - kind: User, name: admin@example.com, apiGroup: rbac.authorization.k8s.io

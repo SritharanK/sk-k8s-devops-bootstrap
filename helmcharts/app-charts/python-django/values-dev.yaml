@@ -1,0 +1,8 @@
+# -----------------------------------------------------------------------------
+# Dev environment overrides for python-django.
+# Use with an Argo CD Application that has destination.namespace: dev and
+# valueFiles: [values-dev.yaml]. Override image tag or DB_HOST for dev as needed.
+# -----------------------------------------------------------------------------
+
+helm-common:
+  replicas: 1

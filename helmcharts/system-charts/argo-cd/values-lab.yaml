@@ -1,0 +1,50 @@
+# Lab only: NodePort for local access. Production must use values-production.yaml (Ingress + TLS).
+# Rule: NodePort must NEVER be enabled in production values.
+configs:
+  secret:
+    argocdServerAdminPassword: $2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy  # bcrypt of "changeme" — replace for production
+
+controller:
+  name: application-controller
+  replicas: 1
+
+dex:
+  enabled: true
+  name: dex-server
+
+redis:
+  enabled: true
+  name: redis
+
+redis-ha:
+  enabled: false
+
+server:
+  name: server
+  replicas: 1
+  ingress:
+    enabled: false
+    ingressClassName: "nginx"
+    hostname: "argocd.example.com"
+  service:
+    type: NodePort
+    nodePortHttp: 31980   # Lab: http://<MASTER_IP>:31980
+    nodePortHttps: 31843
+    servicePortHttp: 80
+    servicePortHttps: 443
+    servicePortHttpName: http
+    servicePortHttpsName: https
+
+repoServer:
+  name: repo-server
+  replicas: 1
+
+applicationSet:
+  enabled: true
+  name: applicationset-controller
+  replicas: 1
+
+notifications:
+  enabled: false
+  name: notifications-controller
+  argocdUrl: ""

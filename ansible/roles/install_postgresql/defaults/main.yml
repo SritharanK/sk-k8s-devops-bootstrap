@@ -1,0 +1,5 @@
+---
+# defaults file for install_postgresql
+postgresql_version: "15"
+postgres_password: "postgres"
+postgresql_port: "5432"

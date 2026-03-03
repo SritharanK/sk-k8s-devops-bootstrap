@@ -1,0 +1,33 @@
+helm-common:
+  name: laravel-example
+  tier: application
+  image:
+    name: "YOUR_REGISTRY/laravel-example:PLACEHOLDER_TAG"  # Set via CD or config
+    pullPolicy: IfNotPresent
+    containerPort: 80
+    imagePullSecrets: dockerhub-secret
+  extraAnnotations:
+    configmap.reloader.stakater.com/reload: ""
+  replicas: 1
+  livenessProbe: {}
+  readinessProbe: {}
+  podAnnotations: {}
+  resources: {}
+  lifecycle: {}
+  affinity: {}
+  tolerations: []
+  nodeSelector:
+    node-role.kubernetes.io/worker: "true"
+  configMapMounts: []
+  hostPathVolumes: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 10
+    targetMemoryUtilizationPercentage: 80
+  service:
+    type: ClusterIP
+    port: 80
+    nodePorts: {}
+    annotations: {}
+  enabledDeployment: true

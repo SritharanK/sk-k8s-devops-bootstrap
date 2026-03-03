@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+.vscode
+.vscode/**/*
+.vscode/*
+mysql.yaml
+
+# Ansible – do not commit vault password or cluster state
+ansible/.ansible_vault_pass
+ansible/data/kube_config_cluster.yaml
+ansible/data/k8s_cluster.rkestate
+ansible/data/*.rkestate
+ansible/data/*.yaml
+ansible/kube_config_cluster.yaml
+
+# Local config and secrets – do not commit real values
+config/defaults.yaml
+scripts/misc/.env

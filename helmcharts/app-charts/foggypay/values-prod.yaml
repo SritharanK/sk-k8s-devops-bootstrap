@@ -1,0 +1,45 @@
+helm-common:
+  name: foggypay
+  tier: application
+  image:
+    name: "YOUR_REGISTRY/foggypay:PLACEHOLDER_TAG"  # Set via CD or config
+    pullPolicy: IfNotPresent
+    containerPort: 80
+    imagePullSecrets: dockerhub-secret
+  extraAnnotations:
+    configmap.reloader.stakater.com/reload: ""
+  env:
+    - name: WORDPRESS_DB_HOST
+      value: "db:3306"  # Set to your DB host:port in prod
+    - name: WORDPRESS_DB_USER
+      value: wp_admin
+    - name: WORDPRESS_DB_PASSWORD
+      value: "CHANGE_ME"
+    - name: WORDPRESS_DB_NAME
+      value: surge
+  replicas: 1
+  livenessProbe: {}
+  readinessProbe: {}
+  podAnnotations: {}
+  resources: {}
+  lifecycle: {}
+  affinity: {}
+  tolerations: []
+  nodeSelector:
+    node-role.kubernetes.io/worker: "true"
+  configMapMounts: []
+  hostPathVolumes: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 10
+    ## specify target CPU % utilization
+    # targetCPUUtilizationPercentage: 80 ## DISABLE TO AVOID HPA SCALE TOO MUCH PODS => AVOID COST INCREASING
+    ## specify target Memory % utilization
+    targetMemoryUtilizationPercentage: 80
+  service:
+    type: ClusterIP
+    port: 80
+    nodePorts: {}
+    annotations: {}
+  enabledDeployment: true

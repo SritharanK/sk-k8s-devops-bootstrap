@@ -1,0 +1,38 @@
+gitRepo = "{{ jenkins_dsl_git_repo }} "
+gitBranch = "{{ jenkins_dsl_git_branch }}"
+gitCredsId = "{{ git_creds_id }}"
+groovyFilesPattern = "{{ dsl_script_pattern }}"
+
+pipeline {
+    agent {
+        label 'default'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                git url: "${gitRepo}", branch: "${gitBranch}", credentialsId: "${gitCredsId}"
+            }
+        }
+        stage('Execute DSL Scripts') {
+            steps {
+                // Find all Groovy files in the workspace directory
+                script {
+                    def dslScripts = findFiles(glob: "${groovyFilesPattern}")
+                    
+                    // Install Job DSL plugin if needed
+                    if (!jenkins.model.Jenkins.instance.pluginManager.getPlugin("job-dsl")) {
+                        jenkins.model.Jenkins.instance.pluginManager.installPlugin("job-dsl")
+                        jenkins.model.Jenkins.instance.restart()
+                    }
+                    
+                    // Execute each DSL script
+                    dslScripts.each { dslScript ->
+                        def dslScriptContent = readFile(file: dslScript.path).trim()
+                        jobDsl(scriptText: dslScriptContent)
+                    }
+                }
+            }
+        }
+    }
+}

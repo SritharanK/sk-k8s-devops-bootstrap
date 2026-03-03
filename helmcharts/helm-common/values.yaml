@@ -1,0 +1,184 @@
+name: service
+tier: application
+
+# Security context defaults (architects default secure). Apps must explicitly opt-out if incompatible
+# (e.g. set securityContext.container.readOnlyRootFilesystem: false in values).
+securityContext:
+  pod:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  container:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+image:
+  name: __image_name__
+  pullPolicy: IfNotPresent
+  containerPort: 80
+  imagePullSecrets: dockerhub-secret
+
+extraAnnotations: {}
+
+livenessProbe: {}
+#   httpGet:
+#     path: /
+#     port: 8080
+#   initialDelaySeconds: 30
+#   timeoutSeconds: 5
+#   failureThreshold: 6
+# readinessProbe is required; livenessProbe is recommended. Apps that omit them are non-compliant.
+
+readinessProbe:
+  {}
+  # httpGet:
+  #   path: /
+  #   port: 8080
+  # initialDelaySeconds: 30
+  # timeoutSeconds: 5
+  # failureThreshold: 6
+
+env: []
+
+# # terminationGracePeriodSeconds should be greater than to the total:
+# # sleep (5s) in preStop + keepalive_timeout (65s) in nginx.
+# terminationGracePeriodSeconds: 80
+
+podAnnotations: {}
+
+resources: {}
+
+lifecycle:
+  {}
+  # preStop:
+  #   exec:
+  #     # Introduce a delay to the shutdown sequence to wait for the
+  #     # pod eviction event to propagate. Then, gracefully shutdown
+  #     # nginx.
+  #     command: ["sh", "-c", "sleep 5 && /usr/sbin/nginx -s quit"]
+
+## Pod scheduling preferences (by default keep pods within a release on separate nodes).
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+## By default we don't set affinity
+affinity: {}
+#   podAntiAffinity:
+#     requiredDuringSchedulingIgnoredDuringExecution:
+#       - labelSelector:
+#           matchExpressions:
+#             - key: "app"
+#               operator: In
+#               values:
+#               - backend
+#         topologyKey: "kubernetes.io/hostname"
+
+## Tolerations are applied to pods, and allow (but do not require) the pods to schedule onto nodes with matching taints.
+## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
+tolerations: []
+# - key: "dedicated"
+#   operator: "Equal"
+#   value: "lowPriority"
+#   effect: "NoSchedule"
+configMapMounts:
+  {}
+  # - name: nginx-config
+  #   mountPath: /etc/nginx/site-enable/default.conf
+  #   subPath: server.conf
+  #   readOnly: false
+  #   asEnvFrom: false
+  # - name: env
+  #   asEnvFrom: true
+
+hostPathVolumes:
+  {}
+  # - name: tmp
+  #   mountPath: /tmp
+
+replicas: 1
+# Enable autoscaling HPA for the pods, currently this using apiVersion autoscaling/v2beta2
+# Notes: auto-scaling only take affect when above "resources" are specified
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  ## specify target CPU % utilization
+  targetCPUUtilizationPercentage: 75
+  ## specify target Memory % utilization
+  targetMemoryUtilizationPercentage: 75
+
+service:
+  ## Service type
+  ##
+  type: ClusterIP
+
+  ## HTTP Port
+  ##
+  port: 80
+
+  ## Specify the nodePort(s) value(s) for the LoadBalancer and NodePort service types.
+  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
+  ##
+  nodePorts: {}
+  #   http: 30001
+
+  ## Set the LoadBalancer service type to internal only.
+  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
+  ##
+  # loadBalancerIP:
+
+  ## Provide any additional annotations which may be required. This can be used to
+  ## set the LoadBalancer service type to internal only.
+  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
+  ##
+  annotations: {}
+
+  ## Enable client source IP preservation
+  ## ref http://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip
+  ##
+  externalTrafficPolicy: ""
+
+  enabledHeadless: False
+
+ingress:
+  ## Set to true to enable ingress record generation
+  ##
+  enabled: true
+  ## Set this to true in order to add the corresponding annotations for cert-manager
+  ##
+  className: "nginx"
+  tls: false
+  hostname:
+    - host: service.helm-common.com
+      paths:
+        - /
+      pathType: "Prefix"
+  annotations:
+    {}
+    # nginx.org/redirect-to-https: true
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    # nginx.ingress.kubernetes.io/proxy-body-size: 50m
+    # nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    # nginx.ingress.kubernetes.io/proxy-buffering: "on"
+  basicAuth: false
+  useSpecificBasicAuth: false
+  basicAuthExceptions: {}
+  # basicAuthExceptions:
+  # - host: service.helm-common.com
+  #   paths:
+  #     - /uploads/
+  #   pathType: "Prefix"
+
+enabledDeployment: true
+
+hostAliases: {}
+# hostAliases:
+#   - ip: '10.1.2.1'
+#     hostnames:
+#       - 'foo.dev'
+#       - 'bar.dev'
+

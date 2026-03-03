@@ -1,0 +1,92 @@
+loki:
+  auth_enabled: false
+  # -- Limits config
+  limits_config:
+    reject_old_samples: true
+    reject_old_samples_max_age: 168h
+    max_cache_freshness_per_query: 10m
+    split_queries_by_interval: 15m
+  commonConfig:
+    path_prefix: /var/loki
+    replication_factor: 1
+    compactor_address: '{{ include "loki.compactorAddress" . }}'
+  schema_config:
+    configs:
+      - from: "2024-03-10"
+        store: boltdb-shipper
+        object_store: s3
+        schema: v11
+        index:
+          prefix: loki_index_
+          period: 24h
+  storage_config:
+    hedging:
+      at: "250ms"
+      max_per_second: 20
+      up_to: 3
+    aws:
+      s3: s3://eu-central-1/preprod-loki-data
+      s3forcepathstyle: true
+      bucketnames: preprod-loki-data
+      region: eu-central-1
+      insecure: false
+      sse_encryption: false
+    boltdb_shipper:
+      shared_store: s3
+      cache_ttl: 24h
+  storage:
+    bucketNames:
+      chunks: preprod-loki-data
+      ruler: preprod-loki-data
+      admin: preprod-loki-data
+    type: s3
+    s3:
+      s3: s3://eu-central-1/preprod-loki-data
+      endpoint: s3.eu-central-1.amazonaws.com
+      region: eu-central-1
+      secretAccessKey: YOUR_AWS_SECRET_ACCESS_KEY
+      accessKeyId: YOUR_AWS_ACCESS_KEY_ID
+      signatureVersion: null
+      s3ForcePathStyle: false
+      insecure: false
+      http_config: {}
+      # -- Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config
+      backoff_config: {}
+
+backend:
+  replicas: 1
+  persistence:
+    size: 10Gi
+    storageClass: nfs-storage
+
+monitoring:
+  dashboards:
+    enabled: false
+  selfMonitoring:
+    enabled: true
+  lokiCanary:
+    enabled: true
+
+write:
+  replicas: 1
+  persistence:
+    volumeClaimsEnabled: true
+    dataVolumeParameters:
+      emptyDir: {}
+    size: 10Gi
+    storageClass: nfs-storage
+
+read:
+  replicas: 1
+  persistence:
+    enableStatefulSetAutoDeletePVC: true
+    size: 10Gi
+    storageClass: nfs-storage
+    selector: null
+gateway:
+  enabled: true
+  replicas: 1
+
+memberlist:
+  service:
+    publishNotReadyAddresses: true

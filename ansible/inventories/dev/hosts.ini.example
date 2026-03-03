@@ -1,0 +1,15 @@
+# Copy to hosts.ini and replace with your server IPs. Do not commit hosts.ini with real IPs.
+[masters]
+YOUR_MASTER_IP
+
+[workers]
+YOUR_WORKER_IP
+
+[database]
+YOUR_DATABASE_IP
+
+[gitlab]
+YOUR_GITLAB_IP
+
+[jenkins]
+YOUR_JENKINS_IP

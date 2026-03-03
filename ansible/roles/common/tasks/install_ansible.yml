@@ -1,0 +1,40 @@
+- name: Ensure all required packages are installed (Debian-based)
+  apt:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - software-properties-common
+    - apt-transport-https
+    - ca-certificates
+  when: ansible_os_family == 'Debian'
+
+- name: Add Ansible PPA (Debian-based)
+  apt_repository:
+    repo: "ppa:ansible/ansible"
+    state: present
+  when: ansible_os_family == 'Debian'
+
+- name: Update apt cache (Debian-based)
+  apt:
+    update_cache: yes
+  when: ansible_os_family == 'Debian'
+
+- name: Install Ansible (Debian-based)
+  apt:
+    name: ansible
+    state: present
+  when: ansible_os_family == 'Debian'
+
+- name: Ensure all required packages are installed (RedHat-based)
+  yum:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - epel-release
+  when: ansible_os_family == 'RedHat'
+
+- name: Install Ansible (RedHat-based)
+  yum:
+    name: ansible
+    state: present
+  when: ansible_os_family == 'RedHat'

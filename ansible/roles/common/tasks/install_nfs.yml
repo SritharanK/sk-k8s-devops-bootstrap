@@ -1,0 +1,84 @@
+# - name: Install NFS server packages
+#   apt:
+#     name: "{{ item }}"
+#     state: present
+#   loop:
+#     - nfs-kernel-server
+#     - nfs-common
+
+# - name: Create NFS shard directory
+#   file:
+#     path: "{{ item.path }}"
+#     state: directory
+#     owner: nobody
+#     group: nogroup
+#     recurse: yes
+#   with_items: "{{ nfs_exports }}"
+
+# - name: Configure NFS exports
+#   lineinfile:
+#     path: /etc/exports
+#     line: "{{ item.path }} {{ item.clients }}({{ item.options }})"
+#   with_items: "{{ nfs_exports }}"
+#   notify: Restart NFS
+---
+- name: Update apt package index (Debian/Ubuntu)
+  apt:
+    update_cache: yes
+  when: ansible_facts['os_family'] in ['Debian', 'Ubuntu']
+
+- name: Install dependencies (Debian/Ubuntu)
+  apt:
+    name:
+      - nfs-common
+    state: present
+  when: ansible_facts['os_family'] in ['Debian', 'Ubuntu']
+
+- name: Update yum package index (RHEL/CentOS)
+  yum:
+    update_cache: yes
+  when: ansible_facts['os_family'] in ['RedHat', 'CentOS', 'Fedora']
+
+- name: Install dependencies (RHEL/CentOS)
+  yum:
+    name:
+      - nfs-utils
+    state: present
+  when: ansible_facts['os_family'] in ['RedHat', 'CentOS', 'Fedora']
+
+- name: Install NFS server package (Debian/Ubuntu)
+  apt:
+    name:
+      - nfs-kernel-server
+    state: present
+  when: ansible_facts['os_family'] in ['Debian', 'Ubuntu']
+
+- name: Install NFS server package (RHEL/CentOS)
+  yum:
+    name:
+      - nfs-utils
+    state: present
+  when: ansible_facts['os_family'] in ['RedHat', 'CentOS', 'Fedora']
+
+- name: Ensure NFS service is enabled and started
+  service:
+    name: "{{ 'nfs-server' if ansible_facts['os_family'] in ['RedHat', 'CentOS', 'Fedora'] else 'nfs-kernel-server' }}"
+    state: started
+    enabled: yes
+
+- name: Create export directory
+  file:
+    path: /srv/nfs
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure NFS exports
+  lineinfile:
+    path: /etc/exports
+    line: "/srv/nfs *(rw,sync,no_subtree_check)"
+    create: yes
+
+- name: Apply NFS exports
+  command: exportfs -ra

@@ -1,0 +1,28 @@
+---
+- name: Install dependencies (curl)
+  package:
+    name: curl
+    state: present
+  when: ansible_os_family == 'Debian' or ansible_os_family == 'RedHat'
+
+- name: Install dependencies (wget)
+  package:
+    name: wget
+    state: present
+  when: ansible_os_family == 'Archlinux' or ansible_os_family == 'Gentoo' or ansible_os_family == 'Suse'
+
+- name: Download ArgoCD CLI
+  get_url:
+    url: https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+    dest: /usr/local/bin/argocd
+    mode: "0755"
+
+- name: Verify ArgoCD CLI installation
+  command: argocd version
+  register: argocd_version
+  ignore_errors: true
+
+- name: Display ArgoCD CLI version
+  debug:
+    msg: "{{ argocd_version.stdout }}"
+  when: argocd_version is defined and argocd_version.stdout != ""
