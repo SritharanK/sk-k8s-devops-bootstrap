@@ -1,0 +1,64 @@
+{{- if .Values.applicationSet.enabled }}
+# ApplicationSet — scale-mode alternative to the static Application manifests
+# in templates/applications/*.yaml.
+#
+# Use this when you manage many apps and want a single ArgoCD object to generate
+# and lifecycle all Application resources automatically. To switch from static
+# mode to ApplicationSet mode:
+#   1. Set applicationSet.enabled: true in argocd-bootstrap/values.yaml
+#   2. Set applicationSet.static.enabled: false (or delete templates/applications/)
+#   3. Extend applicationSet.apps[] with each new service — no new YAML file required
+#
+# Sync-wave 10 matches the static Applications so both modes are equivalent.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: app-charts
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  # Generate one Application per entry in .Values.applicationSet.apps
+  generators:
+    - list:
+        elements:
+          {{- range .Values.applicationSet.apps }}
+          - name: {{ .name }}
+            namespace: {{ .namespace }}
+            valuesFile: {{ .valuesFile }}
+          {{- end }}
+
+  template:
+    metadata:
+      name: "{{`{{name}}`}}"
+      namespace: argocd
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: {{ .Values.spec.project }}
+      destination:
+        server: {{ .Values.spec.destination.server }}
+        namespace: "{{`{{namespace}}`}}"
+      source:
+        repoURL: {{ .Values.spec.source.repoURL }}
+        targetRevision: {{ .Values.spec.source.targetRevision }}
+        path: "./helmcharts/app-charts/{{`{{name}}`}}"
+        helm:
+          valueFiles:
+            - "{{`{{valuesFile}}`}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - ApplyOutOfSyncOnly=true
+          - PruneLast=true
+          - CreateNamespace=false
+          - Validate=false
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 5m
+{{- end }}
