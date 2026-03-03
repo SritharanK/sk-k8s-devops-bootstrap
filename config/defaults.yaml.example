@@ -110,7 +110,8 @@ helm_chart_repo_url: "oci://ghcr.io/YOUR_ORG/helm-charts"
 
 # ── RBAC ─────────────────────────────────────────────────────────────────────
 platform_admin_group: "YOUR_PLATFORM_ADMIN_GROUP"
-platform_deployers_group: "deployers"
+platform_deployers_group: "deployers"    # CI/CD service accounts and operators
+platform_viewers_group: "viewers"        # Read-only access for developers and SREs
 
 
 # ── Cert-manager (Let's Encrypt) ─────────────────────────────────────────────
