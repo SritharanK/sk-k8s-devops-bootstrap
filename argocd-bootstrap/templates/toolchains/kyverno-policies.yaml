@@ -1,4 +1,6 @@
-# Optional: deploy only when Kyverno is installed in the cluster.
+{{- if .Values.policies.kyverno.enabled }}
+# Wave 6: Kyverno ClusterPolicies are applied only after the engine (wave 4)
+# has registered its CRDs and is ready to serve admission webhooks.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -10,7 +12,7 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
+  project: {{ .Values.spec.project }}
   destination:
     server: {{ .Values.spec.destination.server }}
     namespace: ""
@@ -41,3 +43,4 @@ spec:
         duration: 10s
         factor: 2
         maxDuration: 5m
+{{- end }}
