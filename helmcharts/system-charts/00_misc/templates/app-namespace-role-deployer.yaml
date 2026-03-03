@@ -1,9 +1,10 @@
-# Example: deployer role in prod (read/update deployments, get pods). Customize group or user.
+{{- range $key, $ns := .Values.namespaces }}
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: deployer
-  namespace: prod
+  namespace: {{ $ns }}
 rules:
   - apiGroups: [""]
     resources: ["pods", "pods/log", "configmaps", "secrets"]
@@ -16,12 +17,13 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: deployer-binding
-  namespace: prod
+  namespace: {{ $ns }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: deployer
 subjects:
   - kind: Group
-    name: deployers  # Set to your IdP group or use kind: User, name: ...
+    name: {{ $.Values.rbac.deployersGroup | quote }}
     apiGroup: rbac.authorization.k8s.io
+{{- end }}

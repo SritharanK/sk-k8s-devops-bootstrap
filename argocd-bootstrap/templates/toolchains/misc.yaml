@@ -17,6 +17,20 @@ spec:
     repoURL: {{ .Values.spec.source.repoURL }}
     targetRevision: {{ .Values.spec.source.targetRevision }}
     path: ./helmcharts/system-charts/00_misc
+    helm:
+      parameters:
+        - name: certManager.email
+          value: {{ .Values.platform.certManagerEmail | quote }}
+        - name: rbac.platformAdminGroup
+          value: {{ .Values.platform.adminGroup | quote }}
+        - name: rbac.deployersGroup
+          value: {{ .Values.platform.deployersGroup | quote }}
+        - name: namespaces.prod
+          value: {{ .Values.namespaces.prod | quote }}
+        - name: namespaces.dev
+          value: {{ .Values.namespaces.dev | quote }}
+        - name: namespaces.stage
+          value: {{ .Values.namespaces.stage | quote }}
   syncPolicy:
     automated:
       prune: true

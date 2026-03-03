@@ -4,11 +4,11 @@ metadata:
   name: letsencrypt-prod
 spec:
   acme:
-    email: admin@example.com  # Set for Let's Encrypt notifications; use your real email in production
+    email: {{ .Values.certManager.email | quote }}
     server: https://acme-v02.api.letsencrypt.org/directory
     privateKeySecretRef:
       name: letsencrypt-prod
     solvers:
       - http01:
           ingress:
-            class: nginx
+            class: {{ .Values.certManager.ingressClass | quote }}

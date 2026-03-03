@@ -1,0 +1,38 @@
+# Default values — override via argocd-bootstrap/values.yaml or helm --set.
+# All CHANGE_ME / YOUR_* placeholders must be set before deploying.
+
+namespaces:
+  prod: "prod"
+  dev: "dev"
+  stage: "stage"
+
+certManager:
+  # cert_manager_email from config/defaults.yaml — set to your real email, never example.com
+  email: "CHANGE_ME"
+  ingressClass: "nginx"
+
+rbac:
+  # platform_admin_group from config/defaults.yaml
+  platformAdminGroup: "YOUR_PLATFORM_ADMIN_GROUP"
+  # platform_deployers_group from config/defaults.yaml
+  deployersGroup: "deployers"
+
+quotas:
+  prod:
+    requestsCpu: "10"
+    limitsCpu: "20"
+    requestsMemory: "20Gi"
+    limitsMemory: "40Gi"
+    pods: "50"
+  dev:
+    requestsCpu: "5"
+    limitsCpu: "10"
+    requestsMemory: "10Gi"
+    limitsMemory: "20Gi"
+    pods: "30"
+  stage:
+    requestsCpu: "8"
+    limitsCpu: "16"
+    requestsMemory: "16Gi"
+    limitsMemory: "32Gi"
+    pods: "40"
