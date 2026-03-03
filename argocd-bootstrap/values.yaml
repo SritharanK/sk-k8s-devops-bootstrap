@@ -56,22 +56,75 @@ namespaces:
 # enable only one mode at a time in production.
 applicationSet:
   enabled: false   # set to true to activate scale-mode deployment
+  # apps: one entry per (service × environment) combination.
+  # appName  — unique ArgoCD Application name (must be unique across all entries)
+  # name     — chart directory under helmcharts/app-charts/
+  # namespace — target Kubernetes namespace
+  # valuesFile — Helm values file to use (relative to chart root)
   apps:
-    - name: java-springboot
+    # ── Production ───────────────────────────────────────────────────────────
+    - appName: java-springboot
+      name: java-springboot
       namespace: prod
       valuesFile: values-prod.yaml
-    - name: laravel-example
+    - appName: laravel-example
+      name: laravel-example
       namespace: prod
       valuesFile: values-prod.yaml
-    - name: payments-example
+    - appName: payments-example
+      name: payments-example
       namespace: prod
       valuesFile: values-prod.yaml
-    - name: python-django
+    - appName: python-django
+      name: python-django
       namespace: prod
       valuesFile: values-prod.yaml
-    - name: surge-plugin
+    - appName: surge-plugin
+      name: surge-plugin
       namespace: prod
       valuesFile: values-prod.yaml
+    # ── Staging ──────────────────────────────────────────────────────────────
+    - appName: java-springboot-stage
+      name: java-springboot
+      namespace: stage
+      valuesFile: values-stage.yaml
+    - appName: laravel-example-stage
+      name: laravel-example
+      namespace: stage
+      valuesFile: values-stage.yaml
+    - appName: payments-example-stage
+      name: payments-example
+      namespace: stage
+      valuesFile: values-stage.yaml
+    - appName: python-django-stage
+      name: python-django
+      namespace: stage
+      valuesFile: values-stage.yaml
+    - appName: surge-plugin-stage
+      name: surge-plugin
+      namespace: stage
+      valuesFile: values-stage.yaml
+    # ── Development ──────────────────────────────────────────────────────────
+    - appName: java-springboot-dev
+      name: java-springboot
+      namespace: dev
+      valuesFile: values-dev.yaml
+    - appName: laravel-example-dev
+      name: laravel-example
+      namespace: dev
+      valuesFile: values-dev.yaml
+    - appName: payments-example-dev
+      name: payments-example
+      namespace: dev
+      valuesFile: values-dev.yaml
+    - appName: python-django-dev
+      name: python-django
+      namespace: dev
+      valuesFile: values-dev.yaml
+    - appName: surge-plugin-dev
+      name: surge-plugin
+      namespace: dev
+      valuesFile: values-dev.yaml
 
 # ── Policy engines ─────────────────────────────────────────────────────────────
 # Set enabled: false to skip the engine install (e.g. Kyverno already installed

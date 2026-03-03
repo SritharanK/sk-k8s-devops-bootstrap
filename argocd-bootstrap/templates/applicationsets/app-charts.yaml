@@ -6,8 +6,12 @@
 # and lifecycle all Application resources automatically. To switch from static
 # mode to ApplicationSet mode:
 #   1. Set applicationSet.enabled: true in argocd-bootstrap/values.yaml
-#   2. Set applicationSet.static.enabled: false (or delete templates/applications/)
-#   3. Extend applicationSet.apps[] with each new service — no new YAML file required
+#   2. Remove or ignore templates/applications/ to avoid duplicate Applications
+#   3. Extend applicationSet.apps[] to onboard new services — no new YAML file needed
+#
+# Each entry requires: name (chart dir), appName (unique ArgoCD app name),
+# namespace, and valuesFile. This pattern supports all three environments
+# (dev/stage/prod) from a single ApplicationSet object.
 #
 # Sync-wave 10 matches the static Applications so both modes are equivalent.
 apiVersion: argoproj.io/v1alpha1
@@ -23,14 +27,15 @@ spec:
     - list:
         elements:
           {{- range .Values.applicationSet.apps }}
-          - name: {{ .name }}
+          - appName: {{ .appName }}
+            chartName: {{ .name }}
             namespace: {{ .namespace }}
             valuesFile: {{ .valuesFile }}
           {{- end }}
 
   template:
     metadata:
-      name: "{{`{{name}}`}}"
+      name: "{{`{{appName}}`}}"
       namespace: argocd
       finalizers:
         - resources-finalizer.argocd.argoproj.io
@@ -42,7 +47,7 @@ spec:
       source:
         repoURL: {{ .Values.spec.source.repoURL }}
         targetRevision: {{ .Values.spec.source.targetRevision }}
-        path: "./helmcharts/app-charts/{{`{{name}}`}}"
+        path: "./helmcharts/app-charts/{{`{{chartName}}`}}"
         helm:
           valueFiles:
             - "{{`{{valuesFile}}`}}"
