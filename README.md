@@ -122,9 +122,9 @@ Both patterns coexist in this repo. Static Applications are production-ready tod
 
 | Category | Components |
 |----------|-----------|
-| **Core** | RKE2 cluster provisioning, Argo CD App of Apps, system charts (ingress-nginx, cert-manager, sealed-secrets), network policies, Kyverno admission control, RBAC |
-| **Optional** | Jenkins (can use any CI), GitLab CE, PostgreSQL, MariaDB, kube-prometheus-stack, Loki, phpMyAdmin, ApplicationSet |
-| **Demo-only** | 5 sample app charts (java-springboot, python-django, laravel-example, payments-example, surge-plugin) — these illustrate the deployment pattern; replace with your real services |
+| **Core** | RKE2 cluster provisioning, Argo CD App of Apps, system charts (ingress-nginx, cert-manager, sealed-secrets), default-deny network policies, Kyverno engine + policies, three-tier RBAC, PodDisruptionBudget, dual-metric HPA |
+| **Optional** | Jenkins (can swap any CI), GitLab CE, PostgreSQL, MariaDB, kube-prometheus-stack, Loki, phpMyAdmin, ApplicationSet (scale mode); each toolchain is independently toggled via `toolchains.<name>.enabled` |
+| **Demo-only** | 5 sample app charts (java-springboot, python-django, laravel-example, payments-example, surge-plugin) — illustrate the deployment pattern; replace with your real services |
 
 ---
 
@@ -154,13 +154,30 @@ Both patterns coexist in this repo. Static Applications are production-ready tod
 
 - All secrets encrypted with **Ansible Vault** — no plaintext in any committed file
 - **Sealed Secrets** for Kubernetes secrets in Git (encrypted at rest, safe to commit)
-- **Kyverno** admission control: blocks privileged containers, enforces non-root, requires probes and resource limits, disallows `:latest` / untagged images
+- **Kyverno engine** managed by Argo CD (sync-wave 4), policies applied after (sync-wave 6): blocks privileged containers, enforces non-root, requires probes and resource limits, disallows `:latest` tags
+- **Pod Security Standards**: `enforce: restricted` on `prod`, `enforce: baseline` on `dev`/`stage`; `audit/warn: restricted` everywhere
+- **Three-tier RBAC**: `platform-admin` (cluster-wide) → `deployer` (namespace write) → `viewer` (namespace read-only)
 - **Network policies**: default-deny in all app namespaces; explicit allow-list for DNS and ingress
-- **Pod Security Standards**: baseline enforced, restricted audited/warned
-- **Trivy**: container image scans in Jenkins CI (blocking) and config scans in GitHub Actions (advisory)
-- **Gitleaks**: secret scanning on every push and PR
+- **PodDisruptionBudget**: `minAvailable: 1` on every prod chart — zero-downtime node drain
+- **Trivy**: container image scans in Jenkins CI (blocking on CRITICAL/HIGH) and config scans in GitHub Actions (advisory)
+- **Gitleaks**: secret scanning on every push and PR; `.gitleaks.toml` suppresses confirmed false positives
 
 See [docs/SECURITY.md](docs/SECURITY.md) and [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
+
+---
+
+## Contributing
+
+Install pre-commit hooks before your first commit:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+Hooks run automatically: YAML lint, Helm lint, Gitleaks secret scan, file hygiene. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
+
+Pull requests use the template in `.github/PULL_REQUEST_TEMPLATE.md`. Code ownership is declared in `.github/CODEOWNERS`.
 
 ---
 
