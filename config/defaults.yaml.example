@@ -11,7 +11,7 @@
 #   This file is the single source of truth. Values flow to:
 #     • Ansible playbooks (via vars_files: ../../config/defaults.yaml)
 #     • Jenkins JCasC (via Ansible-templated jenkins.yaml)
-#     • Jenkinsfiles (via Jenkins global env vars — never hardcoded in pipelines)
+#     • Jenkinsfiles (via Jenkins global env vars — never hardcoded)
 #     • Helm chart values (via argocd-bootstrap/values.yaml)
 #     • Kubernetes manifests (via Helm templating)
 # -----------------------------------------------------------------------------
@@ -22,12 +22,12 @@ cluster_name: "YOUR_CLUSTER_NAME"
 
 # kubernetes_provisioner: rke2 is the default and recommended.
 # Set to rke1 only for legacy environments (RKE1 is EOL upstream).
-kubernetes_provisioner: "rke2"         # rke2 (recommended) | rke1 (legacy_compatibility: true)
+kubernetes_provisioner: "rke2"   # rke2 (recommended) | rke1 (legacy)
 
 # RKE2 settings (used when kubernetes_provisioner: rke2)
-rke2_version: "CHANGE_ME"             # e.g. v1.31.2+rke2r1 — pin to a specific release
-rke2_channel: "stable"                # stable | latest | testing
-rke2_cni: "canal"                     # canal | calico | cilium | flannel
+rke2_version: "CHANGE_ME"       # e.g. v1.31.2+rke2r1 — pin to a release
+rke2_channel: "stable"          # stable | latest | testing
+rke2_cni: "canal"               # canal | calico | cilium | flannel
 
 # RKE1 settings (legacy — used when kubernetes_provisioner: rke1)
 rke_network_plugin: "flannel"          # flannel | calico
@@ -37,9 +37,9 @@ service_cidr: "10.43.0.0/16"          # Service CIDR — RKE2 default
 
 # ── Node access ──────────────────────────────────────────────────────────────
 master_ip: "YOUR_MASTER_IP"
-worker_ip: "YOUR_WORKER_IP"           # May be the same as master_ip for single-node
+worker_ip: "YOUR_WORKER_IP"     # May be the same as master_ip for single-node
 ssh_port: "22"
-ansible_user: "YOUR_SSH_USER"         # OS user for Ansible SSH (password/key via vault)
+ansible_user: "YOUR_SSH_USER"   # OS user for Ansible SSH (key/password via vault)
 
 
 # ── Platform namespaces ───────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ namespace_ingress: "nginx"
 
 # ── Ingress ───────────────────────────────────────────────────────────────────
 ingress_class_name: "nginx"
-ingress_external_ip: "YOUR_MASTER_IP" # External IP or hostname for ingress controller
+ingress_external_ip: "YOUR_MASTER_IP"  # External IP or hostname
 
 
 # ── Git (this repo or your fork) ─────────────────────────────────────────────
@@ -68,7 +68,7 @@ argocd_port: "31980"
 argocd_url: "http://YOUR_MASTER_IP:31980"
 argocd_admin_user: "admin"
 # Generate password hash with:
-#   ARGO_PWD='yourpassword' && htpasswd -nbBC 10 "" $ARGO_PWD | tr -d ':\n' | sed 's/$2y/$2a/'
+#   htpasswd -nbBC 10 "" yourpassword | tr -d ':\n' | sed 's/$2y/$2a/'
 argocd_admin_password_hash: "YOUR_BCRYPT_HASH"
 argocd_project_name: "prod"
 
@@ -86,7 +86,7 @@ jenkins_docker_creds_id: "dockerhub"
 jenkins_git_user_creds_id: "jenkins_git_user"
 jenkins_argocd_creds_id: "argocd-creds"
 
-# Git commit identity used by Jenkins CD pipelines when pushing image tag updates
+# Git commit identity used by Jenkins CD pipelines (image tag updates)
 jenkins_git_commit_user: "jenkins"
 jenkins_git_commit_email: "jenkins@YOUR_DOMAIN"
 
@@ -95,7 +95,7 @@ jenkins_dsl_script_pattern: "scripts/**/*.groovy"
 
 
 # ── Docker / container registry ──────────────────────────────────────────────
-docker_registry: "registry.example.com"   # e.g. index.docker.io for Docker Hub
+docker_registry: "registry.example.com"  # e.g. index.docker.io for Docker Hub
 docker_username: "YOUR_DOCKER_USERNAME"
 docker_email: "YOUR_DOCKER_EMAIL"
 # docker_password: set via ansible-vault — never plain text here
@@ -105,17 +105,17 @@ registry_pull_secret_name: "dockerhub-secret"
 # ── Helm chart registry (helm-common library) ────────────────────────────────
 # Published via OCI to GitHub Packages:
 helm_chart_repo_url: "oci://ghcr.io/YOUR_ORG/helm-charts"
-# helm_chart_repo_url: "https://YOUR_ORG.github.io/helm-common"  # GitHub Pages alternative
+# helm_chart_repo_url: "https://YOUR_ORG.github.io/helm-common"  # GitHub Pages alt
 
 
 # ── RBAC ─────────────────────────────────────────────────────────────────────
 platform_admin_group: "YOUR_PLATFORM_ADMIN_GROUP"
-platform_deployers_group: "deployers"    # CI/CD service accounts and operators
-platform_viewers_group: "viewers"        # Read-only access for developers and SREs
+platform_deployers_group: "deployers"    # CI/CD service accounts
+platform_viewers_group: "viewers"    # Read-only for developers and SREs
 
 
 # ── Cert-manager (Let's Encrypt) ─────────────────────────────────────────────
-# Set to your real email — Let's Encrypt uses this for certificate expiry notices.
+# Set to your real email — Let's Encrypt sends certificate expiry notices here.
 cert_manager_email: "CHANGE_ME"
 
 
