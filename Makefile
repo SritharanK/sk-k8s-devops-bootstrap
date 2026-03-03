@@ -26,6 +26,9 @@ SYSTEM_CHARTS := helmcharts/system-charts/00_misc \
                  helmcharts/system-charts/kyverno-policies \
                  helmcharts/system-charts/argocd-project
 
+# System charts that have upstream Helm repository dependencies (need helm dep build).
+SYSTEM_CHARTS_WITH_DEPS := helmcharts/system-charts/kyverno
+
 .PHONY: help install-common bootstrap-k8s install-jenkins install-argocd seal-secrets \
         helm-deps helm-lint helm-render check
 
@@ -46,7 +49,7 @@ help:
 	@echo ""
 	@echo "  Helm developer targets"
 	@echo "  ─────────────────────────────────────────────────────────────────"
-	@echo "  helm-deps           Resolve helm-common dependency for all app charts"
+	@echo "  helm-deps           Resolve chart dependencies (app charts + kyverno system chart)"
 	@echo "  helm-lint           Lint all app + system charts with --strict (blocking)"
 	@echo "  helm-render         Render all app charts to stdout (visual inspection)"
 	@echo "  check               Run helm-lint + yamllint (full local validation)"
@@ -82,10 +85,15 @@ seal-secrets:
 
 # ── Helm developer targets ────────────────────────────────────────────────────
 
-# Resolve helm-common dependency for all app charts (run this once after clone).
+# Resolve dependencies for all app charts (helm-common) and system charts with
+# upstream repo dependencies (e.g. kyverno). Run once after clone.
 helm-deps:
 	@for chart in $(APP_CHARTS); do \
 	  echo "── Building deps: $$chart"; \
+	  helm dependency build $$chart; \
+	done
+	@for chart in $(SYSTEM_CHARTS_WITH_DEPS); do \
+	  echo "── Building system deps: $$chart"; \
 	  helm dependency build $$chart; \
 	done
 
