@@ -1,4 +1,4 @@
-attributes = [job_name: "foggypay", dockerfile: "Dockerfile", jenkinsfile_template: "foggypay.Jenkinsfile", disabled: 'false']
+attributes = [job_name: "payments-example", dockerfile: "Dockerfile", jenkinsfile_template: "payments-example.Jenkinsfile", disabled: 'false']
 
 pipelineJob("CD/${attributes['job_name']}") {
     disabled("${attributes['disabled']}".toBoolean())

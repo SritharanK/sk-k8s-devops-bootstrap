@@ -18,7 +18,7 @@ This document lists all features of the project and describes the end-to-end flo
 | **GitOps** | Argo CD install (Helm) | `Makefile` target `install-argocd` → `helmcharts/system-charts/argo-cd/` |
 | **GitOps** | App-of-Apps bootstrap (root Application) | `scripts/misc/argocd_prerequisite.sh` |
 | **GitOps** | System components: ingress-nginx, cert-manager, sealed-secrets, NFS provisioner, Argo CD project, config, network policies, Kyverno policies, misc (namespaces, RBAC, LimitRange, etc.) | `argocd-bootstrap/templates/toolchains/*.yaml` |
-| **GitOps** | Sample applications: python-django, java-springboot, laravel-example, surge-plugin, foggypay | `argocd-bootstrap/templates/applications/*.yaml` |
+| **GitOps** | Sample applications: python-django, java-springboot, laravel-example, surge-plugin, payments-example | `argocd-bootstrap/templates/applications/*.yaml` |
 | **Secrets** | Sealed Secrets: seal unsealed YAML with kubeseal | `scripts/misc/seal_k8s_secrets.sh` |
 | **Secrets** | Docker registry pull secret (create + seal) | `scripts/misc/create_k8s_docker_secret_seal.sh`; templates in `helmcharts/system-charts/argocd-config/unseal/` |
 | **CI/CD** | Jenkins pipelines: build, test, Trivy image scan (blocking on CRITICAL/HIGH), push image, trigger Argo CD sync | `scripts/jenkinsfiles/ci/*.Jenkinsfile` and `scripts/jenkinsfiles/cd/*.Jenkinsfile` |
@@ -31,7 +31,7 @@ This document lists all features of the project and describes the end-to-end flo
 | **Security** | LimitRange and ResourceQuota per namespace | `helmcharts/system-charts/00_misc/limitrange-resourcequota.yaml` |
 | **Apps** | Shared Helm chart (securityContext, probes, env, configMap, resources) | `helmcharts/helm-common/` |
 | **Apps** | App charts with prod values (resources, probes) compliant with Kyverno | `helmcharts/app-charts/*/values-prod.yaml` |
-| **Apps** | App charts (python-django, java-springboot, laravel, foggypay, surge-plugin) | `helmcharts/app-charts/*/` |
+| **Apps** | App charts (python-django, java-springboot, laravel, payments-example, surge-plugin) | `helmcharts/app-charts/*/` |
 | **Apps** | Per-environment values: **values-prod.yaml** (used by Argo CD; includes resources for Kyverno), **values-dev.yaml** | `helmcharts/app-charts/<app>/values-*.yaml` |
 | **Samples** | Sample services (Dockerfiles, source) | `sample-services/` |
 | **Entrypoints** | One-command bootstrap (config + inventory copy + next steps) | `scripts/bootstrap_config.sh` |

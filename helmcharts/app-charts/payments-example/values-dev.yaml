@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Dev environment overrides for foggypay.
+# Dev environment overrides for payments-example.
 # Use this file when deploying to a "dev" namespace (e.g. create an Argo CD
 # Application with destination.namespace: dev and valueFiles: [values-dev.yaml]).
 # -----------------------------------------------------------------------------
@@ -8,7 +8,7 @@ helm-common:
   replicas: 1
   # Override image or DB host for dev if needed:
   # image:
-  #   name: "YOUR_REGISTRY/foggypay:dev"
+  #   name: "YOUR_REGISTRY/payments-example:dev"
   # env:
   #   - name: WORDPRESS_DB_HOST
   #     value: "db.dev.svc.cluster.local:3306"

@@ -4,7 +4,7 @@
 # License: MIT
 # -----------------------------------------------------------------------------
 def dockerRegistry = env.DOCKER_REGISTRY ?: "YOUR_DOCKER_REGISTRY"
-def serviceName = "foggypay"
+def serviceName = "payments-example"
 def dockerRepo = "${dockerRegistry}/${serviceName}"
 def serviceGitRepoUrl = env.SERVICE_GIT_REPO ?: "git@github.com:YOUR_ORG/payments-example.git"
 def opsGitRepoUrl = env.OPS_GIT_REPO ?: "git@github.com:YOUR_ORG/your-ops-repo.git"

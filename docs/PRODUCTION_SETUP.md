@@ -143,7 +143,7 @@ Same idea for any other app-specific secrets (API keys, etc.): use Kubernetes Se
 
 ### DB host and connection strings
 
-Set `DB_HOST` (or `WORDPRESS_DB_HOST` for foggypay/surge-plugin) in the app's Helm values to your real DB host (e.g. a Kubernetes Service name like `mysql.prod.svc.cluster.local` or an external host). Create the DB and user in MySQL; then store the password in a Secret and reference it as below.
+Set `DB_HOST` (or `WORDPRESS_DB_HOST` for payments-example/surge-plugin) in the app's Helm values to your real DB host (e.g. a Kubernetes Service name like `mysql.prod.svc.cluster.local` or an external host). Create the DB and user in MySQL; then store the password in a Secret and reference it as below.
 
 ### Example: passing DB password from a Kubernetes Secret
 

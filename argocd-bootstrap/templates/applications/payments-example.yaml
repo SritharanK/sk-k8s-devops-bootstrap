@@ -1,10 +1,10 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: foggypay
+  name: payments-example
   namespace: argocd
   annotations:
-    argocd.argoproj.io/manifest-generate-paths: ./helmcharts/app-charts/foggypay
+    argocd.argoproj.io/manifest-generate-paths: ./helmcharts/app-charts/payments-example
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -15,7 +15,7 @@ spec:
   source:
     repoURL: {{ .Values.spec.source.repoURL }}
     targetRevision: {{ .Values.spec.source.targetRevision }}
-    path: ./helmcharts/app-charts/foggypay
+    path: ./helmcharts/app-charts/payments-example
     helm:
       valueFiles:
         - values-prod.yaml
