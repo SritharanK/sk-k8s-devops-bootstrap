@@ -13,8 +13,44 @@ on:
     branches: [main, master]
 
 jobs:
-  helm:
-    name: Helm template
+  helm-lint:
+    name: Helm lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.13.0"
+
+      - name: Build helm-common dependency for app charts
+        run: |
+          for chart in helmcharts/app-charts/*/; do
+            helm dependency build "$chart" 2>/dev/null || true
+          done
+
+      - name: Lint all app Helm charts
+        run: |
+          for chart in helmcharts/app-charts/*/; do
+            echo "── Linting $chart ──"
+            helm lint "$chart" --strict
+          done
+
+      - name: Lint system Helm charts
+        run: |
+          for chart in helmcharts/system-charts/00_misc \
+                       helmcharts/system-charts/network-policies \
+                       helmcharts/system-charts/kyverno-policies \
+                       helmcharts/system-charts/argocd-project; do
+            if [ -f "$chart/Chart.yaml" ]; then
+              echo "── Linting $chart ──"
+              helm lint "$chart" --strict
+            fi
+          done
+
+  helm-template:
+    name: Helm template (argocd-bootstrap)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
