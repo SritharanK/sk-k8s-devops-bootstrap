@@ -1,0 +1,31 @@
+# Gitleaks configuration — allowlist for known false positives in this repo.
+# All entries here are PLACEHOLDER values in *.example files, not real secrets.
+# Real secrets must never be committed; use Sealed Secrets (argocd-config/templates/).
+
+title = "sk-k8s-devops-bootstrap gitleaks config"
+
+[extend]
+# Inherit the full default ruleset; only add allowlists below.
+useDefault = true
+
+[[allowlists]]
+description = "SSH key skeleton in argocd-repo-secret example template"
+# The file contains a PEM header/footer as documentation — the key body is a
+# literal placeholder string, not an encoded private key.
+paths = [
+  "argocd-config/templates/argocd-repo-secret.yaml.example",
+]
+regexes = [
+  "-----BEGIN OPENSSH PRIVATE KEY-----",
+  "-----END OPENSSH PRIVATE KEY-----",
+  "<BASE64_OR_PEM_ENCODED_PRIVATE_KEY>",
+]
+
+[[allowlists]]
+description = "Generic placeholder values in *.example and *.example.* files"
+# CHANGE_ME, YOUR_*, and angle-bracket placeholders are never real secrets.
+regexes = [
+  '''CHANGE_ME''',
+  '''YOUR_[A-Z_]+''',
+  '''<[A-Z_]+>''',
+]
