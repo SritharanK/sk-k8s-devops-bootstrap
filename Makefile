@@ -26,8 +26,36 @@ SYSTEM_CHARTS := helmcharts/system-charts/00_misc \
                  helmcharts/system-charts/kyverno-policies \
                  helmcharts/system-charts/argocd-project
 
-.PHONY: install-common bootstrap-k8s install-jenkins install-argocd seal-secrets \
+.PHONY: help install-common bootstrap-k8s install-jenkins install-argocd seal-secrets \
         helm-deps helm-lint helm-render check
+
+# ── Self-documenting help ─────────────────────────────────────────────────────
+## Show this help message
+help:
+	@echo ""
+	@echo "Kubernetes DevOps Bootstrap — available targets"
+	@echo "================================================"
+	@echo ""
+	@echo "  Provisioning"
+	@echo "  ─────────────────────────────────────────────────────────────────"
+	@echo "  install-common      Install Docker, RKE, kubectl, Java, Python on hosts"
+	@echo "  bootstrap-k8s       Bootstrap Kubernetes cluster with RKE (runs install-common first)"
+	@echo "  install-jenkins     Install and configure Jenkins via Ansible + JCasC"
+	@echo "  install-argocd      Install Argo CD via Helm (set KUBECONFIG first)"
+	@echo "  seal-secrets        Seal secret manifests using kubeseal"
+	@echo ""
+	@echo "  Helm developer targets"
+	@echo "  ─────────────────────────────────────────────────────────────────"
+	@echo "  helm-deps           Resolve helm-common dependency for all app charts"
+	@echo "  helm-lint           Lint all app + system charts with --strict (blocking)"
+	@echo "  helm-render         Render all app charts to stdout (visual inspection)"
+	@echo "  check               Run helm-lint + yamllint (full local validation)"
+	@echo ""
+	@echo "  Variables (override with VAR=value on the command line)"
+	@echo "  ─────────────────────────────────────────────────────────────────"
+	@echo "  INVENTORY           Ansible inventory path  (default: $(INVENTORY))"
+	@echo "  VAULT_PASSWORD_FILE Ansible vault pass file (default: $(VAULT_PASSWORD_FILE))"
+	@echo ""
 
 # ── Provisioning ──────────────────────────────────────────────────────────────
 
