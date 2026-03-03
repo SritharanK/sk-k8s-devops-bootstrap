@@ -1,0 +1,25 @@
+# CODEOWNERS — auto-requests review from the maintainer for the relevant path.
+# Syntax: <pattern>  <@github-username>
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Catch-all (any file not matched below)
+*                           @SritharanK
+
+# GitOps layer — ArgoCD bootstrap and sync configuration
+/argocd-bootstrap/          @SritharanK
+/argocd-config/             @SritharanK
+
+# Infrastructure provisioning
+/ansible/                   @SritharanK
+
+# Helm charts
+/helmcharts/                @SritharanK
+
+# CI/CD pipelines
+/scripts/                   @SritharanK
+
+# GitHub workflow and hygiene files
+/.github/                   @SritharanK
+
+# Platform configuration baseline
+/config/                    @SritharanK
