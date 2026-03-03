@@ -13,8 +13,9 @@ spec:
               kinds:
                 - Pod
               namespaces:
-                - prod
-                - dev
+                {{- range .Values.enforcedNamespaces }}
+                - {{ . }}
+                {{- end }}
       validate:
         message: "Pods must run as non-root (securityContext.runAsNonRoot: true or runAsUser != 0)."
         pattern:

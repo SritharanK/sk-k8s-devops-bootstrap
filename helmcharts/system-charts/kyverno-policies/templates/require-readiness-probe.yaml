@@ -1,4 +1,3 @@
-# Optional: require readinessProbe on pods in prod/dev (deploy only when Kyverno is installed).
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -14,8 +13,9 @@ spec:
               kinds:
                 - Pod
               namespaces:
-                - prod
-                - dev
+                {{- range .Values.enforcedNamespaces }}
+                - {{ . }}
+                {{- end }}
       validate:
         message: "Pods must define a readinessProbe."
         pattern:

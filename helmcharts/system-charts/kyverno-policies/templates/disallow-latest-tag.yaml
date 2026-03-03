@@ -1,0 +1,44 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: disallow-latest-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                {{- range .Values.enforcedNamespaces }}
+                - {{ . }}
+                {{- end }}
+      validate:
+        message: "Images must not use the :latest tag."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"
+            =(initContainers):
+              - image: "!*:latest"
+    - name: require-explicit-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                {{- range .Values.enforcedNamespaces }}
+                - {{ . }}
+                {{- end }}
+      validate:
+        message: "Images must have an explicit tag (e.g. nginx:1.24, not nginx)."
+        pattern:
+          spec:
+            containers:
+              - image: "*:*"
+            =(initContainers):
+              - image: "*:*"

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: kyverno-policies
+description: Kyverno ClusterPolicies enforcing security baselines (privileged containers, non-root, probes, resource limits, latest tags).
+type: application
+version: 1.0.0
