@@ -22,3 +22,7 @@ ansible/kube_config_cluster.yaml
 # Local config and secrets – do not commit real values
 config/defaults.yaml
 scripts/misc/.env
+
+# Internal planning and analysis documents – local only
+docs/ANALYSIS.md
+docs/UPGRADE_PLAN.md
