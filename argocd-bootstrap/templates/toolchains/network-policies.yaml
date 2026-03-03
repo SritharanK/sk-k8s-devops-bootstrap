@@ -17,6 +17,16 @@ spec:
     repoURL: {{ .Values.spec.source.repoURL }}
     targetRevision: {{ .Values.spec.source.targetRevision }}
     path: ./helmcharts/system-charts/network-policies
+    helm:
+      parameters:
+        - name: appNamespaces[0]
+          value: {{ .Values.namespaces.prod | quote }}
+        - name: appNamespaces[1]
+          value: {{ .Values.namespaces.dev | quote }}
+        - name: appNamespaces[2]
+          value: {{ .Values.namespaces.stage | quote }}
+        - name: ingressNginxNamespace
+          value: {{ .Values.namespaces.nginx | quote }}
   syncPolicy:
     automated:
       prune: true
