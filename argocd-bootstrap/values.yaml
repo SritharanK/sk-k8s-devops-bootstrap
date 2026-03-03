@@ -126,6 +126,38 @@ applicationSet:
       namespace: dev
       valuesFile: values-dev.yaml
 
+# ── Toolchain optionality ─────────────────────────────────────────────────────
+# Set any toolchain to enabled: false to skip its ArgoCD Application entirely.
+# Use this when a component is already managed out-of-band, or when you want
+# a minimal cluster without optional add-ons.
+#
+# Core (required for most platform features):
+#   misc, network-policies, cert-manager, sealed-secrets, nginx
+# Recommended (strong defaults):
+#   kyverno, kyverno-policies, argocd-project, argocd-config
+# Optional:
+#   nfs-provisioner (only needed if using NFS storage)
+#   phpmyadmin (dev/debug convenience — disable in production)
+toolchains:
+  misc:
+    enabled: true
+  networkPolicies:
+    enabled: true
+  certManager:
+    enabled: true
+  sealedSecrets:
+    enabled: true
+  nginx:
+    enabled: true
+  argoCdProject:
+    enabled: true
+  argoCdConfig:
+    enabled: true
+  nfsProvisioner:
+    enabled: true
+  phpmyadmin:
+    enabled: false   # disabled by default — enable only in dev/debug clusters
+
 # ── Policy engines ─────────────────────────────────────────────────────────────
 # Set enabled: false to skip the engine install (e.g. Kyverno already installed
 # out-of-band, or you prefer a different policy engine).

@@ -1,3 +1,4 @@
+{{- if .Values.toolchains.misc.enabled }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -46,3 +47,4 @@ spec:
         duration: 10s
         factor: 2
         maxDuration: 5m
+{{- end }}
