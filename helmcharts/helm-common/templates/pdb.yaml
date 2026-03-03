@@ -1,0 +1,22 @@
+# -----------------------------------------------------------------------------
+# Author : Sritharan K (https://www.skengineer.be)
+# License: MIT
+# -----------------------------------------------------------------------------
+{{- if .Values.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "chart.fullname" . }}
+  labels:
+    app: {{ template "chart.fullname" . }}
+    heritage: {{ .Release.Service }}
+spec:
+  {{- if .Values.pdb.minAvailable }}
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  {{- else if .Values.pdb.maxUnavailable }}
+  maxUnavailable: {{ .Values.pdb.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: {{ template "chart.fullname" . }}
+{{- end }}

@@ -51,6 +51,9 @@ helm-common:
     minReplicas: 1
     maxReplicas: 10
     targetMemoryUtilizationPercentage: 80
+  pdb:
+    enabled: true
+    minAvailable: 1     # keep at least 1 pod live during node drain / rolling upgrades
   service:
     type: ClusterIP
     port: 80
