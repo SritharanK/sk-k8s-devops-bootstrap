@@ -52,3 +52,16 @@ helm-common:
     nodePorts: {}
     annotations: {}
   enabledDeployment: true
+  # ── Ingress (uncomment and fill in to expose via NGINX + cert-manager TLS) ──
+  # ingress:
+  #   enabled: true
+  #   className: "nginx"
+  #   hostname:
+  #     - host: surge-plugin.yourdomain.com      # replace with your domain
+  #       paths:
+  #         - /
+  #   tls: true
+  #   tlsSecret: "surge-plugin-tls"              # cert-manager will create this
+  #   annotations:
+  #     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  #     nginx.ingress.kubernetes.io/ssl-redirect: "true"
