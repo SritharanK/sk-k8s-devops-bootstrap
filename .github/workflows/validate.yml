@@ -101,7 +101,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Scan Dockerfiles for misconfigurations
-        uses: aquasecurity/trivy-action@0.34.2
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: config
           scan-ref: sample-services/
@@ -117,7 +117,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Scan Helm charts for Kubernetes misconfigurations
-        uses: aquasecurity/trivy-action@0.34.2
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: config
           scan-ref: helmcharts/
@@ -133,7 +133,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Scan Kyverno policy templates for misconfigurations
-        uses: aquasecurity/trivy-action@0.34.2
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: config
           scan-ref: helmcharts/system-charts/kyverno-policies/
@@ -149,7 +149,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Scan ArgoCD bootstrap manifests for misconfigurations
-        uses: aquasecurity/trivy-action@0.34.2
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: config
           scan-ref: argocd-bootstrap/
