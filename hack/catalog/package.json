@@ -12,6 +12,9 @@
   },
   "overrides": {
     "glob": "14.0.6",
-    "undici": "6.29.1"
+    "undici": "6.29.1",
+    "@octokit/plugin-paginate-rest": "9.2.2",
+    "@octokit/request": "8.4.1",
+    "@octokit/request-error": "5.1.1"
   }
 }

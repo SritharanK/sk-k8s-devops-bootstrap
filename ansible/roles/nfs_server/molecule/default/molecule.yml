@@ -9,7 +9,7 @@ driver:
 platforms:
   - name: nfs-server-ubuntu2404
     image: docker.io/library/ubuntu:24.04
-    dockerfile: ../../../../molecule/Dockerfile.j2
+    dockerfile: ../../../../molecule/Containerfile.j2
     pre_build_image: false
     privileged: true
     cgroupns_mode: host
@@ -18,7 +18,7 @@ platforms:
     command: /lib/systemd/systemd
   - name: nfs-server-debian12
     image: docker.io/library/debian:12
-    dockerfile: ../../../../molecule/Dockerfile.j2
+    dockerfile: ../../../../molecule/Containerfile.j2
     pre_build_image: false
     privileged: true
     cgroupns_mode: host
@@ -27,7 +27,7 @@ platforms:
     command: /lib/systemd/systemd
   - name: nfs-server-debian13
     image: docker.io/library/debian:13
-    dockerfile: ../../../../molecule/Dockerfile.j2
+    dockerfile: ../../../../molecule/Containerfile.j2
     pre_build_image: false
     privileged: true
     cgroupns_mode: host
@@ -36,7 +36,7 @@ platforms:
     command: /lib/systemd/systemd
   - name: nfs-server-rocky9
     image: docker.io/rockylinux/rockylinux:9
-    dockerfile: ../../../../molecule/Dockerfile.j2
+    dockerfile: ../../../../molecule/Containerfile.j2
     pre_build_image: false
     privileged: true
     cgroupns_mode: host

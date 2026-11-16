@@ -6,9 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A Go fuzz test for the `name` query parameter of `hello-api` (`FuzzHelloName`): every response is JSON, a name is accepted exactly when `validateName` accepts it, and an accepted name comes back unchanged. `go test` runs its seeds.
+
 ### Changed
 
 - On pull requests the `docs` job checks external links only in the Markdown files that the pull request changes, so an outage of an unrelated site no longer blocks it. Local links and anchors of every file are still checked on every run, and pushes to `main`, the weekly run and manual runs check every link. New target `make lint-links-offline` (no network), part of `make lint`.
+
+### Fixed
+
+- The Molecule image template is named `ansible/molecule/Containerfile.j2`. As `Dockerfile.j2` its Jinja `FROM` line made tools that parse every `Dockerfile*`, such as OpenSSF Scorecard, fail on the whole repository.
+
+### Security
+
+- The catalog validator's `@octokit/request`, `@octokit/request-error` and `@octokit/plugin-paginate-rest` are lifted to releases with ReDoS fixes through npm overrides.
 
 ## [1.0.0] - 2026-11-16
 
