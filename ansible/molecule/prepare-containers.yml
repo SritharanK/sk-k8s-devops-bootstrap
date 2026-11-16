@@ -1,0 +1,28 @@
+---
+# Shared first step of every Molecule prepare playbook. It runs as root through
+# the container connection, without privilege escalation, because it prepares
+# what privilege escalation needs. Test containers only.
+- name: Prepare the test containers
+  hosts: all
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Wait until systemd reports the boot as finished
+      # The containers run systemd as PID 1; facts, services and sudo are used
+      # only after boot. raw needs no Python on the target and gathers no facts.
+      ansible.builtin.raw: timeout 120 systemctl is-system-running --wait
+      register: molecule__boot
+      changed_when: false
+      # A container has units that cannot start there (degraded); boot is still finished.
+      failed_when: molecule__boot.stdout | trim not in ['running', 'degraded']
+
+    # Red Hat family images keep /etc/shadow at mode 0000, so root reads it only
+    # with the dac_override or dac_read_search capability. On the Ubuntu CI
+    # runners the host AppArmor profile unix-chkpwd confines
+    # /usr/sbin/unix_chkpwd by path, inside containers as well, and denies both
+    # capabilities. The PAM account check of sudo then fails with
+    # "Authentication service cannot retrieve authentication info". Mode 0400
+    # lets root read the file through the owner permission instead.
+    - name: Let root read /etc/shadow without a capability (Red Hat family)
+      ansible.builtin.raw: test ! -f /etc/redhat-release || chmod 0400 /etc/shadow
+      changed_when: false

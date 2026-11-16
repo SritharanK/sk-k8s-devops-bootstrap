@@ -1,6 +1,6 @@
 ---
-- name: Wait for the test containers to finish booting
-  ansible.builtin.import_playbook: ../../../../molecule/wait-for-boot.yml
+- name: Prepare the test containers
+  ansible.builtin.import_playbook: ../../../../molecule/prepare-containers.yml
 
 # Test fixtures that a cloud image already provides: ss for the port check (iproute2), sysctl for
 # ansible.posix.sysctl (procps), and IP forwarding enabled in the container network namespace.

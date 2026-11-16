@@ -1,27 +1,3 @@
 ---
-- name: Wait for the test containers to finish booting
-  ansible.builtin.import_playbook: ../../../../molecule/wait-for-boot.yml
-
-- name: Diagnostics (temporary)
-  hosts: all
-  gather_facts: false
-  become: false
-  tasks:
-    - name: Collect the privilege escalation environment
-      ansible.builtin.raw: >-
-        test -f /etc/redhat-release || exit 0;
-        rpm -q sudo pam glibc libselinux systemd sssd-client 2>&1;
-        sudo -n true 2>&1; echo "sudo rc=$?";
-        getent passwd root; echo "getent passwd rc=$?";
-        getent shadow root | cut -d: -f1,3-; echo "getent shadow rc=$?";
-        python3 -c 'import spwd; print(spwd.getspnam("root").sp_lstchg)' 2>&1;
-        /usr/sbin/unix_chkpwd root chkexpiry </dev/null 2>&1; echo "unix_chkpwd rc=$?";
-        journalctl -b --no-pager -o short-monotonic 2>&1 | grep -iE 'pam|sudo|chkpwd|nss|sss' | tail -20;
-        ls -l /etc/nsswitch.conf /var/lib/sss/pipes 2>&1; cat /etc/pam.d/system-auth
-      register: base__diag
-      changed_when: false
-      failed_when: false
-
-    - name: Show the privilege escalation environment
-      ansible.builtin.debug:
-        var: base__diag.stdout_lines
+- name: Prepare the test containers
+  ansible.builtin.import_playbook: ../../../../molecule/prepare-containers.yml

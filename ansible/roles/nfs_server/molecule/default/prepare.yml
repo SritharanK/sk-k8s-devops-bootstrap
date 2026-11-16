@@ -1,3 +1,3 @@
 ---
-- name: Wait for the test containers to finish booting
-  ansible.builtin.import_playbook: ../../../../molecule/wait-for-boot.yml
+- name: Prepare the test containers
+  ansible.builtin.import_playbook: ../../../../molecule/prepare-containers.yml
