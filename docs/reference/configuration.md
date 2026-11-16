@@ -119,7 +119,7 @@ These keys belong to the TLS design of the Gateway ([ADR 0003](../adr/0003-gatew
 | --- | --- | --- | --- | --- |
 | `platform.acme.solver` | `http01` or `dns01` | `http01` | argocd-bootstrap | ACME challenge type. `http01`: no wildcard; the certificate lists exactly `platform.gateway.hostnames`, issued through the cert-manager `gatewayHTTPRoute` solver on the listener `http` of Gateway `platform`. `dns01`: the certificate covers `<domain>`, `*.<domain>` and `*.<env>.<domain>` for every environment. |
 | `platform.acme.dns01` | object | not set | argocd-bootstrap | Required for `dns01`. The DNS provider block of the ACME solver. Placeholders only in Git: credentials are referenced by Secret name and key, never inline. |
-| `platform.gateway.hostnames[]` | list of DNS names | not set | argocd-bootstrap | Required for `http01`. Every host name the Gateway serves, including `argocd.<domain>` and each `<app>.<env>.<domain>`. The render fails when the list is empty, contains a wildcard or names a host outside `cluster.domain`. |
+| `platform.gateway.hostnames[]` | list of DNS names | not set | argocd-bootstrap | Required for `http01`. Every host name the Gateway serves, including `argocd.<domain>`, each `<app>.<env>.<domain>`, `grafana.<domain>` when the `monitoring` toolchain is on and `kargo.<domain>` when the `kargo` toolchain is on; `make validate-config` checks that these are listed. The render fails when the list is empty, contains a wildcard or names a host outside `cluster.domain`. |
 | `platform.acme.server` | string, empty or an `https://` URL | `""` | argocd-bootstrap | Test only. Replaces the ACME directory URL of the `letsencrypt-staging` ClusterIssuer. The `letsencrypt` issuer is never redirected. |
 | `platform.acme.caBundle` | string, base64 | `""` | argocd-bootstrap | Test only. Base64-encoded PEM CA bundle that signs the TLS certificate of `platform.acme.server`. Rendered as `caBundle` of the `letsencrypt-staging` ClusterIssuer only. |
 
@@ -133,6 +133,10 @@ With `selfsigned`, the certificate covers `<domain>`, `*.<domain>` and `*.<env>.
 | --- | --- | --- | --- | --- |
 | `toolchains.<name>.enabled` | boolean | `{}` (no overrides) | argocd-bootstrap | Switches the toolchain Application rendered by `argocd-bootstrap/templates/toolchains/<name>.yaml` on or off. `toolchains.cluster-secrets.enabled` switches the Application `cluster-secrets`, which applies `clusters/<name>/secrets/`. |
 | `toolchains.<name>.values` | object | not set | argocd-bootstrap | Optional. Cluster-specific values for that toolchain's chart, passed as `helm.valuesObject`, which Argo CD applies over the wrapper chart's value files. Never secrets. |
+| `toolchains.kargo.pipelines.enabled` | boolean | `true` | argocd-bootstrap | With `toolchains.kargo.enabled`, renders the Kargo Projects, Warehouses and Stages for the app inventory (chart `kargo-pipelines`). `false` installs Kargo without pipelines; Kargo is then not the promotion engine. |
+| `toolchains.kargo.pipelines.values` | object | not set | argocd-bootstrap | Values of `kargo-pipelines`, such as `projectPrefix` and `warehouse.*`. The keys the bootstrap injects (Git, Argo CD, registry, groups, apps) are not set here. |
+| `toolchains.previews.enabled`, `toolchains.previews.values` | boolean, object | `false`, not set | argocd-bootstrap | Pull request preview environments ([preview environments](../how-to/preview-environments.md)). |
+| `toolchains.tenants.enabled` | boolean | `false` | argocd-bootstrap | Tenant onboarding from `tenants/<name>.yaml` through an ApplicationSet. |
 
 Core toolchains default to enabled and optional ones to disabled, both in `argocd-bootstrap/values.yaml`. The cluster file sets only the deltas for that cluster, for example:
 
@@ -142,7 +146,7 @@ toolchains:
   velero: {enabled: true}
 ```
 
-Every key must match a toolchain template; `make validate-config` fails on a name without one.
+Every key must name a switch that a bootstrap template reads (`dig "<name>" "enabled"`): a toolchain template, `cluster-secrets`, `previews` or `tenants`. `make validate-config` fails on any other name.
 
 ## Lab and reference
 
@@ -157,6 +161,7 @@ The two shipped files differ in these values:
 | `rke2.cisProfile` | `false` | `true` |
 | `rke2.etcdSnapshots.s3.enabled` | `false` | `true` |
 | `platform.issuer` | `selfsigned` | `letsencrypt-staging`, then `letsencrypt` |
+| `toolchains` | `{}`: the core toolchains only | `sealed-secrets` off; `external-secrets`, `openbao`, `longhorn`, `monitoring`, `argo-rollouts` and `kargo` on |
 
 `cluster.profile` also selects behaviour that lives in the wrapper charts' `values-<profile>.yaml` files, not in the cluster file:
 
@@ -166,6 +171,9 @@ The two shipped files differ in these values:
 | Secrets | Sealed Secrets with offline sealing | External Secrets Operator with OpenBao |
 | Argo CD login | Initial admin secret | OIDC single sign-on, local admin disabled |
 | Image signature verification | Off | Enforced in `stage` and `prod` |
+| Vulnerability attestation | Not checked | Required in `stage` and `prod`: a Trivy attestation younger than seven days without CRITICAL findings |
+
+The promotion engine is set per repository, not per profile: Kargo whenever a cluster file enables it, as the shipped `reference` file does, unless the repository variable `PROMOTION_ENGINE` is `workflows` ([promotion paths](../architecture/gitops.md#promotion-paths)).
 
 [ADR 0005](../adr/0005-lab-and-reference-profiles.md) records the reasoning.
 

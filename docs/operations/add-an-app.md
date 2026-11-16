@@ -54,6 +54,8 @@ ENTRYPOINT ["/<app>"]
 
 Renovate keeps the base image digests current.
 
+Add `sample-services/<app>/VERSION` with a semantic version such as `0.1.0`. After the scan, signature and attestations pass, `build-image.yml` also tags the image with this version. It never moves an existing tag, so raise the version to release a new build. The Kargo Warehouse selects images by these tags; without the file the image keeps only its `sha-` tag, which Kargo does not select.
+
 ### 2. Add a thin chart
 
 Create `helmcharts/app-charts/<app>` by copying `helmcharts/app-charts/hello-api`. The chart depends on the helm-common library chart and contains no templates of its own beyond one-line includes:
@@ -81,7 +83,7 @@ Set the base values in `helmcharts/app-charts/<app>/values.yaml`: `image.reposit
 
 ### 3. Add the environment files
 
-Create `envs/dev/<app>/values.yaml`, `envs/stage/<app>/values.yaml` and `envs/prod/<app>/values.yaml`. They hold only the image reference, which the build and promotion workflows maintain:
+Create `envs/dev/<app>/values.yaml`, `envs/stage/<app>/values.yaml` and `envs/prod/<app>/values.yaml`. They hold only the image reference, which the promotion engine maintains: the build and promotion workflows, or Kargo when it is the engine ([promotion paths](../architecture/gitops.md#promotion-paths)):
 
 ```yaml
 image:
@@ -100,7 +102,7 @@ apps:
     environments: [dev, stage, prod]
 ```
 
-Recommendation: add this entry in a second pull request, after the first image exists and its dev bump pull request is merged, so that no Application points at an image that does not exist yet.
+Recommendation: with the workflows engine, add this entry in a second pull request, after the first image exists and its dev bump pull request is merged, so that no Application points at an image that does not exist yet. With Kargo, the Stages of an app are derived from this entry: add it once the first release tag exists, and Kargo promotes that tag to `dev`.
 
 ### 5. Allow the traffic the service needs
 
@@ -123,7 +125,7 @@ networkPolicy:
           protocol: TCP
 ```
 
-The egress rule in the example allows OTLP traces to Tempo; list only the destinations the service calls.
+The rule in the example allows OTLP traces to Tempo by hand; a chart built on helm-common gets the same rule, and the `OTEL_*` variables, from `otel.enabled: true` ([tracing](../how-to/tracing.md)). List only the destinations the service calls.
 
 ### 6. Check locally
 
@@ -142,7 +144,7 @@ make helm-unittest
 
 ### 7. Open the pull request
 
-Open a pull request with the source, the Dockerfile, the chart and the environment files. `ci-gate` must pass; it runs, among others, the `helm`, `policy-test`, `dockerfile-lint` and `e2e-kind` jobs. After the merge, `build-image.yml` tests and builds the image, pushes it to GHCR, scans the pushed digest, and only when the scan passes signs it with cosign, attests it, and opens a pull request that sets the new digest in `envs/dev/<app>/values.yaml`. Merge that pull request after its checks pass, then add the `apps:` entry (step 4).
+Add a `Component` entry for the app to `catalog-info.yaml`, and an `API` entry when it publishes one, so that the Backstage catalog lists it; `make lint-catalog` validates the file. Then open a pull request with the source, the Dockerfile, the `VERSION` file, the chart, the environment files and the catalog entry. `ci-gate` must pass; it runs, among others, the `helm`, `policy-test`, `dockerfile-lint` and `e2e-kind` jobs. After the merge, `build-image.yml` tests and builds the image, pushes it to GHCR, scans the pushed digest, and only when the scan passes signs it with cosign, attests it, adds the release tag and, with the workflows engine, opens a pull request that sets the new digest in `envs/dev/<app>/values.yaml`. Merge that pull request after its checks pass, then add the `apps:` entry (step 4). With Kargo there is no such pull request: add the `apps:` entry, and Kargo promotes the release tag to `dev`.
 
 ## Verification
 

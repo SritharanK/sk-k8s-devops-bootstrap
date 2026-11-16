@@ -114,6 +114,20 @@ Falco (runtime detection) and Trivy Operator (continuous image rescanning) are a
 
 ## Optional components
 
+### Kargo writes to the repository with a standing credential
+
+With the `kargo` toolchain on, as in the shipped `reference` cluster file, Kargo is the promotion engine of the repository ([ADR 0012](../adr/0012-kargo-promotion.md)).
+
+- Impact: Kargo commits the `dev` and `stage` environment files directly, so those promotions skip pull request review and `ci-gate`. Its Git credential is a standing secret with write access to the repository. The engine applies to the whole repository: a cluster file that enables Kargo also stops the workflows for every other cluster of the repository.
+- Mitigation: [promote with Kargo](../how-to/promote-with-kargo.md#prerequisites) prescribes a token limited to this repository with Contents and Pull requests permissions; it lives in OpenBao (`reference`) or a SealedSecret (`lab`). Kargo changes only `image.tag` and `image.digest` under `envs/`; each stage after the first accepts only Freight verified in the stage before, and `prod` stays a pull request under CODEOWNERS. The repository variable `PROMOTION_ENGINE=workflows` keeps every promotion a pull request.
+
+### Preview environments deploy pull request content
+
+Preview environments are off by default ([preview environments](../how-to/preview-environments.md)).
+
+- Impact: a pull request with the preview label, including one from a fork, deploys the charts and values of its head commit into the namespace `pr-<number>`. With `image.tagFromHeadSha`, it also runs the image built from that commit.
+- Mitigation: only users who can label pull requests start a preview. The namespace runs with Pod Security `restricted`, a ResourceQuota, a LimitRange and default-deny NetworkPolicies, inside the `apps-preview` and `preview-namespaces` AppProjects; the generator token is read-only, and the namespace is removed when the pull request closes.
+
 ### The Jenkins adapter has a larger attack surface
 
 Jenkins is an optional on-premises CI adapter, installed only with `make install-jenkins`. A Jenkins controller is a long-running service with plugins that holds registry and Git credentials and runs pipeline code.

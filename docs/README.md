@@ -58,6 +58,7 @@ The documentation follows four types: tutorials teach by doing, how-to guides so
 | --- | --- |
 | [Tracing](how-to/tracing.md) | OpenTelemetry in an app, Tempo, links between traces, logs and metrics |
 | [Traffic and scaling](how-to/traffic-and-scaling.md) | Envoy Gateway BackendTrafficPolicy per app, KEDA instead of the HPA |
+| [Promote with Kargo](how-to/promote-with-kargo.md) | Kargo as the promotion engine: enable it, release with `VERSION`, promote, roll back |
 | [Preview environments](how-to/preview-environments.md) | One namespace per labelled pull request, removed when it closes |
 | [Documentation site](how-to/documentation-site.md) | MkDocs build, strict checks, GitHub Pages |
 
@@ -80,7 +81,7 @@ The documentation follows four types: tutorials teach by doing, how-to guides so
 | [Security controls](security/controls.md) | Enforcement matrix |
 | [Threat model](security/threat-model.md) | Assets, trust boundaries, threats, policy demonstrations |
 | [Secrets handling](security/secrets-handling.md) | Sealed Secrets, External Secrets Operator with OpenBao, Ansible vault |
-| [Supply chain](security/supply-chain.md) | SBOM, provenance, signing, verification |
+| [Supply chain](security/supply-chain.md) | SBOM, provenance, signing, verification, vulnerability attestation gate |
 | [Known limitations](security/known-limitations.md) | Accepted risks and gaps |
 | [Argo CD SSO](security/argocd-sso.md) | OIDC and Dex configuration, RBAC mapping |
 | [Decision records](adr/README.md) | ADR index |

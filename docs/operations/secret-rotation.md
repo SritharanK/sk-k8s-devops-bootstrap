@@ -15,6 +15,9 @@ This runbook rotates every class of secret the platform uses, and says what to d
 | [RKE2 join token](#rke2-join-token) | RKE2 clusters | Server nodes and the Ansible vault | On exposure or when someone with access leaves |
 | [Ansible vault password](#ansible-vault-password) | RKE2 clusters | Operator workstation or password manager | On staff change and on exposure |
 | [Image signing](#image-signing) | Both | Nothing stored | Nothing to rotate |
+| Kargo Git credential ([promote with Kargo](../how-to/promote-with-kargo.md#enable)) | Both, with the `kargo` toolchain | Reference: OpenBao `secret/platform/kargo/git`, synced by ESO into `kargo-git`. Lab: a SealedSecret | Before the token expires, on exposure, on staff change |
+| GitHub token for preview environments ([preview environments](../how-to/preview-environments.md#prerequisites)) | Both, with previews | Secret `github-previews` in the Argo CD namespace (SealedSecret or ExternalSecret) | Before the token expires, on exposure |
+| GitHub App key for workflow pull requests ([CI/CD](../architecture/ci-cd.md#pull-requests-opened-by-workflows)) | Optional | GitHub Actions secret `GITOPS_APP_PRIVATE_KEY` | On exposure and on staff change |
 
 Recommendation: rotate long-lived credentials at least every 90 days, and record each rotation (date, class, operator) in your change log.
 

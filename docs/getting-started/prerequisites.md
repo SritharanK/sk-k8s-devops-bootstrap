@@ -32,7 +32,8 @@ The alternative is the devcontainer in `.devcontainer/devcontainer.json`, which 
 | kyverno CLI | `make policy-test` runs the policy test suite and applies the policies to the rendered apps. |
 | yq | The scripts read `clusters/<name>/cluster.yaml` with it, including `make validate-config`. |
 | shellcheck | `make lint` checks every shell script. |
-| cosign | Verifies image signatures and attestations by hand. See [supply chain](../security/supply-chain.md). |
+| cosign | Verifies image signatures and attestations by hand. See [supply chain](../security/supply-chain.md). With Docker, it also signs and attests the test images of `make policy-test-attestations`. |
+| Node.js 22 or later, npm | `make lint` validates `catalog-info.yaml` with the Backstage entity validator pinned in `hack/catalog`. |
 
 `make validate-config` runs `check-jsonschema` at a pinned version. When that tool is not installed, the script runs it through `uvx`, so `uv` must be on your `PATH`.
 

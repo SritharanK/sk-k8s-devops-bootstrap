@@ -10,8 +10,9 @@ GitHub Actions is the reference CI. Jenkins is an optional on-premises adapter (
 | --- | --- |
 | `.github/workflows/validate.yml` | Static validation of every change; ends in the required check `ci-gate` |
 | `.github/workflows/e2e.yml` | Nightly and on-demand end-to-end run of the `lab` profile on kind, with a diagnostics upload; the per-pull-request run is the job `e2e-kind` of `validate.yml` |
-| `.github/workflows/build-image.yml` | On `main`: tests, builds, pushes, scans, signs and attests the sample service image, then opens the dev digest pull request. On pull requests: tests, builds and scans without pushing |
-| `.github/workflows/promote.yml` | Opens a promotion pull request from dev to stage, or from stage to prod, on manual dispatch |
+| `.github/workflows/build-image.yml` | On `main`: tests, builds, pushes, scans, signs and attests the sample service images, adds the release tag from `sample-services/<app>/VERSION`, and opens the dev digest pull request when the workflows engine is selected. Daily: rescans the digests deployed in `envs/` and renews their vulnerability attestations. On pull requests: tests, builds and scans without pushing |
+| `.github/workflows/promote.yml` | Opens a promotion pull request from dev to stage, or from stage to prod, on manual dispatch; refuses to run when the Kargo engine is selected |
+| `.github/workflows/docs.yml` | Strict MkDocs build on pull requests that change the documentation site; on `main`, the same build published to GitHub Pages |
 | `.github/workflows/scorecard.yml` | OpenSSF Scorecard analysis of the repository |
 | `.github/workflows/dependency-review.yml` | Review of dependency changes in pull requests |
 
@@ -26,16 +27,17 @@ GitHub Actions is the reference CI. Jenkins is an optional on-premises adapter (
 | `commit-lint` | Commit subjects of the pull request follow Conventional Commits | `make lint-commits` |
 | `yaml-lint` | YAML syntax and style with the repository configuration, excluding Helm `templates/` | yamllint |
 | `docs` | Markdown style; local links and anchors in every file; external links in the Markdown files that a pull request changes, and in every file on `main`, weekly and on manual dispatch | markdownlint, lychee |
-| `shell-lint` | Shell script defects and formatting | shellcheck, shfmt |
+| `catalog-lint` | `catalog-info.yaml` validates as Backstage entities, every `$text` definition exists and the OpenAPI definition parses | `make lint-catalog` (pinned entity validator) |
+| `shell-lint` | Shell script defects and formatting; self-tests of `scripts/lib/common.sh` and of `hack/promotion-engine.sh` with fixture cluster files | shellcheck, shfmt, `make test-lib`, `make promotion-engine-test` |
 | `config` | Every `clusters/*/cluster.yaml` validates against `clusters/schema.json`, every `tenants/*.yaml` against `tenants/schema.json`, and both pass the consistency checks; placeholders such as `CHANGE_ME` and `YOUR_` are reported as warnings, because the shipped files keep them until an operator fills them in | `hack/validate-config.sh` |
 | `ansible` | Lint on the production profile, playbook syntax, role behaviour | ansible-lint, `ansible-playbook --syntax-check`, Molecule |
 | `opentofu` | Formatting, `tofu validate`, and the offline `tofu test` suite with a mocked provider for every module under `infra/` | OpenTofu |
-| `helm` | Dependency build and `helm lint --strict` of every chart for each profile; the helm-unittest suites of the charts and of the argocd-bootstrap templates (pull request previews, image signing identity) | Helm, helm-unittest |
+| `helm` | Dependency build and `helm lint --strict` of every chart for each profile; the helm-unittest suites of the charts and of the argocd-bootstrap templates (Kargo pipelines, monitoring, pull request previews, image signing identity) | Helm, helm-unittest |
 | `argocd-bootstrap` | Renders every Application and chart for each profile, in both rendering modes; validates the output against the Kubernetes schemas of the profile version and of 1.35 and against the CRD schemas; Application names are unique; referenced paths exist; every rendered kind and namespace is permitted by its AppProject; the support matrix is current | Helm, kubeconform |
 | `policy-test` | Kyverno test fixtures (pods that must be admitted and pods that must be denied), and the rendered policies applied to every rendered app and environment | Kyverno CLI |
 | `policy-test-attestations` | The vulnerability attestation gate of the image verification policy, against images signed and attested with an ephemeral key in a throwaway local registry (see [the test README](../../helmcharts/system-charts/kyverno-policies/tests/vuln-attestation/README.md)) | Kyverno CLI, cosign, Docker |
 | `dockerfile-lint` | Dockerfile rules, and a smoke test that starts the image and checks `/readyz` and `/metrics` | hadolint, Docker |
-| `trivy-config` | Misconfiguration scan of the rendered manifests; fails on findings; every ignore entry carries an expiry date; results are uploaded as SARIF | Trivy |
+| `trivy-config` | Misconfiguration scan of the rendered manifests; fails on HIGH and CRITICAL findings; every ignore entry carries an expiry date; results are uploaded as SARIF | Trivy |
 | `jenkins-lint` | The optional Jenkins pipelines pass the declarative linter | Jenkins linter in a pinned container |
 | `e2e-kind` | The end-to-end test on kind (see [end-to-end test](#end-to-end-test)) | kind, `make demo` |
 | `ci-gate` | Every job above succeeded | GitHub Actions `needs:` |
@@ -122,13 +124,15 @@ How to verify a signature and an attestation by hand is described in [supply cha
 
 ## Promotion
 
-An image moves through the environments only by pull request and only by digest:
+One engine writes the environment files at a time. `hack/promotion-engine.sh` selects Kargo when a cluster file enables it, as the shipped `reference` file does, unless the repository variable `PROMOTION_ENGINE` is `workflows` ([promotion paths](gitops.md#promotion-paths), [ADR 0012](../adr/0012-kargo-promotion.md)).
+
+With the workflows engine, an image moves through the environments only by pull request and only by digest:
 
 1. `build-image.yml` opens a pull request that bumps `image.digest` in `envs/dev/<app>/values.yaml`. A maintainer merges it after the checks pass.
 2. `promote.yml`, started by manual dispatch, first checks with a read-only Argo CD token that the Application is Synced and Healthy in the source environment, when the repository variable `ARGOCD_SERVER` and that environment's token are set; otherwise it skips the check and the pull request asks the reviewer to verify the source environment. It then opens a pull request that copies the digest from dev to stage, or from stage to prod. It never triggers a sync itself.
-3. CODEOWNERS covers `envs/prod/`. With code owner review required on `main`, a prod promotion cannot merge without an owner's approval. Prod applies the change inside its [sync window](gitops.md#prod-sync-window).
+3. CODEOWNERS covers `envs/prod/`. When the branch ruleset requires code owner review, a prod promotion cannot merge without an owner's approval. Prod applies the change inside its [sync window](gitops.md#prod-sync-window).
 
-Nothing auto-merges at any step. The runbook, including the deployment policy, is [promotion](../operations/promotion.md); the decision is [ADR 0011](../adr/0011-promotion-by-pull-request-and-digest.md).
+On this path nothing auto-merges. With Kargo, the `dev` and `stage` promotions are commits by Kargo and `prod` is a pull request; each stage after the first accepts only Freight verified in the stage before ([promote with Kargo](../how-to/promote-with-kargo.md)). The runbook, including the deployment policy, is [promotion](../operations/promotion.md); the decision is [ADR 0011](../adr/0011-promotion-by-pull-request-and-digest.md).
 
 ### Pull requests opened by workflows
 
@@ -158,11 +162,11 @@ It then asserts that:
 
 The assertions run through `make e2e` (`hack/e2e/run.sh`), which brings the demo up itself and deletes the cluster at the end. To reproduce a failure locally and keep the cluster for inspection, run `KEEP=1 make e2e`, or run `make demo` and then `SKIP_UP=1 KEEP=1 make e2e`; remove the cluster with `make demo-down` (see [quick start](../getting-started/quick-start.md)).
 
-This job does not cover what kind cannot exercise: the RKE2 node configuration and high availability, etcd snapshots, image signature verification (disabled in `lab`), SSO, and ACME certificates.
+This job does not cover what kind cannot exercise, or what other tests cover: the RKE2 node configuration and high availability, etcd snapshots, image signature verification and the vulnerability attestation gate (disabled in `lab`; the gate is tested by `policy-test-attestations`), SSO, ACME certificates, Kargo (`tests/integration/kargo`), tracing (`make integration-tracing`) and preview environments (render tests in `helm`).
 
 ## Dependency updates and repository health
 
-Renovate opens pull requests for chart dependencies of the wrapper charts, GitHub Actions digests, Dockerfile base images and pinned tool versions. Nothing auto-merges: each update passes `ci-gate`, including the end-to-end test, and a maintainer merges it. Component versions appear in the documentation only in the generated [support matrix](../reference/support-matrix.md), so an update does not require edits to prose.
+Renovate opens pull requests for chart dependencies of the wrapper charts, GitHub Actions digests, Dockerfile base images, pinned tool versions, Go modules and the npm lock file of the catalog validator. Nothing auto-merges: each update passes `ci-gate`, including the end-to-end test, and a maintainer merges it. Component versions appear in the documentation only in the generated [support matrix](../reference/support-matrix.md), so an update does not require edits to prose.
 
 `scorecard.yml` runs [OpenSSF Scorecard](https://github.com/ossf/scorecard), which rates repository practices such as branch protection, pinned dependencies and token permissions. The results are uploaded as SARIF and published for the badge in the README.
 
@@ -181,3 +185,4 @@ For organisations that must build on their own infrastructure, the repository in
 - [ADR 0008: Keyless image signing](../adr/0008-keyless-image-signing.md)
 - [ADR 0009: GitHub Actions as reference CI, Jenkins optional](../adr/0009-github-actions-reference-ci-jenkins-optional.md)
 - [ADR 0011: Promotion by pull request and digest](../adr/0011-promotion-by-pull-request-and-digest.md)
+- [ADR 0012: Kargo promotion orchestration](../adr/0012-kargo-promotion.md)

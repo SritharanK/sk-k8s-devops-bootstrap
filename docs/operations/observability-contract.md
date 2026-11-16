@@ -90,7 +90,7 @@ Propagate W3C trace context (`traceparent`) on incoming and outgoing requests.
 
 `hello-api` exports traces only when an OTLP endpoint variable is set and `OTEL_SDK_DISABLED` is not `true`; without them it opens no connection. It supports OTLP over HTTP (`http/protobuf`) and names itself `hello-api` unless `OTEL_SERVICE_NAME` or `OTEL_RESOURCE_ATTRIBUTES` says otherwise.
 
-With the `tracing` toolchain, Tempo accepts OTLP at `tempo.tracing.svc:4317` (gRPC) and `tempo.tracing.svc:4318` (HTTP). Set the variables in the helm-common `env` list and allow the egress (TCP 4318 to the `tracing` namespace for OTLP over HTTP):
+With the `tracing` toolchain, Tempo accepts OTLP at `tempo.tracing.svc:4317` (gRPC) and `tempo.tracing.svc:4318` (HTTP). A chart built on helm-common sets `otel.enabled: true`: the library adds the `OTEL_*` variables and the egress rule to the `tracing` namespace ([helm-common values](../reference/helm-common-values.md#tracing), [tracing](../how-to/tracing.md)). Only a workload that does not use helm-common sets the variables in its `env` list and allows the egress itself (TCP 4318 to the `tracing` namespace for OTLP over HTTP):
 
 ```yaml
 env:
@@ -145,7 +145,7 @@ The SLOs defined as code:
 
 The specs are in `helmcharts/system-charts/slo/slos/`. Certificate expiry is not an SLO: the `monitoring` chart raises the alert `CertManagerCertificateExpiringSoon`.
 
-Progressive delivery uses the same metrics. With the optional `argo-rollouts` toolchain, the `ClusterAnalysisTemplate` `success-rate` queries Prometheus with the arguments `service-name`, `namespace` and the optional `threshold` (default 0.99). Without traffic, the analysis is Inconclusive and the rollout pauses. See [promotion](promotion.md#optional-and-planned).
+Progressive delivery uses the same metrics. With the optional `argo-rollouts` toolchain, the `ClusterAnalysisTemplate` `success-rate` queries Prometheus with the arguments `service-name`, `namespace` and the optional `threshold` (default 0.99). Without traffic, the analysis is Inconclusive and the rollout pauses. See [promotion](promotion.md#optional-and-planned). Kargo verifies each promotion with the same template when its verification is enabled ([promote with Kargo](../how-to/promote-with-kargo.md)).
 
 ## References
 

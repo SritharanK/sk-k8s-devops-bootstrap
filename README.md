@@ -32,7 +32,7 @@ flowchart TB
     validate["validate.yml: ci-gate"]
     e2e["e2e.yml: make demo on kind"]
     build["build-image.yml: test, scan, SBOM, sign, attest, daily rescan"]
-    promote["promote.yml: promotion PRs, default engine"]
+    promote["promote.yml: promotion PRs, workflows engine"]
   end
   build --> ghcr[("GHCR: image, SBOM, provenance, signature, vulnerability attestation")]
   build -. dev digest PR .-> repo
@@ -75,7 +75,7 @@ flowchart TB
   class optional,tempo,kargo,previews opt
 ```
 
-Components with a dashed border are optional and off by default. Kargo, `monitoring` and `argo-rollouts` are the exceptions: the `reference` profile turns them on, so that Kargo verifies every promotion. A cluster file that enables Kargo makes it the only writer of the environment files: `build-image.yml` and `promote.yml` then stand back unless the repository variable `PROMOTION_ENGINE` is `workflows`.
+Components with a dashed border are optional and off by default. Kargo, `monitoring`, `argo-rollouts` and Longhorn are the exceptions: the `reference` profile turns them on, Longhorn as its default StorageClass and the other three so that Kargo verifies every promotion. A cluster file that enables Kargo makes it the only writer of the environment files: `build-image.yml` and `promote.yml` then stand back unless the repository variable `PROMOTION_ENGINE` is `workflows`.
 
 How it fits together:
 
@@ -132,8 +132,8 @@ The inventory, the Ansible vault, the secrets backend, DNS and a load balancer a
 
 ## Supply chain and policy
 
-- Build: on `main`, `build-image.yml` runs tests, builds with BuildKit SBOM and maximum provenance, pushes to GHCR, then scans the pushed digest with Trivy (fixable CRITICAL and HIGH fail the job). Only an image that passes the scan is signed with cosign keyless through GitHub OIDC, gets a cosign vulnerability attestation with the Trivy report and GitHub artifact attestations, and reaches the dev bump pull request. A failing image stays in GHCR unsigned. A daily rescan attests every digest pinned in `envs/` again. On pull requests the image is built and scanned locally, never pushed. The output is a digest.
-- Deploy by digest: environment values in `envs/<env>/<app>/values.yaml` hold `image.tag` and `image.digest`. In a fresh fork `image.digest` is empty in every environment and the image is pulled by tag; the first `build-image.yml` run on `main` opens the pull request that sets the dev digest, and promotion carries it to `stage` and `prod`. Promotion copies the digest that runs in the previous environment; when `ARGOCD_SERVER` and the source environment's token are configured, `promote.yml` first checks that it is Synced and Healthy, otherwise the reviewer checks it. Nothing merges automatically. With Kargo, a stage accepts only a release verified in the stage before it, and `prod` still changes through a reviewed pull request; one engine writes the environment files at a time.
+- Build: on `main`, `build-image.yml` runs tests, builds with BuildKit SBOM and maximum provenance, pushes to GHCR, then scans the pushed digest with Trivy (fixable CRITICAL and HIGH fail the job). Only an image that passes the scan is signed with cosign keyless through GitHub OIDC, gets a cosign vulnerability attestation with the Trivy report and GitHub artifact attestations, gets the release tag from `sample-services/<app>/VERSION` (an existing tag is never moved), and, with the workflows engine, reaches the dev bump pull request. A failing image stays in GHCR unsigned. A daily rescan attests every digest pinned in `envs/` again. On pull requests the image is built and scanned locally, never pushed. The output is a digest.
+- Deploy by digest: environment values in `envs/<env>/<app>/values.yaml` hold `image.tag` and `image.digest`. In a fresh fork `image.digest` is empty in every environment and the image is pulled by tag; with the workflows engine the first `build-image.yml` run on `main` opens the pull request that sets the dev digest, and `promote.yml` carries it to `stage` and `prod`; with Kargo, the `dev` Stage writes it. `hack/promotion-engine.sh` decides which engine writes: Kargo whenever a cluster file enables it, as the shipped `reference` file does, unless the repository variable `PROMOTION_ENGINE` is `workflows`. Promotion copies the digest that runs in the previous environment; when `ARGOCD_SERVER` and the source environment's token are configured, `promote.yml` first checks that it is Synced and Healthy, otherwise the reviewer checks it. Nothing merges automatically. With Kargo, a stage accepts only a release verified in the stage before it, and `prod` still changes through a reviewed pull request; one engine writes the environment files at a time.
 - Admission: Kyverno CEL policies enforce the workload contract (non-root, no privilege escalation, all capabilities dropped, seccomp `RuntimeDefault`, read-only root filesystem, requests and limits, probes, no `latest`, registry allowlist): Audit in `dev`, Enforce in `stage` and `prod`. In the `reference` profile an `ImageValidatingPolicy` admits images in `stage` and `prod` only when they are signed by this repository's build workflow on `main` and carry a vulnerability attestation from the same identity that is younger than `maxScanAge` (168h) and lists no CRITICAL finding. Pod Security Admission `restricted` applies to all app namespaces.
 - Network: Default-deny ingress and egress in app namespaces, with explicit allow rules per app and baseline policies for platform namespaces.
 
@@ -149,11 +149,11 @@ Every pull request runs `validate.yml`; the single required check is `ci-gate`, 
 | Secrets | gitleaks on the tree, full history weekly; no committed `kind: Secret` with data outside Helm templates and `*.example.yaml` files | `secrets` |
 | Commits | Conventional Commits subjects | `commit-lint` |
 | YAML, Markdown, links | yamllint, markdownlint, lychee | `yaml-lint`, `docs` |
-| Shell | shellcheck, shfmt | `shell-lint` |
+| Shell | shellcheck, shfmt, self-tests of the shell library and of the promotion engine selection | `shell-lint` |
 | Cluster files | JSON Schema, placeholder check | `config` |
 | Ansible | ansible-lint (production profile), syntax check, Molecule | `ansible` |
 | OpenTofu | `tofu fmt -check`, `tofu validate`, `tofu test` with a mocked provider | `opentofu` |
-| Helm | dependency build, `lint --strict` per profile, helm-unittest of helm-common and of the argocd-bootstrap templates (previews, image signing) | `helm` |
+| Helm | dependency build, `lint --strict` per profile, helm-unittest of helm-common and of the argocd-bootstrap templates (Kargo pipelines, monitoring, previews, image signing) | `helm` |
 | Argo CD bootstrap | every Application and chart rendered per profile in both modes, kubeconform at 1.36 and 1.35 with the CRD schemas, AppProject permission check | `argocd-bootstrap` |
 | Policies | `kyverno test` fixtures, `kyverno apply` against rendered apps | `policy-test` |
 | Vulnerability attestation gate | `kyverno test` against images signed and attested with an ephemeral key in a throwaway local registry | `policy-test-attestations` |
@@ -189,7 +189,7 @@ Every pull request runs `validate.yml`; the single required check is `ci-gate`, 
 | `helm-common` BackendTrafficPolicy and KEDA options | Implemented, optional; unit tests in CI (`helm`) |
 | OpenTofu for one reference target (Hetzner Cloud, `infra/hetzner`) | Implemented; validated and tested offline in CI (`opentofu`), never applied in CI |
 | Tenant onboarding from `tenants/<name>.yaml` (ApplicationSet, off by default) | Implemented, optional; tenant files schema-checked in CI (`config`) |
-| Promotion orchestration with Kargo (optional, `reference` profile; `promote.yml` stays the default) | Implemented; render and unit tests in CI (`helm`, `argocd-bootstrap`), end to end on kind with `tests/integration/kargo` |
+| Promotion orchestration with Kargo (optional; on in the shipped `reference` cluster file, which makes Kargo the promotion engine of the repository unless `PROMOTION_ENGINE` is `workflows`) | Implemented; render and unit tests in CI (`helm`, `argocd-bootstrap`), end to end on kind with `tests/integration/kargo` |
 | Vulnerability attestation (Trivy, cosign) required at admission in `stage` and `prod` | Implemented, `reference` profile only; attestation tests in CI (`policy-test-attestations`) |
 | Backstage catalog descriptors (`catalog-info.yaml`) | Implemented; validated in CI (`catalog-lint`) |
 | `make new-app` | Planned |
@@ -214,9 +214,9 @@ Changes per release are in the [changelog](CHANGELOG.md). Component versions and
 | `hack/` | Scripts behind the Make targets: render, validation, demo, e2e, DR drill |
 | `scripts/` | Shared shell library and its self-test, operator helper scripts |
 | `kind/` | kind cluster definition and pinned node images for the lab profile |
-| `tests/` | Chainsaw end-to-end suite (`tests/e2e`) and local integration harnesses (`tests/integration`) |
+| `tests/` | Chainsaw end-to-end suite (`tests/e2e`), local integration harnesses (`tests/integration`) and the promotion engine fixtures (`tests/promotion-engine`) |
 | `ci/jenkins/` | Optional Jenkins adapter: pipelines, job DSL, agent pod templates, linter config |
-| `.github/workflows/` | Validation, build, promotion, e2e, Scorecard, dependency review |
+| `.github/workflows/` | Validation, build, promotion, e2e, documentation site, Scorecard, dependency review |
 | `catalog-info.yaml` | Backstage catalog descriptors: system, `hello-api` and its API, `helm-common`, the charts |
 | `docs/` | Documentation, see below |
 

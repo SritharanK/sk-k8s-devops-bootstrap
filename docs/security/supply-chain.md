@@ -12,9 +12,12 @@ flowchart LR
   SCAN -->|"no fixable CRITICAL or HIGH"| SIGN["cosign keyless signature"]
   SIGN --> VULN["cosign vulnerability attestation: Trivy report"]
   VULN --> ATT["GitHub artifact attestations"]
-  ATT --> DEVPR["Pull request: digest into envs/dev"]
+  ATT --> TAG["Release tag from sample-services/<app>/VERSION"]
+  TAG -->|"workflows engine"| DEVPR["Pull request: digest into envs/dev"]
   DEVPR --> PROMO["promote.yml: pull request to stage, then prod"]
-  PROMO --> ADM["Admission: Kyverno checks tag, registry, signature and vulnerability attestation"]
+  PROMO --> ADM
+  TAG -->|"Kargo engine"| KARGO["Kargo: dev and stage commits, prod pull request, verified Freight"]
+  KARGO --> ADM["Admission: Kyverno checks tag, registry, signature and vulnerability attestation"]
   ADM --> POD["Pod runs the same digest"]
   RESCAN["Daily rescan of the digests in envs/"] -->|"newer vulnerability attestation"| ADM
 ```
@@ -56,7 +59,7 @@ The `kyverno-policies` toolchain (`argocd-bootstrap/templates/toolchains/kyverno
 
 ### Deploy by digest
 
-The build workflow outputs the digest and opens a pull request that sets `image.digest` in `envs/dev/hello-api/values.yaml`. A human merges it after the checks pass. helm-common renders the image as `repository@digest`, so the kubelet pulls exactly that content. `promote.yml` copies the same digest from `dev` to `stage`, and from `stage` to `prod`, in further pull requests. When the repository variable `ARGOCD_SERVER` and the source environment's token are set, it first confirms that the Application is Synced and Healthy in the source environment; without them the check is skipped, and the pull request asks the reviewer to check it in Argo CD. The digest that runs in `prod` is the digest that was scanned, signed and run in `dev` and `stage`. The flow and its rules are in [promotion](../operations/promotion.md).
+The build workflow outputs the digest and, with the workflows engine, opens a pull request that sets `image.digest` in `envs/dev/hello-api/values.yaml`; a human merges it after the checks pass. With Kargo as the engine, Kargo writes the same two keys from the release tag and its digest instead ([promotion paths](../architecture/gitops.md#promotion-paths)). helm-common renders the image as `repository@digest`, so the kubelet pulls exactly that content. `promote.yml` copies the same digest from `dev` to `stage`, and from `stage` to `prod`, in further pull requests. When the repository variable `ARGOCD_SERVER` and the source environment's token are set, it first confirms that the Application is Synced and Healthy in the source environment; without them the check is skipped, and the pull request asks the reviewer to check it in Argo CD. The digest that runs in `prod` is the digest that was scanned, signed and run in `dev` and `stage`. The flow and its rules are in [promotion](../operations/promotion.md).
 
 ### Admission
 
