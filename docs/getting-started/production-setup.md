@@ -10,7 +10,8 @@ The `reference` profile is one RKE2 cluster:
 - the RKE2 CIS profile, switched on with `rke2.cisProfile`;
 - scheduled etcd snapshots, optionally copied to S3;
 - the environments `dev`, `stage` and `prod` as namespaces in that cluster, separated by AppProjects, Pod Security Standards labels, Kyverno policies, NetworkPolicies and quotas;
-- Argo CD with OIDC single sign-on, secrets from OpenBao through External Secrets Operator (ESO), and image signature verification in `stage` and `prod`.
+- Argo CD with OIDC single sign-on, secrets from OpenBao through External Secrets Operator (ESO), and in `stage` and `prod` image signature verification and the vulnerability attestation gate;
+- Longhorn storage, the monitoring stack, Argo Rollouts and Kargo as the promotion engine, all switched on in the shipped cluster file.
 
 What it is not:
 
@@ -181,6 +182,8 @@ platform:
   gateway:
     hostnames:
       - argocd.platform.example.com
+      - grafana.platform.example.com
+      - kargo.platform.example.com
       - hello-api.dev.platform.example.com
       - hello-api.stage.platform.example.com
       - hello-api.prod.platform.example.com
@@ -233,6 +236,14 @@ The role mapping comes from `platform.groups` in the cluster file:
 
 `policy.default` is empty, so a user in none of these groups gets no access after login.
 
+### Kargo, Grafana and the vulnerability gate
+
+The shipped cluster file also turns on `kargo` and `monitoring`, and the `reference` policies require vulnerability attestations:
+
+- Kargo: register its OIDC client and deliver the Git credential it pushes and opens pull requests with, as [promote with Kargo](../how-to/promote-with-kargo.md#enable) describes. That page also covers the branch ruleset: Kargo commits `dev` and `stage` directly. With Kargo enabled, `build-image.yml` and `promote.yml` stop writing the environment files; set the repository variable `PROMOTION_ENGINE` to `workflows` to keep them as the writer.
+- Grafana: the admin credentials come from OpenBao through an ExternalSecret (`grafanaAdmin` in the `monitoring` chart). Single sign-on is prepared but off in `helmcharts/system-charts/monitoring/values-reference.yaml` (`auth.generic_oauth`) until its client exists.
+- Vulnerability gate: `stage` and `prod` admit an image only with a Trivy attestation younger than seven days. The daily `rescan` job of `build-image.yml` renews it for the digests in `envs/`; when that job stops, new pods in `stage` and `prod` are denied after seven days ([supply chain](../security/supply-chain.md)).
+
 ## 13. Verify
 
 ```bash
@@ -270,6 +281,8 @@ sudo rke2 etcd-snapshot list
 - [ ] `platform.acme.solver` matches your DNS setup, and with `http01` every served host name is in `platform.gateway.hostnames`.
 - [ ] The certificate `platform-tls` comes from `letsencrypt`, not the staging issuer.
 - [ ] SSO login works for each group in `platform.groups` with the expected role, and the local `admin` account is disabled.
+- [ ] Kargo has its OIDC client and Git credential, and the promotion engine (`PROMOTION_ENGINE`, or Kargo by default with this cluster file) is the one you intend.
+- [ ] The `rescan` job of `build-image.yml` runs daily, so the vulnerability attestations in `stage` and `prod` stay younger than seven days.
 - [ ] `hello-api` answers on `https://hello-api.dev.<domain>/readyz`.
 - [ ] An etcd snapshot exists, and the copy in S3 is present when S3 is enabled.
 - [ ] A restore drill is scheduled, as [backup and restore](../operations/backup-and-restore.md) describes.

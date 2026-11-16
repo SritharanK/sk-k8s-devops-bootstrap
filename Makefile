@@ -244,7 +244,7 @@ helm-unittest: helm-plugins ## helm-unittest for every chart with a tests/ direc
 	done
 
 .PHONY: argocd-bootstrap-unittest
-argocd-bootstrap-unittest: helm-plugins ## helm-unittest render tests of argocd-bootstrap (tests/*_test.yaml: previews, image signing)
+argocd-bootstrap-unittest: helm-plugins ## helm-unittest render tests of argocd-bootstrap (tests/*_test.yaml: Kargo, monitoring, previews, image signing)
 	helm unittest --strict -f 'tests/*_test.yaml' argocd-bootstrap
 
 .PHONY: render
@@ -428,7 +428,7 @@ jenkins-lint-static: JENKINS_LINT_ARGS = --static-only
 jenkins-lint-static: jenkins-lint ## Static checks of the Jenkins adapter only (no Docker)
 
 # ---------------------------------------------------------------------------
-##@ Documentation site, previews and tracing
+##@ Documentation site, previews, tracing and Kargo
 # ---------------------------------------------------------------------------
 
 # Documentation site (mkdocs.yml). MkDocs and its plugins run from a virtual

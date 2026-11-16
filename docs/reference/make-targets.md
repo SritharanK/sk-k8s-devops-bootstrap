@@ -84,7 +84,7 @@ These targets need no cluster. `make validate` runs `validate-config`, `helm`, `
 | `make helm` | `helm-lint`, `helm-unittest` and `argocd-bootstrap-unittest`. | Makefile |
 | `make helm-lint` | `helm dependency build` and `helm lint --strict` of every chart. | `hack/render.sh --lint-only` |
 | `make helm-unittest` | Runs `make helm-plugins`, then `helm unittest --strict` for every chart under `helmcharts/` with a `tests/*_test.yaml` suite, including `helm-common`; builds the chart dependencies first where `Chart.yaml` declares any. | Makefile |
-| `make argocd-bootstrap-unittest` | Runs `make helm-plugins`, then `helm unittest --strict` with every `argocd-bootstrap/tests/*_test.yaml` suite. `previews_test.yaml` holds the render tests of the pull request preview AppProjects and ApplicationSets; `signing_test.yaml` those of the image signing identity derived from `git.repoURL`. | Makefile |
+| `make argocd-bootstrap-unittest` | Runs `make helm-plugins`, then `helm unittest --strict` with every `argocd-bootstrap/tests/*_test.yaml` suite. `previews_test.yaml` holds the render tests of the pull request preview AppProjects and ApplicationSets; `signing_test.yaml` those of the image signing identity derived from `git.repoURL`; `kargo_test.yaml` those of the Kargo toolchain and its pipelines; `monitoring_test.yaml` those of app scraping when the monitoring toolchain is on. | Makefile |
 | `make render` | Renders `argocd-bootstrap` and every chart for each cluster profile into `OUT_DIR` (gitignored). `RENDER_ARGS` passes extra options to the script. | `hack/render.sh` |
 | `make render-all` | Alias for `make render`. | `hack/render.sh` |
 | `make kubeconform` | Validates the rendered manifests against the Kubernetes schemas for `cluster.kubernetesMinor`, again for every version in `KUBECONFORM_EXTRA_VERSIONS` (default `1.35.0`, the other supported minor), and against the CRD schemas. | `hack/kubeconform.sh` |
@@ -161,7 +161,7 @@ These targets need Docker. See [quick start](../getting-started/quick-start.md).
 
 [CI and CD](../architecture/ci-cd.md) maps the targets to the CI jobs.
 
-## Documentation site, previews and tracing
+## Documentation site, previews, tracing and Kargo
 
 The documentation site is built with MkDocs from `mkdocs.yml`. MkDocs and its plugins run from a virtual environment under `OUT_DIR` that uv creates from `requirements-docs.txt`, where every package is pinned with hashes. uv downloads Python 3.13 when the machine does not have it.
 
