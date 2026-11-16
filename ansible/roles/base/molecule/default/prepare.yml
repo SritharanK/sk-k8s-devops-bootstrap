@@ -1,3 +1,26 @@
 ---
 - name: Wait for the test containers to finish booting
   ansible.builtin.import_playbook: ../../../../molecule/wait-for-boot.yml
+
+- name: Diagnostics (temporary)
+  hosts: all
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Collect the privilege escalation environment
+      ansible.builtin.raw: >-
+        id; grep -E '^Cap(Prm|Eff|Bnd)' /proc/self/status;
+        cat /proc/self/attr/current 2>&1; grep NoNewPrivs /proc/self/status;
+        ls -ln /etc/shadow /etc/passwd /etc/pam.d/sudo; wc -c /etc/shadow;
+        awk -F: '$1=="root"{print "shadow root:", length($2), $3, $4, $5}' /etc/shadow 2>&1;
+        grep -E '^(passwd|shadow)' /etc/nsswitch.conf;
+        grep -vE '^#|^$' /etc/pam.d/sudo; grep -E '^account' /etc/pam.d/system-auth 2>/dev/null;
+        ls -ln /usr/sbin/unix_chkpwd 2>&1; ls /etc/selinux 2>&1; grep -i selinux /proc/mounts;
+        sudo -n true; echo "sudo rc=$?"; uname -r
+      register: diag
+      changed_when: false
+      failed_when: false
+
+    - name: Show the privilege escalation environment
+      ansible.builtin.debug:
+        var: diag.stdout_lines
