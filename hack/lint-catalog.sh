@@ -8,9 +8,10 @@
 # hack/catalog/package-lock.json and installed with `npm ci --ignore-scripts`
 # into a cache under the render output directory, so the repository stays
 # free of node_modules and no package install script runs. The overrides in
-# hack/catalog/package.json lift undici and glob (with it minimatch) to
-# releases with security fixes that the validator's own version ranges do not
-# reach; remove them once the validator depends on fixed releases. The validator
+# hack/catalog/package.json lift undici, glob (with it minimatch) and the
+# @octokit request packages to releases with security fixes that the
+# validator's own version ranges do not reach; remove them once the validator
+# depends on fixed releases. The validator
 # replaces $text references with dummy text, so this script also checks that
 # every relative $text target exists and that an OpenAPI definition parses
 # and declares its version.
