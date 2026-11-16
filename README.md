@@ -32,7 +32,7 @@ flowchart TB
     validate["validate.yml: ci-gate"]
     e2e["e2e.yml: make demo on kind"]
     build["build-image.yml: test, scan, SBOM, sign, attest, daily rescan"]
-    promote["promote.yml: promotion PRs, default engine"]
+    promote["promote.yml: promotion PRs, workflows engine"]
   end
   build --> ghcr[("GHCR: image, SBOM, provenance, signature, vulnerability attestation")]
   build -. dev digest PR .-> repo
@@ -133,7 +133,7 @@ The inventory, the Ansible vault, the secrets backend, DNS and a load balancer a
 ## Supply chain and policy
 
 - Build: on `main`, `build-image.yml` runs tests, builds with BuildKit SBOM and maximum provenance, pushes to GHCR, then scans the pushed digest with Trivy (fixable CRITICAL and HIGH fail the job). Only an image that passes the scan is signed with cosign keyless through GitHub OIDC, gets a cosign vulnerability attestation with the Trivy report and GitHub artifact attestations, and reaches the dev bump pull request. A failing image stays in GHCR unsigned. A daily rescan attests every digest pinned in `envs/` again. On pull requests the image is built and scanned locally, never pushed. The output is a digest.
-- Deploy by digest: environment values in `envs/<env>/<app>/values.yaml` hold `image.tag` and `image.digest`. In a fresh fork `image.digest` is empty in every environment and the image is pulled by tag; the first `build-image.yml` run on `main` opens the pull request that sets the dev digest, and promotion carries it to `stage` and `prod`. Promotion copies the digest that runs in the previous environment; when `ARGOCD_SERVER` and the source environment's token are configured, `promote.yml` first checks that it is Synced and Healthy, otherwise the reviewer checks it. Nothing merges automatically. With Kargo, a stage accepts only a release verified in the stage before it, and `prod` still changes through a reviewed pull request; one engine writes the environment files at a time.
+- Deploy by digest: environment values in `envs/<env>/<app>/values.yaml` hold `image.tag` and `image.digest`. In a fresh fork `image.digest` is empty in every environment and the image is pulled by tag; with the workflows engine the first `build-image.yml` run on `main` opens the pull request that sets the dev digest, and `promote.yml` carries it to `stage` and `prod`; with Kargo, the `dev` Stage writes it. `hack/promotion-engine.sh` decides which engine writes: Kargo whenever a cluster file enables it, as the shipped `reference` file does, unless the repository variable `PROMOTION_ENGINE` is `workflows`. Promotion copies the digest that runs in the previous environment; when `ARGOCD_SERVER` and the source environment's token are configured, `promote.yml` first checks that it is Synced and Healthy, otherwise the reviewer checks it. Nothing merges automatically. With Kargo, a stage accepts only a release verified in the stage before it, and `prod` still changes through a reviewed pull request; one engine writes the environment files at a time.
 - Admission: Kyverno CEL policies enforce the workload contract (non-root, no privilege escalation, all capabilities dropped, seccomp `RuntimeDefault`, read-only root filesystem, requests and limits, probes, no `latest`, registry allowlist): Audit in `dev`, Enforce in `stage` and `prod`. In the `reference` profile an `ImageValidatingPolicy` admits images in `stage` and `prod` only when they are signed by this repository's build workflow on `main` and carry a vulnerability attestation from the same identity that is younger than `maxScanAge` (168h) and lists no CRITICAL finding. Pod Security Admission `restricted` applies to all app namespaces.
 - Network: Default-deny ingress and egress in app namespaces, with explicit allow rules per app and baseline policies for platform namespaces.
 
@@ -189,7 +189,7 @@ Every pull request runs `validate.yml`; the single required check is `ci-gate`, 
 | `helm-common` BackendTrafficPolicy and KEDA options | Implemented, optional; unit tests in CI (`helm`) |
 | OpenTofu for one reference target (Hetzner Cloud, `infra/hetzner`) | Implemented; validated and tested offline in CI (`opentofu`), never applied in CI |
 | Tenant onboarding from `tenants/<name>.yaml` (ApplicationSet, off by default) | Implemented, optional; tenant files schema-checked in CI (`config`) |
-| Promotion orchestration with Kargo (optional, `reference` profile; `promote.yml` stays the default) | Implemented; render and unit tests in CI (`helm`, `argocd-bootstrap`), end to end on kind with `tests/integration/kargo` |
+| Promotion orchestration with Kargo (optional; on in the shipped `reference` cluster file, which makes Kargo the promotion engine of the repository unless `PROMOTION_ENGINE` is `workflows`) | Implemented; render and unit tests in CI (`helm`, `argocd-bootstrap`), end to end on kind with `tests/integration/kargo` |
 | Vulnerability attestation (Trivy, cosign) required at admission in `stage` and `prod` | Implemented, `reference` profile only; attestation tests in CI (`policy-test-attestations`) |
 | Backstage catalog descriptors (`catalog-info.yaml`) | Implemented; validated in CI (`catalog-lint`) |
 | `make new-app` | Planned |

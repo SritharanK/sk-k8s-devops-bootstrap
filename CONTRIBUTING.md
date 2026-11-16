@@ -28,13 +28,14 @@ To run the platform locally, follow the [quick start](docs/getting-started/quick
 
 | Target | What it checks |
 | --- | --- |
-| `make lint` | YAML, Markdown, shell, workflow and Dockerfile linters |
+| `make lint` | YAML, Markdown (style and local links), shell, workflow and Dockerfile linters, and the Backstage catalog check |
 | `make validate-config` | Cluster and tenant files against their schemas; placeholders are warnings, and `STRICT=1 CLUSTER=<name>` rejects them in one cluster file |
 | `make render` | Renders every chart for each profile into `_out/` (gitignored) |
 | `make kubeconform` | Validates the rendered manifests against the Kubernetes and CRD schemas |
 | `make policy-test` | Kyverno policy tests and policy checks against the rendered apps |
 | `make ansible-lint` | ansible-lint with the production profile |
-| `make validate` | The static checks above in one run |
+| `make validate` | Cluster files, chart lint and unit tests, the rendered GitOps tree and the policy tests (`validate-config`, `helm`, `argocd-bootstrap`, `policy-test`) |
+| `make ci` | The static CI jobs in one run, without Docker: `lint` and the parts of `validate`, plus the secret scan, the Trivy scan of the rendered manifests, the support matrix check, Ansible lint and syntax, OpenTofu validation and the static Jenkins lint |
 | `make e2e` | The end-to-end test on kind: brings the demo up, runs the assertions and deletes the cluster. `SKIP_UP=1` uses a running `make demo` cluster, `KEEP=1` keeps the cluster |
 
 The full list with the script behind each target is in [Make targets](docs/reference/make-targets.md). CI runs the same checks; the single required status is `ci-gate` (see [CI/CD](docs/architecture/ci-cd.md)).

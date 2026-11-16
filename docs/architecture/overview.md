@@ -74,7 +74,7 @@ The platform has four layers, and each layer has one tool that owns it. In the d
 | --- | --- | --- | --- |
 | Nodes | Ansible, RKE2 | OS baseline, firewall, RKE2 servers and agents, etcd snapshot schedule | `clusters/<name>/cluster.yaml`, inventory, `make preflight`, `make bootstrap-k8s` |
 | Cluster platform | Argo CD toolchain Applications | Argo CD itself, Gateway, certificates, admission policy, network policy, secrets, optional operations components | Wrapper charts under `helmcharts/system-charts/`, toolchain switches in the cluster file |
-| Workloads | App charts built on helm-common | Deployment, Service, HTTPRoute, NetworkPolicy, ServiceAccount, PDB, HPA per app | `helmcharts/app-charts/<app>/` and `envs/<env>/<app>/values.yaml` |
+| Workloads | App charts built on helm-common | Deployment, Service, HTTPRoute, NetworkPolicy, ServiceAccount, PDB, HPA or KEDA ScaledObject, BackendTrafficPolicy per app | `helmcharts/app-charts/<app>/` and `envs/<env>/<app>/values.yaml` |
 | Delivery | GitHub Actions; Kargo when enabled | Validation, image build, signing, attestation, daily rescan, promotion pull requests; with Kargo, promotion commits, the `prod` pull request and verification | Workflows under `.github/workflows/`, the repository variable `PROMOTION_ENGINE`, `toolchains.kargo` in the cluster file |
 
 The diagram shows the target architecture for one profile. Both profiles run one cluster; the two-cluster hub topology is implemented in the bootstrap chart and not tested in CI. Nodes with a dashed border are optional and off by default; Kargo is on in the `reference` profile. Dashed edges are image pulls and the flows of optional or external parts.
@@ -86,7 +86,7 @@ flowchart TB
     VAL["validate.yml: lint, render, kubeconform, policy tests, catalog lint"]
     E2E["e2e.yml: make demo on kind"]
     BLD["build-image.yml: test, push, scan, sign, attest, daily rescan"]
-    PRM["promote.yml: promotion pull request, default engine"]
+    PRM["promote.yml: promotion pull request, workflows engine"]
     GHCR[("GHCR: images by digest, signatures, vulnerability and build attestations")]
   end
 

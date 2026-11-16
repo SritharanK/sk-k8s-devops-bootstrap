@@ -17,13 +17,13 @@ Two engines can promote: the workflows `build-image.yml` and `promote.yml`, whic
 - Switching back: disable the Kargo pipelines first (`toolchains.kargo.enabled: false` or `toolchains.kargo.pipelines.enabled: false`). With no cluster file enabling Kargo, the workflows write again; an explicit `PROMOTION_ENGINE=kargo` must be deleted as well. Setting `PROMOTION_ENGINE=workflows` while the pipelines still run would leave Kargo and the workflows writing at the same time.
 - A reviewer who sees a promotion pull request from the engine that is not selected closes it.
 
-The policy below applies to both paths, with the differences that rules 3, 4 and 10 state. The rest of this page describes the default path; the Kargo procedure is in [promote with Kargo](../how-to/promote-with-kargo.md).
+The policy below applies to both paths, with the differences that rules 3, 4 and 10 state. The rest of this page describes the workflows path; the Kargo procedure is in [promote with Kargo](../how-to/promote-with-kargo.md).
 
 ## Deployment policy
 
 1. Images are referenced by digest. Each environment file `envs/<env>/<app>/values.yaml` holds only `image.tag` and `image.digest`. When `image.digest` is set, helm-common renders `repository@digest` and the tag is informational.
 2. No `latest`. Kyverno rejects a pod whose image has the `latest` tag or no tag and no digest; it audits in `dev` and enforces in `stage` and `prod`. See [controls](../security/controls.md).
-3. Every release is a pull request on the default path. The flow is `dev`, then `stage`, then `prod`, and each step copies the digest that runs in the previous environment. With Kargo, `prod` is a pull request; `dev` and `stage` are direct commits unless `pullRequest: true` is set for those stages, and a stage accepts only a release verified in the stage before it.
+3. Every release is a pull request on the workflows path. The flow is `dev`, then `stage`, then `prod`, and each step copies the digest that runs in the previous environment. With Kargo, `prod` is a pull request; `dev` and `stage` are direct commits unless `pullRequest: true` is set for those stages, and a stage accepts only a release verified in the stage before it.
 4. Promotion is verified. When the repository variable `ARGOCD_SERVER` and the secret `ARGOCD_CI_TOKEN_<ENV>` of the source environment are set, `promote.yml` checks through the Argo CD API that the source Application `<app>-<env>` is Synced and Healthy and runs that digest, before it opens the pull request. The token belongs to the read-only AppProject role `ci` of the source project. Without that configuration the check is skipped, the workflow logs a warning, and the pull request says that the reviewer must check the source environment in Argo CD. The workflow only reads status; it never syncs. Kargo instead asks Argo CD to sync the target Application, waits until it runs the new commit, and then runs the `success-rate` analysis when the `argo-rollouts` and `monitoring` toolchains are enabled, as in the `reference` profile.
 5. A promotion pull request changes only `image.tag` and `image.digest`. Sizing and other per-environment settings change through a normal pull request to the chart.
 6. Production needs an owner. CODEOWNERS covers `envs/prod/`, so a prod promotion needs an approving review from an owner.
@@ -160,7 +160,7 @@ Each step answers one question: which digest runs, which commit put it there, wh
 ## Optional and planned
 
 - Canary releases are optional. With the `argo-rollouts` toolchain enabled, `rollout.enabled` in an app's values renders an Argo Rollouts `Rollout` that shifts traffic through the HTTPRoute and runs the `ClusterAnalysisTemplate` `success-rate`. A failed analysis aborts and rolls back the canary; an analysis without traffic is Inconclusive and pauses the rollout. The toolchain is off by default.
-- Gating a promotion on the result of a canary analysis is planned, not implemented.
+- On the workflows path, gating `promote.yml` on the result of a canary analysis is planned, not implemented. With Kargo, a stage accepts only Freight that was verified in the stage before it, with the `success-rate` analysis when verification is enabled.
 - Promotion orchestration with Kargo is optional ([ADR 0012](../adr/0012-kargo-promotion.md), [Promote with Kargo](../how-to/promote-with-kargo.md)). It writes the same two keys and verifies each promotion with the `success-rate` analysis when the `argo-rollouts` and `monitoring` toolchains are enabled, as in the `reference` profile. The flow on this page applies wherever the workflows are the engine; how the two paths coexist is in [two promotion paths, one writer](#two-promotion-paths-one-writer).
 
 ## References

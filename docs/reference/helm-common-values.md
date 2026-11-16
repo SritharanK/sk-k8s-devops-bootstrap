@@ -10,7 +10,7 @@ The authoritative per-key list, with every default, is the generated chart READM
 - An app chart declares `helm-common` as a dependency through a local `file://` reference and keeps thin templates, one include per object. The app Applications list `../../helm-common` in `manifest-generate-paths`, so a library change re-renders every app.
 - Objects carry the recommended `app.kubernetes.io/*` labels. Selectors use only `app.kubernetes.io/name` and `app.kubernetes.io/instance`, so adding a label never touches an immutable selector. Names are release-scoped and truncated to 63 characters.
 - Values are validated against a `values.schema.json` during `helm lint`, `helm template` and install, so a value of the wrong type fails in CI instead of rendering.
-- A helm-unittest suite in `helmcharts/helm-common/tests/` covers the defaults and the opt-outs. Run it with `helm unittest helmcharts/helm-common/tests/chart`. The CI job `helm` runs it with lint, render and kubeconform for every app and environment.
+- A helm-unittest suite in `helmcharts/helm-common/tests/` covers the defaults and the opt-outs. Run it with `helm unittest helmcharts/helm-common/tests/chart`. The CI job `helm` runs it together with `helm lint`; the job `argocd-bootstrap` renders every app and environment and validates the output with kubeconform.
 
 A template file in an app chart is one line:
 
@@ -29,8 +29,10 @@ A template file in an app chart is one line:
 | `common.serviceaccount` | ServiceAccount | A dedicated account with token automount off. |
 | `common.pdb` | PodDisruptionBudget | `maxUnavailable: 1`, rendered only when the minimum replica count is above 1. |
 | `common.hpa` | HorizontalPodAutoscaler | Only when autoscaling is enabled. Supports `behavior`. |
+| `common.scaledobject` | KEDA ScaledObject | Only when `keda.enabled` is true, instead of the HPA (`autoscaling.enabled` must be false). Targets the Deployment, or the Rollout when `rollout.enabled`. |
+| `common.backendtrafficpolicy` | Envoy Gateway BackendTrafficPolicy | Only when `trafficPolicy.enabled` and `route.enabled` are true. Timeouts, retries, circuit breaker and an optional local rate limit for the app's HTTPRoute. |
 
-helm-common also renders a ServiceMonitor, an Argo Rollouts `Rollout` and a PersistentVolumeClaim when their values enable them; the generated README names those templates.
+helm-common also renders a ServiceMonitor, an Argo Rollouts `Rollout`, a PersistentVolumeClaim and one ConfigMap per `configMaps` entry when their values enable them; the generated README names those templates. With `otel.enabled`, `common.deployment` adds the `OTEL_*` environment and `common.networkpolicy` the egress rule to the collector, so tracing needs no template of its own.
 
 ## Values
 
@@ -148,6 +150,43 @@ The Deployment omits `replicas` when the HPA is on, so Argo CD and the HPA do no
 | `rollout.trafficRouting.gatewayAPI.enabled` | See the generated README | Shifts traffic through the Gateway API plugin instead of by replica count. |
 | `rollout.trafficRouting.gatewayAPI.httpRoute` | See the generated README | Contract. The HTTPRoute whose backend weights the Gateway API plugin shifts. |
 
+### Traffic policy
+
+An app chart that wants it includes `common.backendtrafficpolicy` in one template file, as `hello-api` does. Usage: [traffic and scaling](../how-to/traffic-and-scaling.md).
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `trafficPolicy.enabled` | `false` | Renders a BackendTrafficPolicy that targets the app's HTTPRoute. Requires `route.enabled`. |
+| `trafficPolicy.timeout` | `tcp.connectTimeout: 5s`, `http.requestTimeout: 15s` | Backend timeouts, rendered as given. Set either this request timeout or `route.timeouts`, not both. |
+| `trafficPolicy.retry` | 2 retries on connection failures and 503 | Retry policy, rendered as given. Add `5xx`, `reset` or `gateway-error` only when every operation on the route is idempotent. |
+| `trafficPolicy.circuitBreaker` | See the generated README | Connection and request thresholds per Envoy replica; requests above a threshold fail fast with 503. |
+| `trafficPolicy.rateLimit.enabled`, `.requests`, `.unit` | `false`, `100`, `Second` | One local rate limit for every request to the route, counted per Envoy replica; answers 429 above the limit. |
+
+### KEDA scaling
+
+An app chart that wants it includes `common.scaledobject` in one template file, as `hello-api` does. Requires the `keda` toolchain. Usage: [traffic and scaling](../how-to/traffic-and-scaling.md).
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `keda.enabled` | `false` | Renders a ScaledObject; KEDA then owns the HPA, so `autoscaling.enabled` must be false and the replica count is omitted. |
+| `keda.minReplicaCount`, `keda.maxReplicaCount` | `1`, `5` | Replica bounds while a trigger is active. |
+| `keda.idleReplicaCount` | None | Replicas while no trigger is active; `0` scales to zero and requires `minReplicaCount` of at least 1. |
+| `keda.prometheus.query`, `.threshold`, `.serverAddress` | Empty, `"10"`, the `monitoring` Prometheus | Default trigger: a PromQL query that returns one value, and the target value per replica. The query is required when `keda.triggers` is empty. |
+| `keda.triggers[]` | Empty | Full trigger list; replaces the Prometheus trigger. |
+| `keda.pollingInterval`, `keda.cooldownPeriod`, `keda.fallback`, `keda.behavior` | See the generated README | Polling and scale-down timing, behaviour when the scaler fails, and the behaviour of the generated HPA. |
+
+### Tracing
+
+Requires an OTLP collector, such as Tempo from the `tracing` toolchain. Usage: [tracing](../how-to/tracing.md).
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `otel.enabled` | `false` | Adds the `OTEL_*` environment variables to the container (a variable already in `env` is kept) and, with `otel.networkPolicy.namespace` set, an egress rule to the collector. |
+| `otel.endpoint`, `otel.protocol` | `http://tempo.tracing.svc:4318`, `http/protobuf` | OTLP endpoint and protocol. With `grpc`, use port 4317 here and in `otel.networkPolicy.port`. |
+| `otel.serviceName`, `otel.resourceAttributes` | The full name, none | Service name and extra resource attributes. |
+| `otel.sampler`, `otel.samplerArg`, `otel.propagators` | `parentbased_traceidratio`, `"1.0"`, `tracecontext,baggage` | Sampling and context propagation. |
+| `otel.networkPolicy.namespace`, `otel.networkPolicy.port` | `tracing`, `4318` | Collector namespace and port for the egress rule; an empty namespace adds no rule. |
+
 ### Volumes and persistence
 
 | Key | Default | Description |
@@ -206,6 +245,8 @@ helm-common renders the objects the optional observability and progressive deliv
 | --- | --- | --- | --- |
 | Metrics | `metrics.serviceMonitor.enabled`, `metrics.serviceMonitor.labels` | A ServiceMonitor for `/metrics`, labelled `release: monitoring` by default | The `monitoring` toolchain (kube-prometheus-stack) selects ServiceMonitors by that label; the app's own NetworkPolicy admits the scrape on the metrics port. |
 | Canary delivery | `rollout.enabled`, `rollout.steps[]`, `rollout.analysis.*`, `rollout.trafficRouting.gatewayAPI.*` | A `Rollout` with `workloadRef` to the app's Deployment | The `argo-rollouts` toolchain with the Gateway API plugin and the `ClusterAnalysisTemplate` named `success-rate`. |
+| Tracing | `otel.enabled`, `otel.endpoint`, `otel.networkPolicy.*` | The `OTEL_*` environment and the egress rule to the collector | The `tracing` toolchain (Grafana Tempo), which receives OTLP on port 4318. |
+| Request-based scaling | `keda.enabled`, `keda.prometheus.*` or `keda.triggers[]` | A KEDA ScaledObject instead of the HPA | The `keda` toolchain, and for the default trigger the `monitoring` Prometheus with a ServiceMonitor for the app. |
 
 The [observability contract](../operations/observability-contract.md) lists the probes, metrics, logs and traces every workload provides. Argo Rollouts' [migration guide](https://argo-rollouts.readthedocs.io/en/stable/migrating/) explains how a `Rollout` with `workloadRef` relates to its Deployment.
 

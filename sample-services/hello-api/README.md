@@ -110,7 +110,7 @@ The chart in `helmcharts/app-charts/hello-api` deploys the image on port 8080 wi
 - `LOG_LEVEL`, `SHUTDOWN_DELAY` and `SHUTDOWN_TIMEOUT` as environment variables, with `terminationGracePeriodSeconds: 30`;
 - an optional ServiceMonitor that scrapes `/metrics` on port 8080.
 
-See the chart README for its values. To enable tracing, add `OTEL_EXPORTER_OTLP_ENDPOINT` to the chart `env` list.
+See the chart README for its values. To enable tracing, set `otel.enabled: true` in the chart values, or per environment with `environments.<env>.otel.enabled: true`; it requires the `tracing` toolchain, and helm-common then adds the `OTEL_*` variables and the egress rule to Tempo.
 
 ## Layout
 
