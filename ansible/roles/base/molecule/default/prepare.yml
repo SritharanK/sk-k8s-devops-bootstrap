@@ -17,10 +17,10 @@
         grep -vE '^#|^$' /etc/pam.d/sudo; grep -E '^account' /etc/pam.d/system-auth 2>/dev/null;
         ls -ln /usr/sbin/unix_chkpwd 2>&1; ls /etc/selinux 2>&1; grep -i selinux /proc/mounts;
         sudo -n true; echo "sudo rc=$?"; uname -r
-      register: diag
+      register: base__diag
       changed_when: false
       failed_when: false
 
     - name: Show the privilege escalation environment
       ansible.builtin.debug:
-        var: diag.stdout_lines
+        var: base__diag.stdout_lines
