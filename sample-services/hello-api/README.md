@@ -80,6 +80,14 @@ curl -s localhost:8080/metrics | grep http_requests_total
 
 Set a version at build time with `-ldflags "-X main.version=0.1.0"`; it is logged at start, returned by `GET /` and exposed in `hello_api_build_info`.
 
+The `name` query parameter is the only untrusted input of `GET /`. `FuzzHelloName` in `internal/server/fuzz_test.go` sends arbitrary values through the full handler: the response must be JSON, the name must be accepted exactly when `validateName` accepts it, and it must come back unchanged. `go test ./...` runs its seed inputs; to explore further:
+
+```sh
+go test -run '^$' -fuzz '^FuzzHelloName$' -fuzztime 60s ./internal/server
+```
+
+A failing input is saved under `internal/server/testdata/fuzz/` and then runs with every `go test` until it is fixed.
+
 Container image:
 
 ```sh
