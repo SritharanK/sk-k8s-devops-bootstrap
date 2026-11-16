@@ -30,7 +30,9 @@ Accepted issues are fixed on `main`, released as a patch version and published a
 
 | Version | Supported |
 | --- | --- |
-| The `main` branch | Yes, until the first release; after that, the latest release and `main` |
+| The latest release (`1.0.x`) | Yes |
+| The `main` branch | Yes |
+| Earlier releases | No: upgrade to the latest release |
 
 ## Scope
 
