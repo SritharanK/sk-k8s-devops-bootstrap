@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- On pull requests the `docs` job checks external links only in the Markdown files that the pull request changes, so an outage of an unrelated site no longer blocks it. Local links and anchors of every file are still checked on every run, and pushes to `main`, the weekly run and manual runs check every link. New target `make lint-links-offline` (no network), part of `make lint`.
+
 ## [1.0.0] - 2026-11-16
 
 First public release: an RKE2 and Argo CD platform reference with current components, secure delivery, a tested lab path and documentation.

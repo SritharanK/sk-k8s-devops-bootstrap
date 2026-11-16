@@ -25,7 +25,7 @@ GitHub Actions is the reference CI. Jenkins is an optional on-premises adapter (
 | `secrets` | No secret in the change; the weekly run scans the full history; no committed `kind: Secret` with `data` or `stringData` outside Helm `templates/` directories and `*.example.yaml` files | gitleaks, `hack/secrets.sh` |
 | `commit-lint` | Commit subjects of the pull request follow Conventional Commits | `make lint-commits` |
 | `yaml-lint` | YAML syntax and style with the repository configuration, excluding Helm `templates/` | yamllint |
-| `docs` | Links and Markdown style | lychee, markdownlint |
+| `docs` | Markdown style; local links and anchors in every file; external links in the Markdown files that a pull request changes, and in every file on `main`, weekly and on manual dispatch | markdownlint, lychee |
 | `shell-lint` | Shell script defects and formatting | shellcheck, shfmt |
 | `config` | Every `clusters/*/cluster.yaml` validates against `clusters/schema.json`, every `tenants/*.yaml` against `tenants/schema.json`, and both pass the consistency checks; placeholders such as `CHANGE_ME` and `YOUR_` are reported as warnings, because the shipped files keep them until an operator fills them in | `hack/validate-config.sh` |
 | `ansible` | Lint on the production profile, playbook syntax, role behaviour | ansible-lint, `ansible-playbook --syntax-check`, Molecule |
