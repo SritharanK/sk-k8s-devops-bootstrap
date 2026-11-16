@@ -94,6 +94,10 @@ exclude = [
   '^https?://127\.0\.0\.1([:/?#]|$)',
   # In-cluster service DNS (kubernetes.default.svc, *.svc.cluster.local).
   '^https?://[^/]+\.svc(\.cluster\.local)?([:/?#]|$)',
+  # Changelog version links of this repository: a release pull request adds
+  # them before the tag they point to is pushed, so they resolve only after
+  # the merge.
+  '^https://github\.com/SritharanK/sk-k8s-devops-bootstrap/(compare|releases/tag)/',
   # Placeholders that must be replaced before use. Case-insensitive because
   # lychee lowercases host names (https://YOUR_ORG.github.io becomes
   # your_org.github.io before matching).

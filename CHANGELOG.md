@@ -4,9 +4,9 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Component version changes are not listed here one by one; the generated [support matrix](docs/reference/support-matrix.md) records the current versions.
 
-No version is tagged yet. The first release takes the Unreleased section with its version and date.
-
 ## [Unreleased]
+
+## [1.0.0] - 2026-11-16
 
 First public release: an RKE2 and Argo CD platform reference with current components, secure delivery, a tested lab path and documentation.
 
@@ -63,4 +63,5 @@ First public release: an RKE2 and Argo CD platform reference with current compon
 - Kyverno and the NFS provisioner run with complete pod security contexts; the Trivy scan of the rendered manifests is blocking, with every accepted controller permission scoped to one rule and one component and an expiry date.
 - Manifests are validated against the Kubernetes 1.35 and 1.36 schemas.
 
-[Unreleased]: https://github.com/SritharanK/sk-k8s-devops-bootstrap/commits/main
+[Unreleased]: https://github.com/SritharanK/sk-k8s-devops-bootstrap/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/SritharanK/sk-k8s-devops-bootstrap/releases/tag/v1.0.0
