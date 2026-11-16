@@ -1,0 +1,83 @@
+name: Bug report
+description: Something in the platform does not work as documented.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report security vulnerabilities privately through the security policy, not here.
+        Remove hostnames, IP addresses, domains, tokens and any other environment data from everything you paste.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - provisioning (Ansible, RKE2)
+        - gitops (Argo CD, bootstrap, ApplicationSets)
+        - platform components (system charts)
+        - policy (Kyverno)
+        - workloads (app charts, sample services)
+        - ci (workflows, make targets)
+        - docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Profile
+      options:
+        - lab
+        - reference
+    validations:
+      required: true
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: Commit or tag of this repository, and the versions involved. `make doctor` prints the local toolchain.
+      placeholder: |
+        Repository commit or tag:
+        RKE2 or kind version:
+        Component chart version:
+        Toolchain (make doctor):
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Commands in order, starting from a clean checkout or a fresh cluster.
+      placeholder: |
+        1. make demo
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and output
+      description: Relevant command output, controller logs or Argo CD events. Rendered as a code block; no backticks needed.
+      render: shell
+    validations:
+      required: false

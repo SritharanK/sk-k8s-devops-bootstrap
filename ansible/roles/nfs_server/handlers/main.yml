@@ -1,0 +1,15 @@
+---
+# A restart re-reads nfs.conf and re-exports; it runs before the exportfs handler when both are notified.
+- name: Restart nfs-server
+  ansible.builtin.systemd_service:
+    name: "{{ nfs_server__service }}"
+    state: restarted
+  when: nfs_server_manage_service | bool
+
+- name: Reload NFS exports
+  ansible.builtin.command:
+    argv: [exportfs, -ra]
+  changed_when: true
+  failed_when: nfs_server__exportfs_result.rc != 0
+  register: nfs_server__exportfs_result
+  when: nfs_server_manage_service | bool

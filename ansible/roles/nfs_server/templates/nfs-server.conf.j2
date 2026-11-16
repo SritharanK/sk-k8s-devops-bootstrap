@@ -1,0 +1,6 @@
+{{ ansible_managed | comment }}
+# NFSv4 only. NFSv3 also needs rpcbind, mountd and statd on further ports; with version 3 disabled, clients only
+# need 2049/tcp. Settings here override /etc/nfs.conf (nfs-utils 2.5.3 or later reads /etc/nfs.conf.d/*.conf).
+
+[nfsd]
+vers3=n

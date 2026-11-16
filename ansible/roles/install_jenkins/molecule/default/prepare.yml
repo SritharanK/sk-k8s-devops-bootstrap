@@ -1,0 +1,17 @@
+---
+# Prepares the test containers only. The Ubuntu image is minimized and has no
+# /usr/share/man/man1, so the OpenJDK post-install script cannot register its
+# man page alternative there. Full Ubuntu and Debian hosts have the directory.
+- name: Prepare
+  hosts: jenkins
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Create the man page directory that minimized images remove
+      ansible.builtin.file:
+        path: /usr/share/man/man1
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when: ansible_facts['os_family'] == 'Debian'

@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/v0.2.15/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: sync-waves
+spec:
+  description: Child Applications of a higher sync wave were created only after every lower-wave Application first reported Healthy.
+  concurrent: false
+  catch:
+    - script:
+        content: |
+          cols='NAME:.metadata.name,WAVE:.metadata.annotations.argocd\.argoproj\.io/sync-wave'
+          cols="${cols},CREATED:.metadata.creationTimestamp,SYNC:.status.sync.status,HEALTH:.status.health.status"
+          kubectl get applications.argoproj.io -n argocd \
+            -o custom-columns="${cols}"
+  steps:
+    - name: sync-wave-order
+      try:
+        - script:
+            timeout: 1m
+            content: bash ../lib/check-sync-waves.sh

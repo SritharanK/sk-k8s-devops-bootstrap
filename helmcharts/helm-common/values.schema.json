@@ -1,0 +1,1260 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "helm-common values",
+  "description": "Values interface of the helm-common library chart. Consumer charts copy this schema and set the top-level additionalProperties to false, allowing helm-common and global.",
+  "type": "object",
+  "additionalProperties": true,
+  "definitions": {
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "nullableObject": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "nullableInteger": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "nullableBoolean": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "objectList": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "quantity": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ]
+    },
+    "intOrPercent": {
+      "type": [
+        "integer",
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9]+%$",
+      "minimum": 0
+    },
+    "probe": {
+      "description": "Kubernetes Probe. Setting a handler (httpGet, tcpSocket, grpc, exec) replaces the default handler.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "exec": {
+          "$ref": "#/definitions/nullableObject"
+        },
+        "httpGet": {
+          "$ref": "#/definitions/nullableObject"
+        },
+        "tcpSocket": {
+          "$ref": "#/definitions/nullableObject"
+        },
+        "grpc": {
+          "$ref": "#/definitions/nullableObject"
+        },
+        "initialDelaySeconds": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "periodSeconds": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "timeoutSeconds": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "successThreshold": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "failureThreshold": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "terminationGracePeriodSeconds": {
+          "$ref": "#/definitions/nullableInteger"
+        }
+      }
+    },
+    "seccompProfile": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "RuntimeDefault",
+            "Localhost",
+            "Unconfined",
+            null
+          ]
+        },
+        "localhostProfile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "duration": {
+      "description": "Envoy Gateway duration, for example 500ms, 15s or 1h.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^([0-9]{1,5}(h|m|s|ms)){1,4}$"
+    },
+    "uint32": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "kedaAuthenticationRef": {
+      "description": "KEDA TriggerAuthentication reference.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "TriggerAuthentication",
+            "ClusterTriggerAuthentication"
+          ]
+        }
+      }
+    }
+  },
+  "properties": {
+    "global": {
+      "description": "Values shared with every chart, set by Argo CD.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "environment": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "cluster": {
+          "type": "string"
+        },
+        "profile": {
+          "type": "string"
+        },
+        "imageRegistry": {
+          "type": "string",
+          "pattern": "^[^A-Z]*$"
+        }
+      }
+    },
+    "environments": {
+      "description": "Per-environment overrides keyed by environment name. Each value is a partial values tree.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "commonLabels": {
+      "$ref": "#/definitions/stringMap"
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string",
+          "description": "Registry path without tag or digest. Required at render time.",
+          "pattern": "^[^A-Z]*$"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Image tag. latest is rejected.",
+          "not": {
+            "pattern": "^[Ll][Aa][Tt][Ee][Ss][Tt]$"
+          }
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^(sha256:[a-f0-9]{64})?$"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
+        "registry": {
+          "type": "string",
+          "description": "Registry and path prefix. global.imageRegistry takes precedence.",
+          "pattern": "^[^A-Z]*$"
+        }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      }
+    },
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "revisionHistoryLimit": {
+      "$ref": "#/definitions/nullableInteger"
+    },
+    "strategy": {
+      "type": "object"
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "annotations": {
+          "$ref": "#/definitions/stringMap"
+        },
+        "automount": {
+          "type": "boolean"
+        }
+      }
+    },
+    "podAnnotations": {
+      "$ref": "#/definitions/stringMap"
+    },
+    "podLabels": {
+      "$ref": "#/definitions/stringMap"
+    },
+    "podSecurityContext": {
+      "description": "Kubernetes PodSecurityContext, rendered as given.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "runAsNonRoot": {
+          "$ref": "#/definitions/nullableBoolean"
+        },
+        "runAsUser": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "runAsGroup": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "fsGroup": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "seccompProfile": {
+          "$ref": "#/definitions/seccompProfile"
+        }
+      }
+    },
+    "securityContext": {
+      "description": "Kubernetes container SecurityContext, rendered as given.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "runAsNonRoot": {
+          "$ref": "#/definitions/nullableBoolean"
+        },
+        "runAsUser": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "runAsGroup": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "allowPrivilegeEscalation": {
+          "$ref": "#/definitions/nullableBoolean"
+        },
+        "readOnlyRootFilesystem": {
+          "$ref": "#/definitions/nullableBoolean"
+        },
+        "privileged": {
+          "$ref": "#/definitions/nullableBoolean"
+        },
+        "capabilities": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "drop": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            },
+            "add": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "seccompProfile": {
+          "$ref": "#/definitions/seccompProfile"
+        }
+      }
+    },
+    "command": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "args": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "containerPorts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "containerPort"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "containerPort": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "TCP",
+              "UDP",
+              "SCTP"
+            ]
+          }
+        }
+      }
+    },
+    "env": {
+      "description": "Kubernetes EnvVar list.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "envFrom": {
+      "description": "Kubernetes EnvFromSource list.",
+      "$ref": "#/definitions/objectList"
+    },
+    "configMaps": {
+      "description": "ConfigMaps rendered by the chart, keyed by short name.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
+          "mountPath": {
+            "type": "string"
+          },
+          "asEnv": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "secretMounts": {
+      "description": "Existing Secrets to mount, keyed by volume name.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "secretName",
+          "mountPath"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "secretName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mountPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "items": {
+            "$ref": "#/definitions/objectList"
+          },
+          "optional": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "tmpVolume": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "mountPath": {
+          "type": "string"
+        },
+        "sizeLimit": {
+          "$ref": "#/definitions/quantity"
+        },
+        "medium": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "",
+            "Memory",
+            null
+          ]
+        }
+      }
+    },
+    "extraVolumes": {
+      "description": "Kubernetes Volume list.",
+      "$ref": "#/definitions/objectList"
+    },
+    "extraVolumeMounts": {
+      "description": "Kubernetes VolumeMount list.",
+      "$ref": "#/definitions/objectList"
+    },
+    "persistence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "mountPath": {
+          "type": "string"
+        },
+        "accessMode": {
+          "type": "string",
+          "enum": [
+            "ReadWriteOnce",
+            "ReadOnlyMany",
+            "ReadWriteMany",
+            "ReadWriteOncePod"
+          ]
+        },
+        "size": {
+          "type": "string"
+        },
+        "storageClassName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "existingClaim": {
+          "type": "string"
+        },
+        "annotations": {
+          "$ref": "#/definitions/stringMap"
+        }
+      }
+    },
+    "livenessProbe": {
+      "$ref": "#/definitions/probe"
+    },
+    "readinessProbe": {
+      "$ref": "#/definitions/probe"
+    },
+    "startupProbe": {
+      "$ref": "#/definitions/probe"
+    },
+    "resources": {
+      "description": "Kubernetes ResourceRequirements.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "requests": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "$ref": "#/definitions/quantity"
+          }
+        },
+        "limits": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "$ref": "#/definitions/quantity"
+          }
+        }
+      }
+    },
+    "lifecycle": {
+      "description": "Kubernetes Lifecycle.",
+      "type": "object"
+    },
+    "terminationGracePeriodSeconds": {
+      "$ref": "#/definitions/nullableInteger"
+    },
+    "priorityClassName": {
+      "type": "string"
+    },
+    "nodeSelector": {
+      "$ref": "#/definitions/stringMap"
+    },
+    "tolerations": {
+      "$ref": "#/definitions/objectList"
+    },
+    "affinity": {
+      "type": "object"
+    },
+    "topologySpread": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "topologyKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maxSkew": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "whenUnsatisfiable": {
+          "type": "string",
+          "enum": [
+            "DoNotSchedule",
+            "ScheduleAnyway"
+          ]
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "ClusterIP",
+            "NodePort",
+            "LoadBalancer"
+          ]
+        },
+        "annotations": {
+          "$ref": "#/definitions/stringMap"
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "port"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "targetPort": {
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              "protocol": {
+                "type": "string",
+                "enum": [
+                  "TCP",
+                  "UDP",
+                  "SCTP"
+                ]
+              },
+              "appProtocol": {
+                "type": "string"
+              },
+              "nodePort": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "annotations": {
+          "$ref": "#/definitions/stringMap"
+        },
+        "hostnames": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "parentRefs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ]
+          }
+        },
+        "matches": {
+          "$ref": "#/definitions/objectList"
+        },
+        "timeouts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "request": {
+              "type": "string"
+            },
+            "backendRequest": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "trafficPolicy": {
+      "description": "Envoy Gateway BackendTrafficPolicy attached to the HTTPRoute of this chart. Field names follow the Envoy Gateway v1.10 CRD.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "annotations": {
+          "$ref": "#/definitions/stringMap"
+        },
+        "timeout": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "tcp": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "connectTimeout": {
+                  "$ref": "#/definitions/duration"
+                }
+              }
+            },
+            "http": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "requestTimeout": {
+                  "$ref": "#/definitions/duration"
+                },
+                "connectionIdleTimeout": {
+                  "$ref": "#/definitions/duration"
+                },
+                "maxConnectionDuration": {
+                  "$ref": "#/definitions/duration"
+                }
+              }
+            }
+          }
+        },
+        "retry": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "numRetries": {
+              "$ref": "#/definitions/nullableInteger"
+            },
+            "retryOn": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "triggers": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "5xx",
+                      "gateway-error",
+                      "reset",
+                      "reset-before-request",
+                      "connect-failure",
+                      "retriable-4xx",
+                      "refused-stream",
+                      "retriable-status-codes",
+                      "cancelled",
+                      "deadline-exceeded",
+                      "internal",
+                      "resource-exhausted",
+                      "unavailable"
+                    ]
+                  }
+                },
+                "httpStatusCodes": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 599
+                  }
+                }
+              }
+            },
+            "perRetry": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "timeout": {
+                  "$ref": "#/definitions/duration"
+                },
+                "backOff": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "baseInterval": {
+                      "$ref": "#/definitions/duration"
+                    },
+                    "maxInterval": {
+                      "$ref": "#/definitions/duration"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "circuitBreaker": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "maxConnections": {
+              "$ref": "#/definitions/uint32"
+            },
+            "maxPendingRequests": {
+              "$ref": "#/definitions/uint32"
+            },
+            "maxParallelRequests": {
+              "$ref": "#/definitions/uint32"
+            },
+            "maxParallelRetries": {
+              "$ref": "#/definitions/uint32"
+            },
+            "maxRequestsPerConnection": {
+              "$ref": "#/definitions/uint32"
+            }
+          }
+        },
+        "rateLimit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "requests": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "Second",
+                "Minute",
+                "Hour",
+                "Day",
+                "Week",
+                "Month",
+                "Year"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "autoscaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "minReplicas": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxReplicas": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "targetCPUUtilizationPercentage": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "targetMemoryUtilizationPercentage": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "metrics": {
+          "description": "autoscaling/v2 MetricSpec list.",
+          "$ref": "#/definitions/objectList"
+        },
+        "behavior": {
+          "description": "autoscaling/v2 HorizontalPodAutoscalerBehavior.",
+          "type": "object"
+        }
+      }
+    },
+    "keda": {
+      "description": "KEDA ScaledObject, an alternative to autoscaling. KEDA creates and owns the HPA.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "minReplicaCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxReplicaCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pollingInterval": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "cooldownPeriod": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "initialCooldownPeriod": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "idleReplicaCount": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "fallback": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "failureThreshold": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "replicas": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "behavior": {
+          "description": "autoscaling/v2 HorizontalPodAutoscalerBehavior.",
+          "$ref": "#/definitions/nullableObject"
+        },
+        "prometheus": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "serverAddress": {
+              "type": "string",
+              "pattern": "^https?://"
+            },
+            "query": {
+              "type": "string"
+            },
+            "threshold": {
+              "type": "string",
+              "minLength": 1
+            },
+            "activationThreshold": {
+              "type": "string"
+            },
+            "authenticationRef": {
+              "$ref": "#/definitions/kedaAuthenticationRef"
+            }
+          }
+        },
+        "triggers": {
+          "description": "KEDA ScaleTriggers list. Replaces the Prometheus trigger when not empty.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "metadata"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string"
+              },
+              "metadata": {
+                "$ref": "#/definitions/stringMap"
+              },
+              "metricType": {
+                "type": "string",
+                "enum": [
+                  "AverageValue",
+                  "Value",
+                  "Utilization"
+                ]
+              },
+              "authenticationRef": {
+                "$ref": "#/definitions/kedaAuthenticationRef"
+              },
+              "useCachedMetrics": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "maxUnavailable": {
+          "$ref": "#/definitions/intOrPercent"
+        },
+        "minAvailable": {
+          "$ref": "#/definitions/intOrPercent"
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "gatewayNamespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "monitoringNamespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extraIngress": {
+          "description": "NetworkPolicyIngressRule list, appended after the generated rules.",
+          "$ref": "#/definitions/objectList"
+        },
+        "egress": {
+          "description": "NetworkPolicyEgressRule list.",
+          "$ref": "#/definitions/objectList"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "labels": {
+              "$ref": "#/definitions/stringMap"
+            },
+            "port": {
+              "type": "string",
+              "minLength": 1
+            },
+            "path": {
+              "type": "string"
+            },
+            "interval": {
+              "type": "string"
+            },
+            "scrapeTimeout": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "otel": {
+      "description": "OpenTelemetry SDK environment variables for the application container.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "endpoint": {
+          "type": "string",
+          "pattern": "^(https?://.+)?$"
+        },
+        "protocol": {
+          "type": "string",
+          "enum": [
+            "http/protobuf",
+            "http/json",
+            "grpc"
+          ]
+        },
+        "serviceName": {
+          "type": "string"
+        },
+        "sampler": {
+          "type": "string"
+        },
+        "samplerArg": {
+          "type": "string"
+        },
+        "propagators": {
+          "type": "string"
+        },
+        "resourceAttributes": {
+          "$ref": "#/definitions/stringMap"
+        },
+        "networkPolicy": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "namespace": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "port": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
+        }
+      }
+    },
+    "rollout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "workloadRef": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scaleDown": {
+              "type": "string",
+              "enum": [
+                "never",
+                "onsuccess",
+                "progressively"
+              ]
+            }
+          }
+        },
+        "steps": {
+          "description": "Argo Rollouts canary steps.",
+          "$ref": "#/definitions/objectList"
+        },
+        "analysis": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "templateName": {
+              "type": "string"
+            },
+            "startingStep": {
+              "$ref": "#/definitions/nullableInteger"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "trafficRouting": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gatewayAPI": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "httpRoute": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

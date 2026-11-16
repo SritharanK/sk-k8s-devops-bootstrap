@@ -1,0 +1,11 @@
+# Sample values for lint and render checks of the prod environment. Argo CD
+# applies envs/prod/hello-api/values.yaml (image.tag and image.digest) and
+# passes the global block through the Application.
+image:
+  tag: "0.1.0"
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+global:
+  environment: prod
+  domain: localtest.me
+  cluster: lab
+  profile: lab

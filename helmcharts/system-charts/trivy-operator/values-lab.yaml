@@ -1,0 +1,38 @@
+# Lab profile: kind or a single node. Scans only the application namespaces,
+# one scan job at a time, no persistence for the Trivy server cache.
+# CPU limits are omitted on purpose to avoid throttling.
+trivy-operator:
+  targetNamespaces: "dev,stage,prod"
+  excludeNamespaces: ""
+
+  operator:
+    replicas: 1
+    scanJobsConcurrentLimit: 1
+
+  # Operator container.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+  trivy:
+    # Server cache on an emptyDir: the database is downloaded again after a server restart.
+    storageClassEnabled: false
+    # Scan job containers.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: null
+        memory: 512Mi
+    server:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 512Mi
+        limits:
+          cpu: null
+          memory: 1Gi

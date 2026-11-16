@@ -1,0 +1,117 @@
+---
+argument_specs:
+  main:
+    short_description: nftables input firewall for RKE2 nodes.
+    description:
+      - Writes the table inet rke2_host to /etc/nftables.d/rke2-host.nft and loads it with rke2-host-firewall.service.
+      - Filters the input hook only. It never adds forward or output chains and never flushes the ruleset.
+      - The node role (server, agent or none) comes from the inventory groups and is set as the fact
+        firewall_node_role. A host with role none gets the base rules plus firewall_extra_rules only.
+    options:
+      firewall_enabled:
+        type: bool
+        default: true
+        description:
+          - Manage the firewall. false stops and disables the unit, which removes the table; files stay on disk.
+      firewall_cni:
+        type: str
+        default: canal
+        choices: [canal, calico, cilium]
+        description: CNI of the cluster. Selects the CNI port rules.
+      firewall_node_cidrs:
+        type: list
+        elements: str
+        default: []
+        description:
+          - Private node network CIDRs, IPv4 or IPv6. Source for the intra-cluster rules.
+          - Required (non-empty, no placeholder) when firewall_enabled is true.
+      firewall_ssh_cidrs:
+        type: list
+        elements: str
+        default: []
+        description:
+          - Sources allowed to reach SSH. Required (non-empty) when firewall_enabled is true, to avoid a lockout.
+      firewall_ssh_port:
+        type: int
+        default: 22
+        description: SSH port.
+      firewall_api_cidrs:
+        type: list
+        elements: str
+        default: []
+        description: Extra sources allowed to reach the Kubernetes API (6443/tcp) on servers.
+      firewall_cluster_cidr:
+        type: str
+        default: 10.42.0.0/16
+        description: Pod network CIDR, comma separated for dual stack. Traffic from pods to the host is accepted.
+      firewall_servers_group:
+        type: str
+        default: rke2_servers
+        description: Inventory group whose members get the server rules.
+      firewall_agents_group:
+        type: str
+        default: rke2_agents
+        description: Inventory group whose members get the agent rules.
+      firewall_etcd_sources:
+        type: list
+        elements: str
+        default: []
+        description:
+          - Sources for etcd (2379-2381/tcp) on servers.
+          - Empty means the server addresses, from rke2_node_ip, then ansible_facts['default_ipv4']['address'],
+            then ansible_host of each member of firewall_servers_group.
+      firewall_nodeport_enabled:
+        type: bool
+        default: true
+        description: Open the NodePort range 30000-32767/tcp on servers and agents.
+      firewall_nodeport_cidrs:
+        type: list
+        elements: str
+        default: "{{ firewall_node_cidrs }}"
+        description: Sources allowed to reach the NodePort range.
+      firewall_ingress_ports:
+        type: list
+        elements: raw
+        default: [80, 443]
+        description: Ingress TCP ports on servers and agents, as numbers or "start-end" ranges.
+      firewall_ingress_cidrs:
+        type: list
+        elements: str
+        default: []
+        description: Sources allowed to reach firewall_ingress_ports. Empty keeps the ports closed for host listeners.
+      firewall_extra_rules:
+        type: list
+        elements: dict
+        default: []
+        description: Additional accept rules, rendered for every node role.
+        options:
+          port:
+            type: raw
+            required: true
+            description: Destination port as a number or a "start-end" range.
+          proto:
+            type: str
+            required: true
+            choices: [tcp, udp]
+            description: Transport protocol.
+          sources:
+            type: list
+            elements: str
+            required: true
+            description: Source CIDRs, IPv4 or IPv6.
+          comment:
+            type: str
+            required: true
+            description: Rule comment, at most 100 characters, no double quotes.
+      firewall_disable_conflicting:
+        type: bool
+        default: true
+        description: Stop and disable firewalld and ufw when they are installed.
+      firewall_log_dropped:
+        type: bool
+        default: false
+        description: Log dropped packets to the kernel log, rate limited.
+      firewall_log_rate:
+        type: str
+        default: 10/minute
+        description: nft limit rate for the drop log, for example 10/minute.

@@ -1,0 +1,36 @@
+# Kyverno CLI test of the vulnerability attestation gate. run.sh copies this
+# file as kyverno-test.yaml into a temporary directory next to the rendered
+# policy and the pods with the pushed digests. It is not named
+# kyverno-test.yaml here, so hack/policy-test.sh does not run it without the
+# registry.
+#
+# Every image is signed with the test key. Attestations:
+#   pass      fresh scan, HIGH and MEDIUM findings only
+#   accepted  fresh scan, one CRITICAL listed in ignoreVulnerabilityIDs
+#   critical  fresh scan, one fixed and one unfixed CRITICAL
+#   unfixed   fresh scan, one unfixed CRITICAL
+#   stale     scan finished 30 days ago, no CRITICAL
+#   missing   none
+#   foreign   fresh clean scan, attested with another key
+#   renewed   clean scan 30 days ago, then a fresh clean scan (rescan)
+#   regressed fresh scan with CRITICAL findings and an older clean scan,
+#             uploaded in that order
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: vuln-attestation
+policies: [policies.yaml]
+resources: [resources.yaml]
+variables: values.yaml
+results:
+  - isImageValidatingPolicy: true
+    policy: verify-image-signatures-enforce
+    kind: Pod
+    result: pass
+    resources: [pass, pass-with-unmatched-image, accepted-risk, renewed]
+  - isImageValidatingPolicy: true
+    policy: verify-image-signatures-enforce
+    kind: Pod
+    result: fail
+    resources: [critical, critical-init, unfixed, stale, missing, foreign-attestation, regressed]

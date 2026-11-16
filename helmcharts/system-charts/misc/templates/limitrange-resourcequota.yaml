@@ -1,0 +1,38 @@
+{{- /*
+ResourceQuota "default" and LimitRange "default" per environment namespace.
+The LimitRange supplies container requests and limits, which the quota requires.
+Both are kept on prune and on Application deletion, like the namespace.
+*/}}
+{{- range $env, $ns := .Values.environments }}
+{{- $quota := required (include "misc.missingEnv" (list "resourceQuota" $env)) (index $.Values.resourceQuota $env) }}
+{{- $limits := required (include "misc.missingEnv" (list "limitRange" $env)) (index $.Values.limitRange $env) }}
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: default
+  namespace: {{ $ns }}
+  labels:
+    {{- include "misc.labels" $ | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  hard:
+    {{- required (printf "resourceQuota.%s.hard is not set" $env) $quota.hard | toYaml | nindent 4 }}
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default
+  namespace: {{ $ns }}
+  labels:
+    {{- include "misc.labels" $ | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  limits:
+    {{- range $type, $spec := $limits }}
+    - type: {{ $type }}
+      {{- toYaml $spec | nindent 6 }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,22 @@
+---
+# Handlers run in the order defined here: reload units, restart, wait.
+# Notifying "Restart Jenkins" triggers both the restart and the wait.
+
+- name: Reload systemd units
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart Jenkins
+  ansible.builtin.systemd_service:
+    name: jenkins
+    state: restarted
+
+- name: Wait for Jenkins after the restart
+  ansible.builtin.uri:
+    url: "http://{{ install_jenkins_http_listen_address }}:{{ install_jenkins_http_port }}/login"
+    status_code: 200
+  register: __jenkins_restart_login
+  until: __jenkins_restart_login.status == 200
+  retries: "{{ ((install_jenkins_startup_timeout | int) / 5) | round(0, 'ceil') | int }}"
+  delay: 5
+  listen: Restart Jenkins

@@ -1,0 +1,52 @@
+---
+# Removes RKE2 from every node of the inventory with the upstream rke2-uninstall.sh script. This
+# destroys the cluster: etcd data, local snapshots, workloads and node-local volumes are lost.
+# Copy any etcd snapshot you need off the servers first.
+#
+# Refuses to run unless confirmed explicitly:
+#   ansible-playbook -i inventories/<profile>/hosts.yml playbooks/rke2_uninstall.yml -e confirm=yes
+# (make rke2-uninstall CONFIRM=yes passes the same flag.)
+# Agents are removed first, then the servers one at a time, the bootstrap server last.
+
+- name: Confirm RKE2 uninstall
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Refuse to continue without confirm=yes
+      ansible.builtin.assert:
+        that:
+          - confirm | default('') | string == 'yes'
+        fail_msg: >-
+          This playbook destroys the RKE2 cluster on {{ groups['k8s_cluster'] | default([]) | join(', ') }}.
+          Re-run with -e confirm=yes to proceed.
+        success_msg: "Confirmed: uninstalling RKE2 from {{ groups['k8s_cluster'] | default([]) | join(', ') }}"
+
+- name: Uninstall RKE2 from agents
+  hosts: rke2_agents
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  tasks:
+    - name: Run the RKE2 uninstall script
+      ansible.builtin.import_role:
+        name: rke2
+        tasks_from: uninstall
+      vars:
+        rke2_uninstall_confirm: "{{ confirm | default('') | string == 'yes' }}"
+
+- name: Uninstall RKE2 from servers, bootstrap server last
+  hosts: rke2_servers
+  become: true
+  gather_facts: true
+  serial: 1
+  order: reverse_inventory
+  any_errors_fatal: true
+  tasks:
+    - name: Run the RKE2 uninstall script
+      ansible.builtin.import_role:
+        name: rke2
+        tasks_from: uninstall
+      vars:
+        rke2_uninstall_confirm: "{{ confirm | default('') | string == 'yes' }}"

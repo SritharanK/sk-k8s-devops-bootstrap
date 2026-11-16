@@ -1,0 +1,103 @@
+# cloudnative-pg: values shared by every profile.
+# Upstream values are nested under the dependency names. Full lists:
+# https://github.com/cloudnative-pg/charts/blob/cloudnative-pg-v0.29.1/charts/cloudnative-pg/values.yaml
+# https://github.com/cloudnative-pg/charts/blob/plugin-barman-cloud-v0.9.0/charts/plugin-barman-cloud/values.yaml
+
+cloudnative-pg:
+  # CRDs are rendered from the chart templates and carry helm.sh/resource-policy: keep,
+  # which Argo CD treats as Delete=false.
+  crds:
+    create: true
+
+  config:
+    clusterWide: true
+
+  # The chart defaults are restricted-compliant (runAsNonRoot, UID 10001, read-only root
+  # filesystem, no privilege escalation, all capabilities dropped, RuntimeDefault
+  # seccomp). They are kept as they are.
+
+  monitoring:
+    # Operator metrics, scraped by the Prometheus in the monitoring namespace.
+    podMonitorEnabled: true
+    podMonitorAdditionalLabels:
+      release: monitoring
+    # Dashboard ConfigMap from the upstream grafana-dashboards chart, labelled
+    # grafana_dashboard: "1"; the Grafana sidecar loads it from any namespace.
+    grafanaDashboard:
+      create: true
+
+plugin-barman-cloud:
+  # Short names that match the upstream documentation (deploy/plugin-barman-cloud).
+  fullnameOverride: plugin-barman-cloud
+  crds:
+    create: true
+  # The plugin and its client certificates are issued by cert-manager through a
+  # self-signed namespaced Issuer that the chart creates.
+  certificate:
+    createIssuer: true
+    createServerCertificate: true
+    createClientCertificate: true
+    duration: 2160h
+    renewBefore: 360h
+
+# PodDisruptionBudget for the operator, rendered by this wrapper (the upstream chart has
+# none). Only useful with two or more operator replicas.
+operatorPodDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# Example PostgreSQL cluster with Barman Cloud backups. Disabled by default. When
+# enabled it renders a namespace, an ImageCatalog, an ObjectStore, a Cluster, a
+# ScheduledBackup and a PodMonitor. See README for the S3 Secret it needs.
+exampleCluster:
+  enabled: false
+  namespace: cnpg-example
+  name: payments-db
+  instances: 1
+  database: payments
+  owner: payments
+
+  # Namespaced ImageCatalog with an exact, fully qualified image tag
+  # (MAJOR.MINOR-BUILDTIMESTAMP-TYPE-OS). The standard image adds locales, PGAudit,
+  # pgvector and failover slots to minimal; backups go through the plugin sidecar.
+  imageCatalog:
+    name: postgresql
+    major: 18
+    image: ghcr.io/cloudnative-pg/postgresql:18.7-202611122305-standard-trixie
+
+  storage:
+    size: 5Gi
+    # Empty uses the cluster default StorageClass.
+    storageClass: ""
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+  objectStore:
+    name: payments-db-s3
+    destinationPath: s3://CHANGE_ME-cnpg/
+    endpointURL: https://s3.example.com
+    # path works with every S3-compatible store; switch to auto for AWS S3.
+    s3AddressingStyle: path
+    credentialsSecret: cnpg-s3-credentials
+    retentionPolicy: 30d
+    walCompression: gzip
+    # Barman Cloud sidecar injected into every instance pod.
+    sidecarResources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+  scheduledBackup:
+    # Six fields, seconds first: every day at 02:00.
+    schedule: "0 0 2 * * *"
+    immediate: true
+
+  podMonitor:
+    enabled: true

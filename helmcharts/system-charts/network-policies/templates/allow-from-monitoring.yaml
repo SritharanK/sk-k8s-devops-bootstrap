@@ -1,0 +1,24 @@
+{{- /*
+Platform namespaces: ingress on any port from Prometheus, for scraping.
+Application namespaces get their scrape rule from the per-app policy of the
+application chart instead.
+*/}}
+{{- range $key, $cfg := .Values.platformNamespaces }}
+{{- if and $cfg.enabled $cfg.allowFromMonitoring }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-monitoring
+  namespace: {{ $cfg.namespace }}
+  labels:
+    {{- include "network-policies.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        {{- include "network-policies.namespacePeer" $.Values.monitoring | nindent 8 }}
+{{- end }}
+{{- end }}

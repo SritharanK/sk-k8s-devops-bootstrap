@@ -1,0 +1,23 @@
+{{- /*
+ResourceQuota per environment namespace. Kept on prune and on Application
+deletion, like the namespace, so a namespace that stays never loses its cap.
+*/ -}}
+{{- if and .Values.components.namespaces .Values.quota }}
+{{- range $env := include "tenant.environments" . | fromJsonArray }}
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-quota
+  namespace: {{ include "tenant.namespace" (list $ $env) }}
+  labels:
+    {{- include "tenant.envLabels" (list $ $env) | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  hard:
+    {{- range $key, $value := $.Values.quota }}
+    {{ $key }}: {{ include "tenant.quantity" $value }}
+    {{- end }}
+{{- end }}
+{{- end }}

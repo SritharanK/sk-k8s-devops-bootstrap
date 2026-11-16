@@ -1,0 +1,8 @@
+---
+# Selects the cluster definition (clusters/<name>/cluster.yaml) that every play loads through vars_files.
+cluster_name: reference
+cluster_definition_file: "{{ playbook_dir }}/../../clusters/{{ cluster_name }}/cluster.yaml"
+
+# Kubernetes node preparation (kernel modules, sysctls, swap off) only on RKE2 nodes, so a separate
+# NFS or Jenkins host gets the OS baseline alone.
+base_kubernetes_node: "{{ inventory_hostname in groups.get('k8s_cluster', []) }}"

@@ -1,0 +1,35 @@
+# Top-level Jenkins plugins for the CI adapter. Dependencies are resolved into
+# plugins.txt by ci/jenkins/scripts/resolve-plugins.py. Keep this list short:
+# every plugin is attack surface on the controller.
+
+# Configuration as code and job generation
+configuration-as-code
+job-dsl
+cloudbees-folder
+
+# Pipeline (declarative, from SCM) and the steps the pipelines use
+workflow-job
+workflow-cps
+workflow-durable-task-step
+workflow-basic-steps
+workflow-scm-step
+pipeline-model-definition
+pipeline-utility-steps
+pipeline-graph-view
+timestamper
+ws-cleanup
+
+# Agents
+kubernetes
+
+# Source control and credentials
+git
+credentials
+credentials-binding
+plain-credentials
+
+# Security realm and authorization
+matrix-auth
+authorize-project
+oic-auth
+ldap

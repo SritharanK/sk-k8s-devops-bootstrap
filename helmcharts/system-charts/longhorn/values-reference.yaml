@@ -1,0 +1,38 @@
+# longhorn reference profile: 3-node RKE2 HA cluster, Longhorn is the default class.
+longhorn:
+  persistence:
+    defaultClass: true
+    defaultClassReplicaCount: 3
+
+  defaultSettings:
+    defaultReplicaCount:
+      v1: "3"
+      v2: "3"
+
+  # Default backup target. The Secret must exist in longhorn-system with the keys
+  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_ENDPOINTS (see README).
+  defaultBackupStore:
+    backupTarget: s3://CHANGE_ME-longhorn@CHANGE_ME/
+    backupTargetCredentialSecret: longhorn-s3-credentials
+    pollInterval: 300
+
+  csi:
+    attacherReplicaCount: 3
+    provisionerReplicaCount: 3
+    resizerReplicaCount: 3
+    snapshotterReplicaCount: 3
+
+  longhornUI:
+    replicas: 2
+
+  longhornManager:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+
+uiPodDisruptionBudget:
+  enabled: true
+  minAvailable: 1

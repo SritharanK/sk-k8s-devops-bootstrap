@@ -1,0 +1,64 @@
+{{- /*
+NetworkPolicies for the application and platform namespaces (wave 2). The
+environment namespaces come from misc in the same wave; until they exist the
+sync fails and the retry below picks it up. A platform namespace is covered
+only when its toolchain is enabled, so no policy targets a namespace that is
+never created.
+*/ -}}
+{{- $name := "network-policies" }}
+{{- if (dig "network-policies" "enabled" false .Values.toolchains) }}
+{{- $hosted := include "argocd-bootstrap.environments" . | fromJsonArray }}
+{{- $envs := dict }}
+{{- range $env := list "dev" "stage" "prod" }}
+{{- if has $env $hosted }}
+{{- $_ := set $envs $env (required (printf "namespaces.%s is required" $env) (index $.Values.namespaces $env)) }}
+{{- else }}
+{{- $_ := set $envs $env nil }}
+{{- end }}
+{{- end }}
+{{- $platform := dict
+      "argocd" (dict "enabled" true "namespace" .Values.namespaces.argocd)
+      "certManager" (dict "enabled" (dig "cert-manager" "enabled" false .Values.toolchains) "namespace" .Values.namespaces.certManager)
+      "kyverno" (dict "enabled" (dig "kyverno" "enabled" false .Values.toolchains) "namespace" .Values.namespaces.kyverno)
+      "gateway" (dict "enabled" (dig "envoy-gateway" "enabled" false .Values.toolchains) "namespace" .Values.namespaces.gateway) }}
+{{- $values := dict
+      "environments" $envs
+      "gateway" (dict "namespace" .Values.namespaces.gateway)
+      "monitoring" (dict "namespace" .Values.namespaces.monitoring)
+      "platformNamespaces" $platform }}
+{{- $values = mustMergeOverwrite $values (dig $name "values" dict .Values.toolchains) }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . $name) }}
+  namespace: {{ .Values.namespaces.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/manifest-generate-paths: "."
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: {{ include "argocd-bootstrap.platformProject" . }}
+  source:
+    repoURL: {{ .Values.git.repoURL }}
+    targetRevision: {{ .Values.git.targetRevision }}
+    path: helmcharts/system-charts/{{ $name }}
+    helm:
+      releaseName: {{ $name }}
+      valueFiles: [values.yaml, values-{{ .Values.cluster.profile }}.yaml]
+      ignoreMissingValueFiles: true
+      valuesObject:
+        {{- toYaml $values | nindent 8 }}
+  # Every object sets its namespace; the destination only has to exist.
+  destination:
+    {{- include "argocd-bootstrap.destination" . | nindent 4 }}
+    namespace: {{ .Values.namespaces.argocd }}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=false, ServerSideApply=true]
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

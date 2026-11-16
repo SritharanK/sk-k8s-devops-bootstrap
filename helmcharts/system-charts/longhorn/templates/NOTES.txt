@@ -1,0 +1,4 @@
+Longhorn {{ .Values.longhorn.image.longhorn.manager.tag }} runs in namespace {{ .Release.Namespace }}.
+StorageClass longhorn: default class {{ .Values.longhorn.persistence.defaultClass }}, {{ .Values.longhorn.persistence.defaultClassReplicaCount }} replica(s) per volume.
+The UI is not exposed. Open it with:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/longhorn-frontend 8080:80

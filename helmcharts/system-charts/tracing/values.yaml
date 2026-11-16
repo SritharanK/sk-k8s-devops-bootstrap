@@ -1,0 +1,57 @@
+# Common values for the tracing toolchain (release "tracing", namespace "tracing").
+# values-lab.yaml and values-reference.yaml hold the per-profile deltas.
+#
+# In-cluster addresses produced by this chart:
+#   Tempo query API (Grafana datasource): http://tempo.tracing.svc:3200
+#   OTLP gRPC:                            tempo.tracing.svc:4317
+#   OTLP HTTP:                            http://tempo.tracing.svc:4318
+
+tempo:
+  # Fixed resource names. The Service becomes tempo.
+  fullnameOverride: tempo
+
+  # Single binary: one replica. Tempo in this mode has no replication, see README.md.
+  replicas: 1
+
+  tempo:
+    # No anonymous usage reporting to Grafana Labs.
+    reportingEnabled: false
+
+    # OTLP is the ingest protocol the platform documents. The upstream Jaeger receivers stay on:
+    # the chart's Service template reads tempo.receivers.jaeger and fails to render without it.
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: "0.0.0.0:4317"
+          http:
+            endpoint: "0.0.0.0:4318"
+
+    # Restricted Pod Security profile. Tempo only writes under /var/tempo (WAL and blocks).
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+      seccompProfile:
+        type: RuntimeDefault
+
+  # Pod security context. Upstream sets user, group and runAsNonRoot; seccomp is added here.
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Tempo does not call the Kubernetes API.
+  serviceAccount:
+    automountServiceAccountToken: false
+
+  # Requires the monitoring toolchain (Prometheus selects release=monitoring in every namespace).
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: monitoring

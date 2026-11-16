@@ -1,0 +1,130 @@
+suite: HorizontalPodAutoscaler
+templates:
+  - templates/hpa.yaml
+  - templates/deployment.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: is not rendered by default
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/hpa.yaml
+
+  - it: targets the Deployment and omits the Deployment replicas
+    set:
+      autoscaling.enabled: true
+      replicaCount: 4
+    asserts:
+      - isKind:
+          of: HorizontalPodAutoscaler
+        template: templates/hpa.yaml
+      - equal:
+          path: apiVersion
+          value: autoscaling/v2
+        template: templates/hpa.yaml
+      - equal:
+          path: spec.scaleTargetRef
+          value:
+            apiVersion: apps/v1
+            kind: Deployment
+            name: web-helm-common-test
+        template: templates/hpa.yaml
+      - equal:
+          path: spec.minReplicas
+          value: 2
+        template: templates/hpa.yaml
+      - equal:
+          path: spec.maxReplicas
+          value: 5
+        template: templates/hpa.yaml
+      - notExists:
+          path: spec.replicas
+        template: templates/deployment.yaml
+
+  - it: renders only the CPU metric by default
+    set:
+      autoscaling.enabled: true
+    asserts:
+      - equal:
+          path: spec.metrics
+          value:
+            - type: Resource
+              resource:
+                name: cpu
+                target:
+                  type: Utilization
+                  averageUtilization: 75
+        template: templates/hpa.yaml
+      - notExists:
+          path: spec.behavior
+        template: templates/hpa.yaml
+
+  - it: adds the memory metric when its target is set
+    set:
+      autoscaling.enabled: true
+      autoscaling.targetMemoryUtilizationPercentage: 80
+    asserts:
+      - contains:
+          path: spec.metrics
+          content:
+            type: Resource
+            resource:
+              name: memory
+              target:
+                type: Utilization
+                averageUtilization: 80
+        template: templates/hpa.yaml
+      - equal:
+          path: spec.metrics[0].resource.name
+          value: cpu
+        template: templates/hpa.yaml
+
+  - it: replaces the utilisation targets with an explicit metrics list
+    set:
+      autoscaling.enabled: true
+      autoscaling.metrics:
+        - type: Pods
+          pods:
+            metric:
+              name: requests_per_second
+            target:
+              type: AverageValue
+              averageValue: "100"
+    asserts:
+      - equal:
+          path: spec.metrics
+          value:
+            - type: Pods
+              pods:
+                metric:
+                  name: requests_per_second
+                target:
+                  type: AverageValue
+                  averageValue: "100"
+        template: templates/hpa.yaml
+
+  - it: passes the scaling behavior through
+    set:
+      autoscaling.enabled: true
+      autoscaling.behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+    asserts:
+      - equal:
+          path: spec.behavior
+          value:
+            scaleDown:
+              stabilizationWindowSeconds: 300
+        template: templates/hpa.yaml
+
+  - it: fails when keda is enabled as well
+    set:
+      autoscaling.enabled: true
+      keda.enabled: true
+      keda.prometheus.query: up
+    asserts:
+      - failedTemplate:
+          errorPattern: "autoscaling.enabled and keda.enabled are mutually exclusive"
+        template: templates/hpa.yaml

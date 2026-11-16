@@ -1,0 +1,13 @@
+# Namespace object for namespaceSelector matching in the CLI.
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Value
+metadata:
+  name: values
+namespaces:
+  - apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: prod
+      labels:
+        kubernetes.io/metadata.name: prod

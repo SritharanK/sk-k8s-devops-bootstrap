@@ -1,0 +1,39 @@
+# cloudnative-pg lab profile: kind or a single node, one operator replica.
+cloudnative-pg:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+plugin-barman-cloud:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+exampleCluster:
+  instances: 1
+  storage:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  objectStore:
+    # SeaweedFS in the lab. Bucket cnpg must exist.
+    destinationPath: s3://cnpg/
+    endpointURL: http://seaweedfs-s3.seaweedfs.svc:8333
+    s3AddressingStyle: path
+    sidecarResources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 256Mi

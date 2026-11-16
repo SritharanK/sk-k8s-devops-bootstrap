@@ -1,0 +1,160 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/v0.2.15/.schemas/json/test-chainsaw-v1alpha1.json
+#
+# The probe pod meets the whole policy contract and the restricted Pod Security
+# Standard except for its :latest tag, so the policy engine is the only layer
+# that can object to it. Requests and limits match the hello-api chart, which
+# fit the dev LimitRange and ResourceQuota. imagePullPolicy Never keeps the
+# node from pulling anything; the pod never needs to start.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: policy-audit-dev-enforce-stage
+spec:
+  description: >-
+    A pod whose only violation is a latest tag is admitted and reported as failed in dev (Audit) and
+    denied by the policy engine, not Pod Security Admission, in stage (Enforce).
+  concurrent: false
+  catch:
+    - describe:
+        apiVersion: v1
+        kind: Pod
+        namespace: dev
+        name: e2e-latest-tag
+    - script:
+        content: |
+          kubectl get resourcequotas,limitranges -n dev
+          kubectl get policyreports.wgpolicyk8s.io -n dev 2>/dev/null || true
+          kubectl get reports.openreports.io -n dev 2>/dev/null || true
+  steps:
+    - name: dev-audit-admits-and-reports
+      try:
+        - script:
+            content: bash ../lib/hello-api-image.sh dev
+            outputs:
+              - name: hello
+                value: (json_parse($stdout))
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: e2e-latest-tag
+                namespace: dev
+                labels:
+                  app.kubernetes.io/name: e2e-latest-tag
+                  app.kubernetes.io/part-of: lab-e2e
+              spec:
+                automountServiceAccountToken: false
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 65532
+                  runAsGroup: 65532
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: app
+                    image: ($hello.latest)
+                    imagePullPolicy: Never
+                    ports:
+                      - name: http
+                        containerPort: 8080
+                    securityContext:
+                      runAsNonRoot: true
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                        drop:
+                          - ALL
+                      seccompProfile:
+                        type: RuntimeDefault
+                    resources:
+                      requests:
+                        cpu: 25m
+                        memory: 32Mi
+                      limits:
+                        cpu: 250m
+                        memory: 96Mi
+                    readinessProbe:
+                      httpGet:
+                        path: /readyz
+                        port: http
+                    livenessProbe:
+                      httpGet:
+                        path: /healthz
+                        port: http
+        - script:
+            timeout: 4m
+            content: bash ../lib/policy-report-fail.sh dev Pod e2e-latest-tag
+    - name: stage-enforce-denies
+      try:
+        - script:
+            content: bash ../lib/hello-api-image.sh dev
+            outputs:
+              - name: hello
+                value: (json_parse($stdout))
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: e2e-latest-tag
+                namespace: stage
+                labels:
+                  app.kubernetes.io/name: e2e-latest-tag
+                  app.kubernetes.io/part-of: lab-e2e
+              spec:
+                automountServiceAccountToken: false
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 65532
+                  runAsGroup: 65532
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: app
+                    image: ($hello.latest)
+                    imagePullPolicy: Never
+                    ports:
+                      - name: http
+                        containerPort: 8080
+                    securityContext:
+                      runAsNonRoot: true
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                        drop:
+                          - ALL
+                      seccompProfile:
+                        type: RuntimeDefault
+                    resources:
+                      requests:
+                        cpu: 25m
+                        memory: 32Mi
+                      limits:
+                        cpu: 250m
+                        memory: 96Mi
+                    readinessProbe:
+                      httpGet:
+                        path: /readyz
+                        port: http
+                    livenessProbe:
+                      httpGet:
+                        path: /healthz
+                        port: http
+            expect:
+              # Denied, by an admission policy ("denied the request" from a
+              # webhook, "denied request" from a ValidatingAdmissionPolicy),
+              # and not by Pod Security Admission.
+              - check:
+                  ($error != null): true
+                  (contains($error, 'denied')): true
+                  (contains($error, 'violates PodSecurity')): false
+            outputs:
+              - name: stageError
+                value: ($error)
+        - script:
+            env:
+              - name: STAGE_ERROR
+                value: ($stageError)
+            content: |
+              echo "stage denied the latest-tag pod: ${STAGE_ERROR}"

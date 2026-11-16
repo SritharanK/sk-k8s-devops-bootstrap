@@ -1,0 +1,200 @@
+---
+# Checks the security properties of the converged controller. Role defaults
+# are loaded for paths and versions; the test values and fake secrets come
+# from the inventory group_vars in molecule.yml.
+- name: Verify
+  hosts: jenkins
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../../defaults/main.yml
+  vars:
+    __verify_url: "http://{{ install_jenkins_http_listen_address }}:{{ install_jenkins_http_port }}"
+    __verify_expected_secret_files:
+      - cosign_password
+      - cosign_private_key
+      - github_token
+      - k8s_agent_token
+      - local_admin_password
+      - local_build_user_password
+      - registry_password
+    __verify_secret_values: >-
+      {{ [install_jenkins_local_admin_password, install_jenkins_local_build_user_password, install_jenkins_registry_password,
+          install_jenkins_github_token, install_jenkins_cosign_password, install_jenkins_k8s_agent_token]
+         + (install_jenkins_cosign_private_key | trim).splitlines() }}
+  tasks:
+    # Service
+    - name: Collect the service states
+      ansible.builtin.service_facts:
+
+    - name: Assert that Jenkins is running and enabled
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['services']['jenkins.service']['state'] == 'running'
+          - ansible_facts['services']['jenkins.service']['status'] == 'enabled'
+
+    # Package pinning
+    - name: Collect the installed packages
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Assert that exactly the pinned Jenkins version is installed
+      ansible.builtin.assert:
+        that:
+          - (ansible_facts['packages']['jenkins'] | map(attribute='version') | list) == [install_jenkins_version]
+
+    - name: Read the dpkg selection of the Jenkins package
+      ansible.builtin.command:
+        argv:
+          - dpkg
+          - --get-selections
+          - jenkins
+      register: __verify_dpkg_selection
+      changed_when: false
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Assert that the Jenkins package is held
+      ansible.builtin.assert:
+        that:
+          - __verify_dpkg_selection.stdout.split() == ['jenkins', 'hold']
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Read the Jenkins repository definition
+      ansible.builtin.slurp:
+        src: /etc/yum.repos.d/jenkins.repo
+      register: __verify_repo_file
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Assert that routine updates exclude the Jenkins package
+      ansible.builtin.assert:
+        that:
+          - (__verify_repo_file.content | b64decode) is search('exclude *= *jenkins')
+          - (__verify_repo_file.content | b64decode) is search('repo_gpgcheck *= *1')
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    # HTTP behaviour
+    - name: Request the login page
+      ansible.builtin.uri:
+        url: "{{ __verify_url }}/login"
+        status_code: 200
+
+    - name: Request the API anonymously (expects 403, no anonymous read)
+      ansible.builtin.uri:
+        url: "{{ __verify_url }}/api/json"
+        status_code: 403
+
+    - name: Request the nodes as the local administrator
+      ansible.builtin.uri:
+        url: "{{ __verify_url }}/computer/api/json?tree=computer%5BnumExecutors%2CdisplayName%5D"
+        url_username: "{{ install_jenkins_local_admin_user }}"
+        url_password: "{{ install_jenkins_local_admin_password }}"
+        force_basic_auth: true
+        return_content: true
+        status_code: 200
+      register: __verify_computers
+
+    - name: Assert that the built-in node runs no executors
+      ansible.builtin.assert:
+        that:
+          - __verify_builtin_node | length == 1
+          - __verify_builtin_node[0]['numExecutors'] == 0
+      vars:
+        __verify_builtin_node: >-
+          {{ __verify_computers.json.computer | selectattr('displayName', 'equalto', 'Built-In Node') | list }}
+
+    - name: Request Jenkins on a non-loopback address
+      ansible.builtin.uri:
+        url: "http://{{ ansible_facts['default_ipv4']['address'] }}:{{ install_jenkins_http_port }}/login"
+        timeout: 5
+      register: __verify_external
+      failed_when: false
+      when: ansible_facts['default_ipv4']['address'] is defined
+
+    - name: Assert that Jenkins does not listen on a non-loopback address
+      ansible.builtin.assert:
+        that:
+          - __verify_external.status == -1
+      when: ansible_facts['default_ipv4']['address'] is defined
+
+    # Secret files
+    - name: Read the secret directory
+      ansible.builtin.stat:
+        path: "{{ install_jenkins_casc_secrets_dir }}"
+      register: __verify_secret_dir
+
+    - name: Assert that the secret directory is private to the service account
+      ansible.builtin.assert:
+        that:
+          - __verify_secret_dir.stat.isdir
+          - __verify_secret_dir.stat.mode == '0700'
+          - __verify_secret_dir.stat.pw_name == install_jenkins_user
+
+    - name: Find the secret files
+      ansible.builtin.find:
+        paths: "{{ install_jenkins_casc_secrets_dir }}"
+        file_type: any
+        hidden: true
+      register: __verify_secret_files
+
+    - name: Assert that exactly the secrets of the local realm exist with mode 0400
+      ansible.builtin.assert:
+        that:
+          - (__verify_secret_files.files | map(attribute='path') | map('basename') | sort) == __verify_expected_secret_files
+          - __verify_secret_files.files | rejectattr('mode', 'equalto', '0400') | list | length == 0
+          - __verify_secret_files.files | rejectattr('pw_name', 'equalto', install_jenkins_user) | list | length == 0
+
+    # Configuration as code
+    - name: Read the configuration as code file metadata
+      ansible.builtin.stat:
+        path: "{{ install_jenkins_casc_dir }}/jenkins.yaml"
+      register: __verify_casc_stat
+
+    - name: Assert that the configuration as code file is root-owned and group-readable only
+      ansible.builtin.assert:
+        that:
+          - __verify_casc_stat.stat.exists
+          - __verify_casc_stat.stat.mode == '0640'
+          - __verify_casc_stat.stat.pw_name == 'root'
+          - __verify_casc_stat.stat.gr_name == install_jenkins_group
+
+    - name: Read the configuration as code file
+      ansible.builtin.slurp:
+        src: "{{ install_jenkins_casc_dir }}/jenkins.yaml"
+      register: __verify_casc_content
+
+    - name: Assert that the configuration as code file contains no secret value
+      ansible.builtin.assert:
+        that:
+          - __verify_leaked_secrets | length == 0
+        fail_msg: "{{ __verify_leaked_secrets | length }} test secret value(s) found in jenkins.yaml"
+      vars:
+        __verify_leaked_secrets: >-
+          {{ __verify_secret_values | select('in', __verify_casc_content.content | b64decode) | list }}
+
+    # systemd drop-in and plugins
+    - name: Read the systemd drop-in
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/jenkins.service.d/override.conf
+      register: __verify_dropin
+
+    - name: Assert that the drop-in sets the listener, the wizard and configuration as code
+      ansible.builtin.assert:
+        that:
+          - __verify_dropin_text is search('JENKINS_LISTEN_ADDRESS=127.0.0.1')
+          - __verify_dropin_text is search('runSetupWizard=false')
+          - __verify_dropin_text is search('CASC_JENKINS_CONFIG=' ~ install_jenkins_casc_dir)
+          - __verify_dropin_text is search('SECRETS=' ~ install_jenkins_casc_secrets_dir)
+          - __verify_dropin_text is search('NoNewPrivileges=true')
+      vars:
+        __verify_dropin_text: "{{ __verify_dropin.content | b64decode }}"
+
+    - name: Read the configuration as code plugin archive
+      ansible.builtin.stat:
+        path: "{{ install_jenkins_home }}/plugins/configuration-as-code.jpi"
+        get_checksum: false
+      register: __verify_casc_plugin
+
+    - name: Assert that the configuration as code plugin is installed
+      ansible.builtin.assert:
+        that:
+          - __verify_casc_plugin.stat.exists

@@ -1,0 +1,39 @@
+# SLO for Kyverno admission review latency, across all admission webhooks.
+# Run ../generate.sh after every change and commit the regenerated rules/kyverno.yaml.
+#
+# Prometheus 3 normalises classic histogram bucket labels to float form, so the
+# 1 s bucket is stored as le="1.0" (Prometheus 2 stored le="1"). The regex accepts
+# both forms. The "> 0" on the total side drops windows without admission requests,
+# so they produce no sample instead of NaN.
+version: "prometheus/v1"
+service: "kyverno"
+labels:
+  owner: platform
+slos:
+  - name: "admission-latency"
+    objective: 99
+    description: "99% of Kyverno admission reviews complete within 1 s, over 30 days."
+    sli:
+      events:
+        error_query: |
+          sum(rate(kyverno_admission_review_duration_seconds_count[{{.window}}]))
+          -
+          sum(rate(kyverno_admission_review_duration_seconds_bucket{le=~"1(\\.0)?"}[{{.window}}]))
+        total_query: |
+          sum(rate(kyverno_admission_review_duration_seconds_count[{{.window}}])) > 0
+    alerting:
+      name: KyvernoAdmissionLatencyBudgetBurn
+      labels:
+        category: latency
+      annotations:
+        runbook_url: https://github.com/SritharanK/sk-k8s-devops-bootstrap/blob/main/docs/operations/troubleshooting.md
+      page_alert:
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kyverno admission reviews slower than 1 s are burning the 30-day error budget fast."
+      ticket_alert:
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kyverno admission reviews slower than 1 s are burning the 30-day error budget steadily."

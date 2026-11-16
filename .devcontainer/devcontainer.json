@@ -1,0 +1,45 @@
+{
+  "name": "sk-k8s-devops-bootstrap",
+  "image": "mcr.microsoft.com/devcontainers/base:3.0.12-noble@sha256:ec556aed93f62aa6d13fe72c5db09da4e29a7c9b87c568dbca0ee5717466926a",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:4.1.3": {
+      "version": "29.9.3",
+      "moby": true,
+      "installDockerBuildx": true,
+      "mobyBuildxVersion": "0.38.2",
+      "dockerDashComposeVersion": "none"
+    }
+  },
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb"
+  },
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "MISE_TRUSTED_CONFIG_PATHS": "${containerWorkspaceFolder}",
+    "MISE_GITHUB_ATTESTATIONS": "true",
+    "MISE_AQUA_COSIGN": "true",
+    "MISE_AQUA_SLSA": "true",
+    "MISE_AQUA_MINISIGN": "true"
+  },
+  "remoteEnv": {
+    "PATH": "/home/vscode/.local/bin:/home/vscode/.local/share/mise/shims:${containerEnv:PATH}"
+  },
+  "onCreateCommand": "set -eu; v=2026.11.3; case \"$(uname -m)\" in x86_64) a=x64; s=837acae6defb8c9ad74823f6e38856633bacb04c65c1ac67d952749847543bd9 ;; aarch64) a=arm64; s=13547a80d1dc2d5f81bb183023732f4981486e894d060e30993cc4364b4af51d ;; *) echo \"unsupported architecture: $(uname -m)\" >&2; exit 1 ;; esac; f=\"/tmp/mise-v$v-linux-$a.tar.gz\"; curl --proto '=https' --tlsv1.2 -fsSL -o \"$f\" \"https://github.com/jdx/mise/releases/download/v$v/mise-v$v-linux-$a.tar.gz\"; echo \"$s  $f\" | sha256sum -c -; mkdir -p \"$HOME/.local/bin\"; tar -xzf \"$f\" -O mise/bin/mise > \"$HOME/.local/bin/mise\"; chmod 0755 \"$HOME/.local/bin/mise\"; \"$HOME/.local/bin/mise\" --version",
+  "postCreateCommand": "mise trust --yes && mise install && pre-commit install",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "redhat.vscode-yaml",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "Tim-Koehler.helm-intellisense",
+        "timonwong.shellcheck",
+        "github.vscode-github-actions",
+        "DavidAnson.vscode-markdownlint",
+        "redhat.ansible",
+        "golang.go"
+      ]
+    }
+  }
+}

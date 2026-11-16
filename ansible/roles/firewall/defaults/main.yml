@@ -1,0 +1,51 @@
+---
+# Manage the host firewall. false stops and disables the firewall unit (its table is removed); files stay on disk.
+firewall_enabled: true
+
+# CNI of the cluster, selects the CNI port rules: canal, calico or cilium.
+firewall_cni: canal
+
+# Private node network CIDRs (IPv4 or IPv6). Source for kubelet, supervisor, API, CNI and NodePort traffic.
+# Required: set it in the inventory (all.vars in hosts.yml).
+firewall_node_cidrs: []
+
+# Sources allowed to reach SSH. Required: an empty list would lock out new SSH sessions.
+firewall_ssh_cidrs: []
+# SSH port.
+firewall_ssh_port: 22
+
+# Extra sources allowed to reach the Kubernetes API (6443/tcp) on servers, for example admin networks or an
+# external load balancer.
+firewall_api_cidrs: []
+
+# Pod network CIDR. Traffic from pods to the host is accepted. A dual-stack value is comma separated.
+firewall_cluster_cidr: 10.42.0.0/16
+
+# Inventory groups. A host in firewall_servers_group gets the server rules, a host in firewall_agents_group the agent
+# rules, and any other host (for example an NFS server) only the base rules plus firewall_extra_rules.
+firewall_servers_group: rke2_servers
+firewall_agents_group: rke2_agents
+
+# Sources for etcd (2379-2381/tcp) on servers. Empty: the addresses of the servers, from rke2_node_ip, then
+# ansible_facts['default_ipv4']['address'], then ansible_host of each member of firewall_servers_group.
+firewall_etcd_sources: []
+
+# NodePort range 30000-32767/tcp on servers and agents.
+firewall_nodeport_enabled: true
+firewall_nodeport_cidrs: "{{ firewall_node_cidrs }}"
+
+# Ingress ports on servers and agents, reachable from firewall_ingress_cidrs. An empty source list keeps them closed
+# for host processes (see the README for traffic that kube-proxy or hostPort forwards).
+firewall_ingress_ports: [80, 443]
+firewall_ingress_cidrs: []
+
+# Additional accept rules, rendered for every node role. Items: port (number or "start-end"), proto (tcp or udp),
+# sources (list of CIDRs), comment.
+firewall_extra_rules: []
+
+# Stop and disable firewalld and ufw when they are installed.
+firewall_disable_conflicting: true
+
+# Log dropped packets to the kernel log, rate limited to firewall_log_rate.
+firewall_log_dropped: false
+firewall_log_rate: 10/minute

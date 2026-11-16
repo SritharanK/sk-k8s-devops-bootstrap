@@ -1,0 +1,45 @@
+{{- /*
+GatewayClass envoy, Gateway platform, wildcard Certificate, HTTPS redirect and
+edge policy (wave 3, see docs/adr/0003-gateway-api-with-envoy-gateway.md). Domain, environments,
+issuer, ACME solver and gateway host names come from the cluster definition. The namespace is created by envoy-gateway (wave 2).
+*/ -}}
+{{- $name := "platform-gateway" }}
+{{- if (dig "platform-gateway" "enabled" false .Values.toolchains) }}
+{{- $platform := dict "domain" .Values.cluster.domain "issuer" .Values.platform.issuer "environments" (dig "environments" (list "dev" "stage" "prod") .Values.cluster) }}
+{{- $_ := set $platform "acme" (dict "solver" (dig "acme" "solver" "http01" .Values.platform)) }}
+{{- $_ = set $platform "gateway" (dict "hostnames" (dig "gateway" "hostnames" list .Values.platform)) }}
+{{- $values := mustMergeOverwrite (dict "platform" $platform) (dig $name "values" dict .Values.toolchains) }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . $name) }}
+  namespace: {{ .Values.namespaces.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/manifest-generate-paths: "."
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: {{ include "argocd-bootstrap.platformProject" . }}
+  source:
+    repoURL: {{ .Values.git.repoURL }}
+    targetRevision: {{ .Values.git.targetRevision }}
+    path: helmcharts/system-charts/{{ $name }}
+    helm:
+      releaseName: {{ $name }}
+      valueFiles: [values.yaml, values-{{ .Values.cluster.profile }}.yaml]
+      ignoreMissingValueFiles: true
+      valuesObject:
+        {{- toYaml $values | nindent 8 }}
+  destination:
+    {{- include "argocd-bootstrap.destination" . | nindent 4 }}
+    namespace: {{ dig "gateway" "envoy-gateway-system" .Values.namespaces }}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [ServerSideApply=true]
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

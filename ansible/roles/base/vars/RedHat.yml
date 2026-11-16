@@ -1,0 +1,23 @@
+---
+# Rocky Linux 9. curl is not listed: every Rocky 9 image ships either curl or curl-minimal, and installing curl
+# next to curl-minimal fails on a package conflict.
+# kmod and procps-ng provide modprobe and sysctl, which the role uses; minimal container images lack them.
+base__os_packages:
+  - chrony
+  - kmod
+  - procps-ng
+base__storage_packages:
+  - nfs-utils
+  - iscsi-initiator-utils
+base__update_packages:
+  - dnf-automatic
+
+base__ssh_service: sshd
+# The privilege separation directory (/usr/share/empty.sshd) is part of the openssh package.
+base__ssh_privsep_dir: ""
+
+base__chrony_service: chronyd
+base__chrony_config: /etc/chrony.conf
+# The EL 9 chrony.conf has no include for a local sources directory, so the role templates the full file.
+base__chrony_sources_dir: ""
+base__chrony_sourcedir_regex: ""

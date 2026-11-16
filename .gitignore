@@ -1,0 +1,48 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Editor settings
+.vscode/
+
+# Ansible: local inventories, vault files, fetched kubeconfigs and installed collections
+ansible/.ansible_vault_pass
+ansible/.vault-pass*
+ansible/inventories/*/hosts.yml
+ansible/inventories/*/group_vars/*/vault.yml
+ansible/data/*
+!ansible/data/README.md
+ansible/collections/ansible_collections/
+ansible/.cache/
+ansible/.ansible/
+
+# OpenTofu: provider cache, state, plans and real variable files (the lock file is committed)
+infra/**/.terraform/
+infra/**/*.tfstate
+infra/**/*.tfstate.*
+infra/**/*.tfplan
+infra/**/*.tfvars
+infra/**/crash.log
+infra/**/*.hosts
+infra/**/*.known_hosts
+
+# Local environment files may hold credentials; never commit them
+**/.env
+
+# SBOMs written by the Jenkins build pipeline (Trivy, CycloneDX) or by local runs
+*.cdx.json
+*.spdx.json
+
+# CI and developer tooling: rendered manifests, reports and tool caches
+_out/
+.lycheecache
+
+# Helm: Chart.yaml and Chart.lock are committed (the lock pins dependency
+# versions and digests); dependencies resolved by helm dependency build and
+# packaged archives are not.
+helmcharts/**/charts/
+helmcharts/**/*.tgz

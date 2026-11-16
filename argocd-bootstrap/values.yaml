@@ -1,0 +1,260 @@
+# Values for the argocd-bootstrap chart, rendered by the root Application.
+#
+# Precedence, lowest first:
+#   1. this file (defaults equal the lab profile, so a bare render works);
+#   2. clusters/<name>/cluster.yaml, passed by the root Application;
+#   3. the root Application's valuesObject (git overrides given at bootstrap).
+#
+# Sections: git, cluster, namespaces, platform (cluster definition); projects,
+# apps, applicationSet (GitOps structure); toolchains (platform components).
+---
+git:
+  repoURL: https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap.git
+  targetRevision: main
+
+cluster:
+  name: lab
+  profile: lab  # lab | reference
+  domain: localtest.me
+  kubernetesMinor: "1.36"
+  # destination:          # hub mode only: Argo CD cluster name of a remote
+  #   name: nonprod       # cluster. Omit for the cluster Argo CD runs in.
+  environments: [dev, stage, prod]
+
+namespaces:
+  argocd: argocd
+  dev: dev
+  stage: stage
+  prod: prod
+  gateway: envoy-gateway-system
+  certManager: cert-manager
+  kyverno: kyverno
+  monitoring: monitoring
+  # Optional components. Every value is a destination of the platform project,
+  # so a toolchain that deploys into a new namespace adds its key here.
+  externalSecrets: external-secrets
+  openbao: openbao
+  nfsProvisioner: nfs-provisioner
+  logging: logging
+  tracing: tracing
+  argoRollouts: argo-rollouts
+  velero: velero
+  seaweedfs: seaweedfs
+  systemUpgrade: system-upgrade
+  longhorn: longhorn-system
+  localPath: local-path
+  cloudnativePg: cnpg-system
+  keda: keda
+  opencost: opencost
+  falco: falco
+  trivyOperator: trivy-system
+  cnpgExample: cnpg-example
+  # kargo: controller, API and webhooks; the chart also creates the shared
+  # (credentials) and system resources namespaces. Project namespaces
+  # (kargo-<app>) are added to the platform project when Kargo is enabled.
+  kargo: kargo
+  kargoSharedResources: kargo-shared-resources
+  kargoSystemResources: kargo-system-resources
+
+platform:
+  certManagerEmail: platform@example.com
+  issuer: selfsigned  # selfsigned | letsencrypt-staging | letsencrypt
+  imageRegistry: ghcr.io/your-org  # lowercase: image references allow no capitals
+  groups:
+    admins: platform-admins
+    deployers: deployers
+    viewers: viewers
+  # ACME settings, used when issuer is letsencrypt-staging or letsencrypt.
+  # http01: one certificate for the explicit
+  # gateway.hostnames. dns01: wildcard certificate, provider block in dns01
+  # (credentials through a Secret reference only).
+  acme:
+    solver: http01
+    dns01: {}
+  gateway:
+    hostnames: []
+
+# AppProjects (docs/adr/0002-argocd-app-of-apps-with-appprojects.md).
+# Destinations and source repositories are derived
+# from git, cluster and namespaces; only the lists below are tunable.
+projects:
+  # Additional repositories (Helm or Git) that platform toolchains may pull
+  # from, for example an OCI registry used as a chart source.
+  extraSourceRepos: []
+  platform:
+    # Namespaces the platform may deploy into in addition to every value in
+    # .namespaces. Prefer adding a key to .namespaces over extending this list.
+    # kube-system: sealed-secrets controller, control-plane scrape Services
+    # (monitoring) and the keda auth-reader RoleBinding.
+    extraDestinationNamespaces: [kube-system]
+    # Cluster-scoped kinds the platform toolchains render. Enumerated on
+    # purpose: a new kind is a reviewed change. Extend from the component
+    # owners' reports.
+    clusterResourceWhitelist:
+      # gateway-api, cert-manager, sealed-secrets, external-secrets, kyverno,
+      # argo-cd and other operators
+      - {group: apiextensions.k8s.io, kind: CustomResourceDefinition}
+      - {group: rbac.authorization.k8s.io, kind: ClusterRole}
+      - {group: rbac.authorization.k8s.io, kind: ClusterRoleBinding}
+      # misc (dev, stage, prod) and toolchains with CreateNamespace
+      - {group: "", kind: Namespace}
+      # gateway-api (CEL guard of the standard channel)
+      - {group: admissionregistration.k8s.io, kind: ValidatingAdmissionPolicy}
+      - {group: admissionregistration.k8s.io, kind: ValidatingAdmissionPolicyBinding}
+      # cert-manager, envoy-gateway, external-secrets
+      - {group: admissionregistration.k8s.io, kind: MutatingWebhookConfiguration}
+      - {group: admissionregistration.k8s.io, kind: ValidatingWebhookConfiguration}
+      # platform-gateway
+      - {group: gateway.networking.k8s.io, kind: GatewayClass}
+      # misc and the policy charts (ClusterIssuers, PriorityClasses), longhorn
+      # (PriorityClass)
+      - {group: cert-manager.io, kind: ClusterIssuer}
+      - {group: scheduling.k8s.io, kind: PriorityClass}
+      # kyverno-policies (Kyverno CEL policy types)
+      - {group: policies.kyverno.io, kind: ValidatingPolicy}
+      - {group: policies.kyverno.io, kind: ImageValidatingPolicy}
+      # openbao (reference profile)
+      - {group: external-secrets.io, kind: ClusterSecretStore}
+      # nfs-subdir-external-provisioner, local-path. Longhorn creates its
+      # StorageClass and CSIDriver at runtime, not through Argo CD.
+      - {group: storage.k8s.io, kind: StorageClass}
+      - {group: "", kind: PersistentVolume}
+      # keda (external metrics API)
+      - {group: apiregistration.k8s.io, kind: APIService}
+      # argo-rollouts (success-rate analysis)
+      - {group: argoproj.io, kind: ClusterAnalysisTemplate}
+      # trivy-operator (compliance reports)
+      - {group: aquasecurity.github.io, kind: ClusterComplianceReport}
+      # kargo-pipelines (one Project per app). The kargo chart itself renders
+      # only kinds listed above (CRDs, cluster RBAC, Namespaces, webhooks).
+      - {group: kargo.akuity.io, kind: Project}
+  apps:
+    # Namespaced kinds an application may not manage. Quotas, limits and RBAC
+    # in the environment namespaces belong to the platform (misc toolchain).
+    # NetworkPolicies are allowed: each application renders its own allows
+    # through helm-common, on top of the platform's default deny and DNS
+    # policies.
+    namespaceResourceBlacklist:
+      - {group: "", kind: ResourceQuota}
+      - {group: "", kind: LimitRange}
+      - {group: rbac.authorization.k8s.io, kind: Role}
+      - {group: rbac.authorization.k8s.io, kind: RoleBinding}
+    # Sync windows per profile and environment. The lab has none, so the
+    # demo converges at any time. In the reference profile prod syncs only
+    # in the allow window; manualSync lets an admin sync outside it.
+    syncWindows:
+      lab: {}
+      reference:
+        prod:
+          - kind: allow
+            schedule: "0 7 * * 1-4"
+            duration: 9h
+            timeZone: UTC
+            applications: ["*"]
+            manualSync: true
+
+# Application inventory. One Application per app and
+# environment, named <app>-<env>, project apps-<env>, namespace .namespaces.<env>.
+# Values: the chart's values.yaml, then envs/<env>/<app>/values.yaml.
+apps:
+  - name: hello-api
+    chart: helmcharts/app-charts/hello-api
+    environments: [dev, stage, prod]
+
+# Alternative to the static Applications: one ApplicationSet per environment
+# over the same inventory. Exactly one mode renders; switching modes keeps
+# the workloads (preserveResourcesOnDeletion), but follow the procedure in
+# argocd-bootstrap/README.md to avoid a sync gap.
+applicationSet:
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# Toolchain switches (docs/architecture/gitops.md, Toolchain Applications).
+# Keys are toolchain names read by
+# templates/toolchains/<name>.yaml with: dig "<name>" "enabled" false.
+# A name that is not listed here is disabled. Per-profile deltas go in
+# clusters/<name>/cluster.yaml under the same keys.
+#
+# toolchains.<name>.values (optional object) is passed to the chart as
+# helm.valuesObject, for cluster-specific settings such as an NFS server or
+# an ACME DNS-01 solver. It takes precedence over the chart's values files.
+#
+# Disabling a toolchain deletes its Application. Toolchains that own CRDs keep
+# them (Delete=false or helm.sh/resource-policy: keep, see each template), so
+# custom resources and the Secrets they generate survive.
+# -----------------------------------------------------------------------------
+toolchains:
+  # Core, sync wave 0
+  gateway-api: {enabled: true}
+  cert-manager: {enabled: true}
+  sealed-secrets: {enabled: true}      # secrets backend of the lab profile
+  # Core, later waves
+  argo-cd: {enabled: true}             # Argo CD manages itself after bootstrap
+  kyverno: {enabled: true}
+  envoy-gateway: {enabled: true}
+  misc: {enabled: true}
+  network-policies: {enabled: true}
+  kyverno-policies: {enabled: true}
+  platform-gateway: {enabled: true}
+  # Optional, switched on per cluster
+  external-secrets: {enabled: false}   # secrets backend of the reference profile
+  openbao: {enabled: false}            # secrets backend of the reference profile
+  nfs-subdir-external-provisioner: {enabled: false}
+  # Promotion orchestration (docs/adr/0012-kargo-promotion.md). Needs
+  # cert-manager; verification needs argo-rollouts and monitoring.
+  # pipelines.enabled (default true) and pipelines.values tune the
+  # kargo-pipelines Application.
+  kargo: {enabled: false}
+
+# -----------------------------------------------------------------------------
+# Pull request preview environments (templates/previews/). Off unless the
+# cluster file sets toolchains.previews.enabled: true; toolchains.previews.values
+# is merged over this section (deep merge, the cluster file wins). A pull
+# request labelled with every entry of github.labels gets namespace
+# pr-<number> with quota, limits and default-deny network policies, plus one
+# Application per entry in apps, built from the pull request head commit.
+# Closing the pull request or removing the label deletes all of it.
+# See docs/how-to/preview-environments.md.
+# -----------------------------------------------------------------------------
+previews:
+  github:
+    # Repository the Pull Request generator polls. Empty owner and repo are
+    # derived from git.repoURL (https://github.com/<owner>/<repo>[.git]).
+    owner: ""
+    repo: ""
+    # GitHub Enterprise API URL, for example https://github.example.com/api/v3.
+    # Empty uses github.com.
+    api: ""
+    # Only pull requests that carry all of these labels get a preview.
+    labels: [preview]
+    # Secret in the Argo CD namespace with a read-only token, labelled
+    # argocd.argoproj.io/secret-type: scm-creds. Never commit the token.
+    tokenRef: {secretName: github-previews, key: token}
+    # Alternative: a GitHub App credential Secret in the repo-creds format.
+    # When set, it replaces tokenRef.
+    appSecretName: ""
+  # Polling interval of the generator. A webhook reacts sooner.
+  requeueAfterSeconds: 300
+  # nested: <app>.pr-<number>.<domain>; flat: <app>-pr-<number>.<domain>.
+  # TLS: the platform certificate covers <domain>, *.<domain> and
+  # *.<env>.<domain> for the configured environments. A nested name matches
+  # the Gateway listener but not the certificate, so clients see a name
+  # mismatch. flat is covered by *.<domain>; use it in the reference profile.
+  hostnameStyle: nested
+  image:
+    # false: the preview runs the image tag and digest of envs/dev/<app>.
+    # true: image.tag sha-<head_sha> without digest. Needs CI that pushes
+    # pull request images; .github/workflows/build-image.yml does not.
+    tagFromHeadSha: false
+  # Applications per preview: name (DNS label) and chart path in this
+  # repository. Value files: the chart's values.yaml, envs/dev/<name>/ and
+  # envs/preview/<name>/values.yaml.
+  apps:
+    - name: hello-api
+      chart: helmcharts/app-charts/hello-api
+  # Platform guardrails of each preview namespace, rendered from
+  # git.targetRevision, never from the pull request.
+  namespace:
+    chart: helmcharts/app-charts/preview-namespace
+    # Overrides for the preview-namespace chart (quota, limitRange).
+    values: {}

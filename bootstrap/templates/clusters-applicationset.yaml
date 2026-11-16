@@ -1,0 +1,64 @@
+{{- /*
+Hub mode: one root Application per registered remote
+cluster, generated from the Argo CD cluster Secrets that carry the
+cluster-definition label. Each root renders argocd-bootstrap with
+clusters/<definition>/cluster.yaml, whose cluster.destination.name points
+the platform and application Applications at that cluster. The hub's own
+platform is the root Application above.
+
+preserveResourcesOnDeletion keeps a remote cluster's Applications when its
+registration is removed by mistake; removing a cluster is a deliberate
+argocd app delete.
+*/ -}}
+{{- if .Values.hub.enabled }}
+{{- $label := .Values.hub.clusterDefinitionLabel }}
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: clusters
+  namespace: {{ .Values.namespaces.argocd }}
+  labels:
+    app.kubernetes.io/name: clusters
+    app.kubernetes.io/part-of: argocd-bootstrap
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchExpressions:
+            - key: {{ $label }}
+              operator: Exists
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  template:
+    metadata:
+      name: {{ printf "root-{{ index .metadata.labels %q }}" $label | quote }}
+      labels:
+        app.kubernetes.io/name: root
+        app.kubernetes.io/part-of: argocd-bootstrap
+      annotations:
+        argocd.argoproj.io/manifest-generate-paths: {{ printf "/argocd-bootstrap;/clusters/{{ index .metadata.labels %q }}" $label | quote }}
+    spec:
+      project: platform
+      source:
+        {{- include "bootstrap.rootSource" . | nindent 8 }}
+        helm:
+          releaseName: argocd-bootstrap
+          valueFiles:
+            - values.yaml
+            - {{ printf "../clusters/{{ index .metadata.labels %q }}/cluster.yaml" $label | quote }}
+          valuesObject:
+            git:
+              repoURL: {{ .Values.git.repoURL }}
+              targetRevision: {{ .Values.git.targetRevision | quote }}
+            cluster:
+              destination:
+                name: "{{`{{ .name }}`}}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: {{ .Values.namespaces.argocd }}
+      syncPolicy:
+        {{- include "bootstrap.rootSyncPolicy" . | nindent 8 }}
+      revisionHistoryLimit: 10
+{{- end }}

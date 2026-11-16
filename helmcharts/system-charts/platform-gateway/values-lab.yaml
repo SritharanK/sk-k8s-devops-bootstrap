@@ -1,0 +1,11 @@
+# lab (kind or a single node): kind maps host ports 80 and 443 on the
+# control-plane node to these node ports. Cluster policy lets that node
+# forward to proxy pods on any node.
+proxy:
+  replicas: 1
+  service:
+    type: NodePort
+    externalTrafficPolicy: Cluster
+    nodePorts:
+      http: 30080
+      https: 30443

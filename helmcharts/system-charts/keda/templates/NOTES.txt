@@ -1,0 +1,8 @@
+KEDA is installed in namespace {{ .Release.Namespace }}.
+
+Check the external metrics API:
+  kubectl get apiservice v1beta1.external.metrics.k8s.io
+  kubectl -n {{ .Release.Namespace }} get pods
+
+Do not define a HorizontalPodAutoscaler for a workload that a ScaledObject targets:
+KEDA creates and owns that HPA (keda-hpa-<scaledobject>). See the chart README.

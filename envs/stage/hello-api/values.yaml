@@ -1,0 +1,8 @@
+# hello-api in stage. Applied after helmcharts/app-charts/hello-api/values.yaml.
+# Holds only what differs per environment. image.tag and
+# image.digest change only through a promotion pull request from dev
+# (.github/workflows/promote.yml).
+---
+image:
+  tag: "0.1.0"
+  digest: ""

@@ -1,0 +1,23 @@
+---
+# Checks every RKE2 node before anything changes: placeholders, operating system, kernel, resources,
+# free ports, topology, and the runtime prerequisites that the base role sets up (swap, kernel
+# modules, sysctls, time sync). Changes nothing. Runtime findings are reported as warnings here,
+# because the base role fixes them; site.yml enforces them after the base role has run.
+#
+# Usage, from ansible/:
+#   ansible-playbook -i inventories/<profile>/hosts.yml playbooks/preflight.yml
+#
+# Every play loads the cluster definition through vars_files. cluster_definition_file comes from the
+# inventory (group_vars/all/main.yml); Ansible also templates vars_files once without a host, when no
+# inventory variables exist, and the default only keeps that pass quiet. Each host resolves its own file.
+- name: Preflight checks for RKE2 nodes
+  hosts: k8s_cluster
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  vars_files:
+    - "{{ cluster_definition_file | default(playbook_dir ~ '/../../clusters/lab/cluster.yaml') }}"
+  roles:
+    - role: preflight
+      vars:
+        preflight_runtime_fatal: false

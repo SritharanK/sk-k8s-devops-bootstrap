@@ -1,0 +1,24 @@
+---
+galaxy_info:
+  role_name: firewall
+  author: Sritharan K
+  description: nftables input firewall for RKE2 nodes in its own table, loaded by a dedicated systemd unit.
+  license: MIT
+  min_ansible_version: "2.20"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: EL
+      versions:
+        - "9"
+  galaxy_tags:
+    - kubernetes
+    - rke2
+    - firewall
+    - nftables
+dependencies: []

@@ -1,0 +1,16 @@
+apiVersion: v2
+name: longhorn
+description: Longhorn distributed block storage, the default StorageClass of the reference cluster.
+type: application
+version: 0.1.0
+appVersion: v1.12.2
+kubeVersion: ">=1.35.0-0"
+home: https://longhorn.io
+sources:
+  - https://github.com/longhorn/longhorn
+  - https://github.com/longhorn/charts
+dependencies:
+  # Longhorn documents this HTTPS repository as its Helm source; no public OCI chart was found (2026-11).
+  - name: longhorn
+    version: 1.12.2
+    repository: https://charts.longhorn.io

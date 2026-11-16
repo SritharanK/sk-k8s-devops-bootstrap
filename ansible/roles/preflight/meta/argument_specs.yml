@@ -1,0 +1,199 @@
+---
+# Each option is defined once under the main entry point (YAML anchor) and reused by the narrower entry points.
+argument_specs:
+  main:
+    short_description: Run the host checks and, when enabled, the runtime checks.
+    description:
+      - Fails fast before anything changes on a host.
+      - The host checks (placeholders, platform, kernel, hardware, disk, ports, topology) are always fatal.
+      - The runtime checks (swap, kernel modules, sysctls, time) fail or warn depending on preflight_runtime_fatal.
+    options:
+      preflight_placeholder_pattern: &preflight_placeholder_pattern
+        type: str
+        default: CHANGE_ME
+        description: Regular expression that marks a value as not yet set.
+      preflight_placeholder_vars: &preflight_placeholder_vars
+        type: list
+        elements: str
+        default: [rke2_version, rke2_token]
+        description:
+          - Names of the variables to check for the placeholder, including nested lists and dictionaries.
+          - Values are never printed; a failure lists the variable names only.
+      preflight_placeholder_vars_extra: &preflight_placeholder_vars_extra
+        type: list
+        elements: str
+        default: []
+        description: Additional variable names to check, so an inventory can extend the list without copying it.
+      preflight_supported_platforms: &preflight_supported_platforms
+        type: list
+        elements: dict
+        default:
+          - distribution: Ubuntu
+            versions: ["24.04"]
+          - distribution: Debian
+            versions: ["12", "13"]
+          - distribution: Rocky
+            versions: ["9"]
+        description:
+          - Supported distributions.
+          - A value in versions matches either distribution_version (Ubuntu 24.04) or distribution_major_version
+            (Debian 12 and 13, Rocky 9).
+        options:
+          distribution:
+            type: str
+            required: true
+            description: Value of ansible_facts['distribution'].
+          versions:
+            type: list
+            elements: str
+            required: true
+            description: Accepted full or major versions.
+      preflight_supported_architectures: &preflight_supported_architectures
+        type: list
+        elements: str
+        default: [x86_64, aarch64]
+        description: Supported values of ansible_facts['architecture'].
+      preflight_min_kernel_version: &preflight_min_kernel_version
+        type: str
+        default: "5.14"
+        description: Minimum kernel version, compared with the part of ansible_facts['kernel'] before the first "-".
+      preflight_min_vcpus: &preflight_min_vcpus
+        type: int
+        default: 2
+        description: Minimum number of vCPUs.
+      preflight_min_memory_mb: &preflight_min_memory_mb
+        type: int
+        default: 3500
+        description: Minimum memory in MB as reported by ansible_facts['memtotal_mb'].
+      preflight_disk_path: &preflight_disk_path
+        type: path
+        default: /var/lib/rancher
+        description: Path whose file system must have enough free space. It does not have to exist yet.
+      preflight_min_disk_free_gb: &preflight_min_disk_free_gb
+        type: int
+        default: 20
+        description: Minimum free space in GiB on the file system that holds preflight_disk_path.
+      preflight_check_ports: &preflight_check_ports
+        type: bool
+        default: true
+        description: Fail when a required TCP port is held by a process outside preflight_port_owner_allowlist.
+      preflight_server_ports: &preflight_server_ports
+        type: list
+        elements: int
+        default: [6443, 9345, 2379, 2380, 2381, 10250]
+        description: TCP ports that must be free on a server.
+      preflight_agent_ports: &preflight_agent_ports
+        type: list
+        elements: int
+        default: [10250]
+        description: TCP ports that must be free on an agent.
+      preflight_port_owner_allowlist: &preflight_port_owner_allowlist
+        type: list
+        elements: str
+        default:
+          - "^rke2"
+          - "^etcd$"
+          - "^kube-apiserver$"
+          - "^kube-controller"
+          - "^kube-scheduler$"
+          - "^kubelet$"
+          - "^containerd"
+          - "^kube-proxy$"
+        description:
+          - Process names (regular expressions, matched with search) that may hold a required port.
+          - Lets the play run again on an existing node. Process names are truncated to 15 characters.
+      preflight_servers_group: &preflight_servers_group
+        type: str
+        default: rke2_servers
+        description: Inventory group of the servers. Hosts outside it are checked as agents.
+      preflight_agents_group: &preflight_agents_group
+        type: str
+        default: rke2_agents
+        description: Inventory group of the agents.
+      preflight_cluster_group: &preflight_cluster_group
+        type: str
+        default: k8s_cluster
+        description:
+          - Inventory group of all cluster nodes, used for the topology checks.
+          - The topology checks are skipped when this group, the servers group and the agents group are all
+            missing or empty.
+      preflight_registration_address: &preflight_registration_address
+        type: str
+        default: "{{ rke2_registration_address | default('') }}"
+        description: Fixed registration address. Required when the cluster has more than one server.
+      preflight_swap_off_required: &preflight_swap_off_required
+        type: bool
+        default: true
+        description: Require that no swap device is active.
+      preflight_required_kernel_modules: &preflight_required_kernel_modules
+        type: list
+        elements: str
+        default: [overlay, br_netfilter]
+        description: Kernel modules that must be loaded or built into the kernel.
+      preflight_required_sysctls: &preflight_required_sysctls
+        type: dict
+        default:
+          net.ipv4.ip_forward: 1
+          net.bridge.bridge-nf-call-iptables: 1
+        description: Kernel parameters and their required values, read from /proc/sys.
+      preflight_time_sync_required: &preflight_time_sync_required
+        type: bool
+        default: true
+        description: Require a synchronised clock (timedatectl, with chronyc as the fallback).
+      preflight_time_sync_wait_seconds: &preflight_time_sync_wait_seconds
+        type: int
+        default: 120
+        description: Seconds to wait for timedatectl to report a synchronised clock before the check fails.
+      preflight_runtime_fatal: &preflight_runtime_fatal
+        type: bool
+        default: true
+        description: Fail on runtime findings. When false, the findings are printed as a warning.
+      preflight_runtime_checks:
+        type: bool
+        default: true
+        description: Run the runtime checks from the main entry point.
+
+  host:
+    short_description: Run only the host checks.
+    description:
+      - Placeholders, platform, kernel, hardware, free disk, ports and topology. Every failure is fatal.
+    options:
+      preflight_placeholder_pattern: *preflight_placeholder_pattern
+      preflight_placeholder_vars: *preflight_placeholder_vars
+      preflight_placeholder_vars_extra: *preflight_placeholder_vars_extra
+      preflight_supported_platforms: *preflight_supported_platforms
+      preflight_supported_architectures: *preflight_supported_architectures
+      preflight_min_kernel_version: *preflight_min_kernel_version
+      preflight_min_vcpus: *preflight_min_vcpus
+      preflight_min_memory_mb: *preflight_min_memory_mb
+      preflight_disk_path: *preflight_disk_path
+      preflight_min_disk_free_gb: *preflight_min_disk_free_gb
+      preflight_check_ports: *preflight_check_ports
+      preflight_server_ports: *preflight_server_ports
+      preflight_agent_ports: *preflight_agent_ports
+      preflight_port_owner_allowlist: *preflight_port_owner_allowlist
+      preflight_servers_group: *preflight_servers_group
+      preflight_agents_group: *preflight_agents_group
+      preflight_cluster_group: *preflight_cluster_group
+      preflight_registration_address: *preflight_registration_address
+
+  runtime:
+    short_description: Run only the runtime checks.
+    description:
+      - Swap, kernel modules, sysctls and time synchronisation. Run it after the base role has prepared the host.
+    options:
+      preflight_swap_off_required: *preflight_swap_off_required
+      preflight_required_kernel_modules: *preflight_required_kernel_modules
+      preflight_required_sysctls: *preflight_required_sysctls
+      preflight_time_sync_required: *preflight_time_sync_required
+      preflight_time_sync_wait_seconds: *preflight_time_sync_wait_seconds
+      preflight_runtime_fatal: *preflight_runtime_fatal
+
+  placeholders:
+    short_description: Run only the placeholder check.
+    description:
+      - Fails when a listed variable still holds the placeholder pattern. Values are never printed.
+    options:
+      preflight_placeholder_pattern: *preflight_placeholder_pattern
+      preflight_placeholder_vars: *preflight_placeholder_vars
+      preflight_placeholder_vars_extra: *preflight_placeholder_vars_extra

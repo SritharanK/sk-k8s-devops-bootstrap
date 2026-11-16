@@ -1,0 +1,68 @@
+{{ ansible_managed | comment }}
+# kube-vip {{ rke2_kube_vip_version }} static pod: control plane VIP in ARP mode with leader election.
+# Only the leader announces the VIP, so it needs a layer 2 network shared by the servers.
+# Environment variables: https://kube-vip.io/docs/installation/flags/
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-vip
+  namespace: kube-system
+spec:
+  hostNetwork: true
+  containers:
+    - name: kube-vip
+      image: {{ (rke2_kube_vip_image ~ ':' ~ rke2_kube_vip_version) | to_json }}
+      imagePullPolicy: IfNotPresent
+      args:
+        - manager
+      env:
+        - name: address
+          value: {{ rke2_registration_address | to_json }}
+        - name: port
+          value: "6443"
+        - name: vip_interface
+          value: {{ rke2_kube_vip_interface | to_json }}
+        - name: vip_subnet
+          value: "{{ '128' if ':' in rke2_registration_address else '32' }}"
+        - name: vip_arp
+          value: "true"
+        - name: cp_enable
+          value: "true"
+        - name: cp_namespace
+          value: kube-system
+        - name: svc_enable
+          value: "false"
+        - name: vip_leaderelection
+          value: "true"
+        - name: vip_leasename
+          value: plndr-cp-lock
+        - name: vip_leaseduration
+          value: "15"
+        - name: vip_renewdeadline
+          value: "10"
+        - name: vip_retryperiod
+          value: "2"
+        - name: vip_nodename
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        # RKE2 admin kubeconfig; it points at the local API server on https://127.0.0.1:6443.
+        - name: k8s_config_file
+          value: {{ rke2__kubeconfig_remote | to_json }}
+      securityContext:
+        capabilities:
+          add:
+            - NET_ADMIN
+            - NET_RAW
+          drop:
+            - ALL
+      volumeMounts:
+        - name: kubeconfig
+          mountPath: {{ rke2__kubeconfig_remote | to_json }}
+          readOnly: true
+  volumes:
+    # type File: the pod waits for RKE2 to write the kubeconfig instead of a directory being created there.
+    - name: kubeconfig
+      hostPath:
+        path: {{ rke2__kubeconfig_remote | to_json }}
+        type: File

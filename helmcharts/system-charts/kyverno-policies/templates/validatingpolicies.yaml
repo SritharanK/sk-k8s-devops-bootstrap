@@ -1,0 +1,58 @@
+{{- $catalogue := include "kyverno-policies.catalogue" . | fromYaml -}}
+{{- $groups := include "kyverno-policies.actionGroups" . | fromYaml -}}
+{{- range $policy := $catalogue.policies }}
+{{- if not (has $policy.name $.Values.disabledPolicies) }}
+{{- range $action, $namespaces := $groups }}
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: {{ printf "%s-%s" $policy.name (lower $action) }}
+  labels:
+    {{- include "kyverno-policies.labels" $ | nindent 4 }}
+  annotations:
+    {{- include "kyverno-policies.syncAnnotations" $ | nindent 4 }}
+    policies.kyverno.io/title: {{ $policy.title | quote }}
+    policies.kyverno.io/category: {{ $policy.category | quote }}
+    policies.kyverno.io/severity: {{ $policy.severity | quote }}
+    policies.kyverno.io/subject: {{ ternary "Service" "Pod" (eq $policy.target "services") | quote }}
+    policies.kyverno.io/description: {{ $policy.description | quote }}
+spec:
+  validationActions: {{ include "kyverno-policies.validationActions" $action }}
+  failurePolicy: {{ include "kyverno-policies.failurePolicy" $action }}
+  evaluation:
+    admission:
+      enabled: true
+    background:
+      enabled: true
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values:
+            {{- toYaml $namespaces | nindent 12 }}
+    resourceRules:
+      {{- if eq $policy.target "services" }}
+      {{- include "kyverno-policies.serviceRules" $ | nindent 6 }}
+      {{- else }}
+      {{- include "kyverno-policies.workloadRules" $ | nindent 6 }}
+      {{- end }}
+  {{- with $policy.matchConditions }}
+  matchConditions:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if or (eq $policy.target "workloads") $policy.variables }}
+  variables:
+    {{- if eq $policy.target "workloads" }}
+    {{- include "kyverno-policies.podVariables" $ | nindent 4 }}
+    {{- end }}
+    {{- with $policy.variables }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  validations:
+    {{- toYaml $policy.validations | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

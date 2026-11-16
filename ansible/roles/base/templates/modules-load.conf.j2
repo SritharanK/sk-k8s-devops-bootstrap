@@ -1,0 +1,4 @@
+{{ ansible_managed | comment }}
+{% for module in base__modules_load_list %}
+{{ module }}
+{% endfor %}

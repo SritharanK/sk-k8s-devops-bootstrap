@@ -1,0 +1,265 @@
+---
+# {{ ansible_managed }}
+#
+# Jenkins configuration as code for the CI adapter controller.
+# This file holds no secret values. Every ${name} below is resolved by the
+# configuration-as-code plugin from a file of that name in the secrets
+# directory ({{ install_jenkins_casc_secrets_dir }}, environment variable SECRETS),
+# readable only by the jenkins user.
+{% set admin_permissions = ['Overall/Administer'] %}
+{% set developer_permissions = ['Overall/Read', 'Job/Read', 'Job/Discover', 'Job/Build', 'Job/Cancel', 'View/Read'] %}
+{% set viewer_permissions = ['Overall/Read', 'Job/Read', 'Job/Discover', 'View/Read'] %}
+{% set build_permissions = ['Overall/Read', 'Job/Read', 'Job/Build', 'Credentials/UseItem'] %}
+{% set admin_users = install_jenkins_admin_users + ([install_jenkins_local_admin_user] if install_jenkins_security_realm == 'local' else []) %}
+{% set services_doc = lookup('ansible.builtin.file', install_jenkins_services_file) | from_yaml %}
+{% set job_dsl_config = {
+     'services': services_doc.services,
+     'environments': services_doc.environments,
+     'repoUrl': install_jenkins_git_repo_url,
+     'branch': install_jenkins_git_branch,
+     'credentialsId': 'git-checkout',
+     'pollSchedule': install_jenkins_poll_scm_schedule,
+     'runAs': install_jenkins_build_run_as,
+     'buildUser': install_jenkins_build_user,
+   } %}
+
+jenkins:
+  systemMessage: {{ install_jenkins_system_message | to_json }}
+  # Controller isolation: nothing runs on the built-in node.
+  numExecutors: 0
+  mode: EXCLUSIVE
+  labelString: ""
+  # Inbound TCP agent port disabled; agents connect over WebSocket.
+  slaveAgentPort: -1
+  # Descriptions are rendered as plain text, never as HTML.
+  markupFormatter: "plainText"
+  disableRememberMe: true
+  noUsageStatistics: true
+  # CSRF protection with the default, session-bound crumb issuer.
+  crumbIssuer: "standard"
+
+  securityRealm:
+{% if install_jenkins_security_realm == 'oidc' %}
+    oic:
+      serverConfiguration:
+        wellKnown:
+          wellKnownOpenIDConfigurationUrl: {{ install_jenkins_oidc_well_known_url | to_json }}
+      clientId: {{ install_jenkins_oidc_client_id | to_json }}
+      clientSecret: "${oidc_client_secret}"
+      userNameField: {{ install_jenkins_oidc_user_name_field | to_json }}
+      fullNameFieldName: {{ install_jenkins_oidc_full_name_field | to_json }}
+      emailFieldName: {{ install_jenkins_oidc_email_field | to_json }}
+      groupsFieldName: {{ install_jenkins_oidc_groups_field | to_json }}
+      logoutFromOpenidProvider: true
+      disableSslVerification: false
+      properties:
+        - "pkce"
+{% elif install_jenkins_security_realm == 'ldap' %}
+    ldap:
+      configurations:
+        - server: {{ install_jenkins_ldap_server | to_json }}
+          rootDN: {{ install_jenkins_ldap_root_dn | to_json }}
+          userSearchBase: {{ install_jenkins_ldap_user_search_base | to_json }}
+          userSearch: {{ install_jenkins_ldap_user_search | to_json }}
+          groupSearchBase: {{ install_jenkins_ldap_group_search_base | to_json }}
+          managerDN: {{ install_jenkins_ldap_manager_dn | to_json }}
+          managerPasswordSecret: "${ldap_manager_password}"
+      disableMailAddressResolver: false
+      disableRolePrefixing: true
+{% else %}
+    # Lab only: one break-glass administrator and the build identity.
+    local:
+      allowsSignup: false
+      users:
+        - id: {{ install_jenkins_local_admin_user | to_json }}
+          name: "Administrator"
+          password: "${local_admin_password}"
+        - id: {{ install_jenkins_build_user | to_json }}
+          name: "Build identity"
+          password: "${local_build_user_password}"
+{% endif %}
+
+  # Matrix authorization. Anonymous has no permission at all. Nobody except
+  # administrators can configure jobs, replay builds, browse workspaces or
+  # view credentials.
+  authorizationStrategy:
+    projectMatrix:
+      entries:
+{% for group in install_jenkins_admin_groups %}
+        - group:
+            name: {{ group | to_json }}
+            permissions: {{ admin_permissions | to_json }}
+{% endfor %}
+{% for user in admin_users %}
+        - user:
+            name: {{ user | to_json }}
+            permissions: {{ admin_permissions | to_json }}
+{% endfor %}
+{% for group in install_jenkins_developer_groups %}
+        - group:
+            name: {{ group | to_json }}
+            permissions: {{ developer_permissions | to_json }}
+{% endfor %}
+{% for group in install_jenkins_viewer_groups %}
+        - group:
+            name: {{ group | to_json }}
+            permissions: {{ viewer_permissions | to_json }}
+{% endfor %}
+{% if install_jenkins_build_run_as == 'user' %}
+        - user:
+            name: {{ install_jenkins_build_user | to_json }}
+            permissions: {{ build_permissions | to_json }}
+{% endif %}
+
+  # Ephemeral build agents. Pod specs live in ci/jenkins/pod-templates/ and
+  # are selected by each pipeline.
+  clouds:
+    - kubernetes:
+        name: "kubernetes"
+        serverUrl: {{ install_jenkins_k8s_api_url | to_json }}
+{% if install_jenkins_k8s_ca_certificate | length > 0 %}
+        serverCertificate: {{ install_jenkins_k8s_ca_certificate | to_json }}
+{% endif %}
+        skipTlsVerify: false
+        credentialsId: "k8s-agent-token"
+        namespace: {{ install_jenkins_k8s_namespace | to_json }}
+        jenkinsUrl: {{ install_jenkins_k8s_jenkins_url | to_json }}
+        webSocket: true
+        containerCapStr: {{ install_jenkins_k8s_container_cap | string | to_json }}
+        connectTimeout: 10
+        readTimeout: 30
+        podRetention: "never"
+        podLabels:
+          - key: "app.kubernetes.io/part-of"
+            value: "jenkins-agents"
+
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "IMAGE_REGISTRY"
+            value: {{ install_jenkins_image_registry | to_json }}
+          - key: "GITOPS_REPO_URL"
+            value: {{ install_jenkins_git_repo_url | to_json }}
+          - key: "GITOPS_BASE_BRANCH"
+            value: {{ install_jenkins_git_branch | to_json }}
+          - key: "GITHUB_API_URL"
+            value: {{ install_jenkins_github_api_url | to_json }}
+          - key: "GITHUB_REPOSITORY"
+            value: {{ install_jenkins_github_repository | to_json }}
+          - key: "GIT_COMMIT_NAME"
+            value: {{ install_jenkins_git_commit_name | to_json }}
+          - key: "GIT_COMMIT_EMAIL"
+            value: {{ install_jenkins_git_commit_email | to_json }}
+          - key: "COSIGN_TLOG_UPLOAD"
+            value: {{ (install_jenkins_cosign_tlog_upload | bool) | string | lower | to_json }}
+          - key: "ARGOCD_SERVER"
+            value: {{ install_jenkins_argocd_server | to_json }}
+          - key: "COSIGN_KEYLESS_ISSUER"
+            value: {{ install_jenkins_cosign_keyless_issuer | to_json }}
+          - key: "COSIGN_KEYLESS_IDENTITY_REGEXP"
+            value: {{ install_jenkins_cosign_keyless_identity_regexp | to_json }}
+
+security:
+  # Builds run as a named identity, never as SYSTEM. Jobs without an explicit
+  # strategy fall back to anonymous, which has no permission.
+  queueItemAuthenticator:
+    authenticators:
+      - project:
+          enabledStrategies:
+            - "org.jenkinsci.plugins.authorizeproject.strategy.SpecificUsersAuthorizationStrategy"
+{% if install_jenkins_build_run_as == 'system' %}
+            - "org.jenkinsci.plugins.authorizeproject.strategy.SystemAuthorizationStrategy"
+{% endif %}
+          disabledStrategies:
+            - "org.jenkinsci.plugins.authorizeproject.strategy.AnonymousAuthorizationStrategy"
+            - "org.jenkinsci.plugins.authorizeproject.strategy.TriggeringUsersAuthorizationStrategy"
+{% if install_jenkins_build_run_as != 'system' %}
+            - "org.jenkinsci.plugins.authorizeproject.strategy.SystemAuthorizationStrategy"
+{% endif %}
+      - global:
+          strategy: {{ 'systemAuthorizationStrategy' if install_jenkins_build_run_as == 'system' else 'anonymousAuthorizationStrategy' }}
+  # Job DSL from the UI or a seed job would run with script security.
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: true
+  apiToken:
+    creationOfLegacyTokenEnabled: false
+    tokenGenerationOnCreationEnabled: false
+    usageStatisticsEnabled: true
+  gitHooks:
+    allowedOnAgents: false
+    allowedOnController: false
+  gitHostKeyVerificationConfiguration:
+{% if install_jenkins_git_known_hosts | length > 0 %}
+    sshHostKeyVerificationStrategy:
+      manuallyProvidedKeyVerificationStrategy:
+        approvedHostKeys: {{ install_jenkins_git_known_hosts | to_json }}
+{% else %}
+    sshHostKeyVerificationStrategy: "knownHostsFileVerificationStrategy"
+{% endif %}
+
+unclassified:
+  location:
+    url: {{ install_jenkins_url | to_json }}
+    adminAddress: {{ install_jenkins_admin_email | to_json }}
+  timestamper:
+    allPipelines: true
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          # Used by the Kubernetes cloud only. SYSTEM scope keeps it out of
+          # every build.
+          - string:
+              scope: SYSTEM
+              id: "k8s-agent-token"
+              description: "Token of the jenkins-agent-launcher ServiceAccount"
+              secret: "${k8s_agent_token}"
+          - usernamePassword:
+              scope: GLOBAL
+              id: "git-checkout"
+              description: "Checkout of the repository by the generated jobs"
+              username: "x-access-token"
+              password: "${github_token}"
+          - usernamePassword:
+              scope: GLOBAL
+              id: "registry-push"
+              description: "Push to the image registry"
+              username: {{ install_jenkins_registry_username | to_json }}
+              password: "${registry_password}"
+          - string:
+              scope: GLOBAL
+              id: "github-token"
+              description: "Push promotion branches and open pull requests"
+              secret: "${github_token}"
+          - file:
+              scope: GLOBAL
+              id: "cosign-key"
+              description: "cosign private key"
+              fileName: "cosign.key"
+              secretBytes: "${readFileBase64:{{ install_jenkins_casc_secrets_dir }}/cosign_private_key}"
+          - string:
+              scope: GLOBAL
+              id: "cosign-password"
+              description: "Password of the cosign private key"
+              secret: "${cosign_password}"
+{% if install_jenkins_argocd_server | length > 0 %}
+{%   for env_name in install_jenkins_argocd_tokens | default({}) | list | sort %}
+          # Token of the Argo CD project role ci in apps-{{ env_name }}
+          # (applications, get), used when promoting from {{ env_name }}.
+          - string:
+              scope: GLOBAL
+              id: "argocd-token-{{ env_name }}"
+              description: "Read-only Argo CD token for apps-{{ env_name }}"
+              secret: "${argocd_token_{{ env_name }}}"
+{%   endfor %}
+{% endif %}
+
+# Jobs: one folder per service from ci/jenkins/services.yaml, generated by
+# ci/jenkins/jobs/services.groovy. The input is passed base64 encoded so no
+# value can break out of the Groovy string.
+jobs:
+  - script: |
+      def config = new groovy.json.JsonSlurperClassic().parseText(
+          new String(java.util.Base64.getDecoder().decode('{{ job_dsl_config | to_json | b64encode }}'), 'UTF-8'))
+      {{ lookup('ansible.builtin.file', install_jenkins_job_dsl_file) | replace('${', '^${') | indent(6) }}

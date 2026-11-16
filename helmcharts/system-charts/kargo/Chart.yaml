@@ -1,0 +1,15 @@
+apiVersion: v2
+name: kargo
+description: Platform wrapper for the upstream Kargo chart, with the Gateway route, credential delivery and lab and reference profiles.
+type: application
+version: 0.1.0
+appVersion: v1.12.5
+kubeVersion: ">=1.35.0-0"
+home: https://github.com/SritharanK/sk-k8s-devops-bootstrap
+sources:
+  - https://github.com/akuity/kargo/tree/v1.12.5/charts/kargo
+  - https://github.com/akuity/kargo/releases/tag/v1.12.5
+dependencies:
+  - name: kargo
+    version: 1.12.5
+    repository: oci://ghcr.io/akuity/kargo-charts

@@ -1,0 +1,46 @@
+# Code owners.
+#
+# The owner is the maintainer of this repository. A fork replaces it with its
+# own users or teams. GitHub skips owners that do not exist or have no write
+# access; a path whose owners are all skipped has no code owner, and no review
+# can be required.
+#
+# Review by a code owner is enforced by the branch ruleset on the default
+# branch ("Require review from Code Owners"), not by this file alone.
+#
+# Matching: the last pattern that matches a path wins, so specific paths come
+# after the default. When a line lists several owners, an approval from any
+# one of them satisfies the rule.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for every path not matched below.
+*                                           @SritharanK
+
+# The paths below repeat the default owner on purpose: they stay owned by the
+# maintainers even if the default line above is changed.
+
+# CI workflows, composite actions, repository settings and this file.
+/.github/                                   @SritharanK
+
+# Cluster definitions read by Ansible and by the root Argo CD application.
+/clusters/                                  @SritharanK
+
+# GitOps layer: root application, ApplicationSets and AppProjects. The
+# AppProjects and tenant definitions decide what every team may deploy where,
+# so they are listed explicitly.
+/argocd-bootstrap/                          @SritharanK
+/argocd-bootstrap/templates/projects/       @SritharanK
+/bootstrap/                                 @SritharanK
+/tenants/                                   @SritharanK
+
+# Admission policies enforced on every cluster.
+/helmcharts/system-charts/kyverno-policies/ @SritharanK
+
+# Node provisioning (RKE2).
+/ansible/                                   @SritharanK
+
+# Production values: promotion to prod needs an approval from a code owner of
+# this path. In a repository with teams, list only the production approvers
+# here: listing the maintainers as well would let a maintainer approval alone
+# satisfy the rule.
+/envs/prod/                                 @SritharanK

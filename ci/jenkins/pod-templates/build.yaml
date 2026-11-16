@@ -1,0 +1,290 @@
+---
+# Agent pod of ci/jenkins/pipelines/build.Jenkinsfile.
+# See ci/jenkins/README.md.
+#
+# The Kubernetes plugin merges this manifest with its own settings: it adds
+# the workspace volume (an emptyDir mounted at /home/jenkins/agent in every
+# container) and the connection variables of the jnlp container. The plugin
+# reads this file from the same commit as the pipeline.
+#
+# Containers and what they are for:
+#   jnlp      Jenkins agent: checkout, Git and the GitHub API (curl).
+#   buildkit  rootless BuildKit: test stage and image build.
+#   trivy     vulnerability and secret scan, CycloneDX SBOM.
+#   skopeo    push of the OCI archive to the registry.
+#   cosign    signature and SBOM attestation.
+#   yq        edits of the environment values file.
+#
+# Every container except buildkit stays within the Pod Security "restricted"
+# profile: non-root, RuntimeDefault seccomp, no privilege escalation, all
+# capabilities dropped, read-only root filesystem with emptyDir volumes for
+# the few paths that must be writable. Rootless BuildKit cannot run under
+# that profile; see the comment on the buildkit container and the namespace
+# manifest in ci/jenkins/kubernetes/namespace.yaml.
+#
+# Registry credentials are written only to the memory-backed registry-auth
+# volume, which is mounted in skopeo and cosign and nowhere else.
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app.kubernetes.io/part-of: jenkins-agents
+    app.kubernetes.io/component: build
+spec:
+  serviceAccountName: jenkins-agent
+  automountServiceAccountToken: false
+  enableServiceLinks: false
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 30
+  nodeSelector:
+    kubernetes.io/os: linux
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: jnlp
+      image: jenkins/inbound-agent:3395.v6e5377b_0fb_3c-4-jdk21@sha256:0c5908a376ff73381f3617c8277b77559a9c8916fe0c22efd9b9e9ef326aeb27
+      imagePullPolicy: IfNotPresent
+      # The image entrypoint starts the agent; the plugin supplies the
+      # controller URL, the agent name and the secret through environment
+      # variables, and the agent connects over WebSocket.
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+          ephemeral-storage: 1Gi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+          # Covers the workspace volume: sources, the OCI image layout and
+          # the GitOps checkout.
+          ephemeral-storage: 10Gi
+      volumeMounts:
+        - name: jnlp-tmp
+          mountPath: /tmp
+        - name: jnlp-remoting
+          mountPath: /home/jenkins/.jenkins
+
+    - name: buildkit
+      image: moby/buildkit:v0.34.2-rootless@sha256:c8252268760e1baba80780d63d738ef9f260fb7c7c0973c78494cb9ddd99eda1
+      imagePullPolicy: IfNotPresent
+      command: ["sleep"]
+      args: ["infinity"]
+      env:
+        # buildctl-daemonless.sh starts rootlesskit and buildkitd for each
+        # build. Kubernetes has no equivalent of Docker's
+        # "systempaths=unconfined", so the upstream rootless examples run
+        # buildkitd without the per-step process sandbox.
+        - name: BUILDKITD_FLAGS
+          value: --oci-worker-no-process-sandbox
+      # Settings of the upstream rootless example
+      # (examples/kubernetes/job.rootless.yaml in moby/buildkit):
+      # - seccomp and AppArmor Unconfined: rootlesskit and runc need unshare,
+      #   mount and pivot_root inside the user namespace, which the runtime
+      #   default profiles block. The Pod Security baseline and restricted
+      #   levels forbid both, hence "enforce: privileged" on the namespace.
+      # - Privilege escalation and the runtime's default capability set are
+      #   kept: newuidmap and newgidmap are setuid helpers that map the
+      #   subordinate IDs of the user namespace, and no_new_privs or
+      #   "drop: ALL" disables them. Inside the user namespace the build
+      #   steps get capabilities only over that namespace.
+      # - The root filesystem stays writable: rootlesskit, buildkitd and the
+      #   daemonless wrapper write to /run/user/1000, /tmp and
+      #   /home/user/.local.
+      # - The container still runs as uid 1000 and is never privileged.
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        allowPrivilegeEscalation: true
+        readOnlyRootFilesystem: false
+        seccompProfile:
+          type: Unconfined
+        appArmorProfile:
+          type: Unconfined
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+          ephemeral-storage: 5Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+          ephemeral-storage: 20Gi
+      volumeMounts:
+        # BuildKit state and cache. The image declares this path as a
+        # VOLUME, but an explicit emptyDir is required: the implicit volume
+        # can be mounted nosuid,nodev, which breaks rootless mode.
+        - name: buildkit-state
+          mountPath: /home/user/.local/share/buildkit
+
+    - name: trivy
+      image: aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+      imagePullPolicy: IfNotPresent
+      command: ["sleep"]
+      args: ["infinity"]
+      env:
+        - name: HOME
+          value: /tmp
+        # Vulnerability database cache, downloaded on every build because
+        # the volume is an emptyDir.
+        - name: TRIVY_CACHE_DIR
+          value: /var/cache/trivy
+        - name: TRIVY_DISABLE_TELEMETRY
+          value: "true"
+        - name: TRIVY_SKIP_VERSION_CHECK
+          value: "true"
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+          ephemeral-storage: 1Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+          ephemeral-storage: 4Gi
+      volumeMounts:
+        - name: trivy-tmp
+          mountPath: /tmp
+        - name: trivy-cache
+          mountPath: /var/cache/trivy
+
+    - name: skopeo
+      image: quay.io/skopeo/stable:v1.24.1@sha256:9fdeeda2801cf93a0a15bfb2154e44a0c5a0f3650e54586165bd1b732e503702
+      imagePullPolicy: IfNotPresent
+      command: ["sleep"]
+      args: ["infinity"]
+      env:
+        - name: HOME
+          value: /tmp
+        # Temporary files of containers/image go to the emptyDir, not to
+        # the read-only /var/tmp.
+        - name: TMPDIR
+          value: /tmp
+        - name: REGISTRY_AUTH_FILE
+          value: /run/registry-auth/config.json
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+          ephemeral-storage: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+          ephemeral-storage: 2Gi
+      volumeMounts:
+        - name: skopeo-tmp
+          mountPath: /tmp
+        - name: registry-auth
+          mountPath: /run/registry-auth
+
+    - name: cosign
+      # The -dev variant ships BusyBox (/busybox/sh on PATH); the default
+      # variant has no shell and cannot run pipeline steps.
+      image: gcr.io/projectsigstore/cosign:v3.1.4-dev@sha256:8af1a2cf9fba903fdfc6bdafdc25f7b13ef34ad722095543ea787fb96f7240c1
+      imagePullPolicy: IfNotPresent
+      command: ["sleep"]
+      args: ["infinity"]
+      env:
+        - name: HOME
+          value: /tmp
+        - name: DOCKER_CONFIG
+          value: /run/registry-auth
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+          ephemeral-storage: 64Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+          ephemeral-storage: 512Mi
+      volumeMounts:
+        - name: cosign-tmp
+          mountPath: /tmp
+        - name: registry-auth
+          mountPath: /run/registry-auth
+
+    - name: yq
+      image: mikefarah/yq:4.54.2@sha256:5d56494617dce8311106e905aac5c080a2087c905a7f7de2984db2e2cc60ab2e
+      imagePullPolicy: IfNotPresent
+      command: ["sleep"]
+      args: ["infinity"]
+      env:
+        - name: HOME
+          value: /tmp
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+          ephemeral-storage: 64Mi
+        limits:
+          cpu: 250m
+          memory: 128Mi
+          ephemeral-storage: 256Mi
+      volumeMounts:
+        - name: yq-tmp
+          mountPath: /tmp
+
+  volumes:
+    - name: jnlp-tmp
+      emptyDir:
+        medium: Memory
+        sizeLimit: 128Mi
+    - name: jnlp-remoting
+      emptyDir:
+        sizeLimit: 256Mi
+    - name: buildkit-state
+      emptyDir:
+        sizeLimit: 20Gi
+    - name: trivy-tmp
+      emptyDir:
+        sizeLimit: 512Mi
+    - name: trivy-cache
+      emptyDir:
+        sizeLimit: 4Gi
+    - name: skopeo-tmp
+      emptyDir:
+        sizeLimit: 2Gi
+    - name: cosign-tmp
+      emptyDir:
+        medium: Memory
+        sizeLimit: 64Mi
+    - name: yq-tmp
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Mi
+    # Registry login of skopeo and cosign. Memory-backed, never part of the
+    # workspace, mounted in those two containers only.
+    - name: registry-auth
+      emptyDir:
+        medium: Memory
+        sizeLimit: 1Mi

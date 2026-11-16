@@ -1,0 +1,15 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    # A container shares the host kernel: it cannot load modules, and sysctls or swapoff would change the host.
+    base_kernel_runtime_apply: false
+    base_admin_users:
+      - name: opsadmin
+        ssh_public_keys:
+          # Throwaway test key. The private key is not part of this repository.
+          - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEg+HO1mjORGnh3d9q24RINyOq/CZBW+cGzY2QE0inHn molecule-test
+  roles:
+    - role: base

@@ -1,0 +1,28 @@
+---
+galaxy_info:
+  role_name: base
+  author: Sritharan K
+  description: >-
+    OS baseline for cluster nodes and Jenkins hosts: packages, Kubernetes kernel settings, sysctl hardening, chrony,
+    unattended security updates, SSH hardening and key-only admin users.
+  license: MIT
+  min_ansible_version: "2.20"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: EL
+      versions:
+        - "9"
+  galaxy_tags:
+    - baseline
+    - hardening
+    - kubernetes
+    - ssh
+    - chrony
+
+dependencies: []

@@ -1,0 +1,66 @@
+{{- /*
+The tenant's Argo CD AppProject: the tenant repositories as sources, exactly
+the tenant namespaces as destinations, no cluster-scoped kinds, and none of
+the guardrail kinds this chart owns. Project roles map the tenant groups to
+Argo CD permissions: admins get and sync, viewers get. Neither role creates or
+deletes Applications. Kept on prune and on Application deletion so that the
+tenant's Applications are never orphaned by an onboarding change.
+*/ -}}
+{{- if .Values.components.project }}
+{{- $project := include "tenant.projectName" . }}
+{{- $repos := .Values.sourceRepos | default list }}
+{{- if not $repos }}
+{{- fail "sourceRepos must not be empty" }}
+{{- end }}
+{{- range $repos }}
+{{- if contains "*" . }}
+{{- fail (printf "sourceRepos: wildcard in %q is not allowed" .) }}
+{{- end }}
+{{- end }}
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ $project }}
+  namespace: {{ required "namespaces.argocd is required" .Values.namespaces.argocd }}
+  labels:
+    {{- include "tenant.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: {{ .Values.description | default (printf "Tenant %s." (include "tenant.name" .)) | quote }}
+  sourceRepos:
+    {{- range $repos | uniq }}
+    - {{ . | quote }}
+    {{- end }}
+  destinations:
+    {{- range $env := include "tenant.environments" . | fromJsonArray }}
+    - namespace: {{ include "tenant.namespace" (list $ $env) }}
+      {{- include "tenant.destination" $ | nindent 6 }}
+    {{- end }}
+  clusterResourceWhitelist: []
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+  roles:
+    - name: admins
+      description: Tenant administrators. View and sync.
+      groups:
+        - {{ required "groups.admins is required" .Values.groups.admins | quote }}
+      policies:
+        - p, proj:{{ $project }}:admins, applications, get, {{ $project }}/*, allow
+        - p, proj:{{ $project }}:admins, applications, sync, {{ $project }}/*, allow
+    - name: viewers
+      description: Read-only access.
+      groups:
+        - {{ required "groups.viewers is required" .Values.groups.viewers | quote }}
+      policies:
+        - p, proj:{{ $project }}:viewers, applications, get, {{ $project }}/*, allow
+{{- end }}

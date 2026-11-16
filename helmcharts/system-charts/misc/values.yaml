@@ -1,0 +1,198 @@
+# Defaults for the misc chart. Profile deltas live in values-lab.yaml and
+# values-reference.yaml. Keys marked "injected" are set per cluster by the
+# Argo CD Application (helm valuesObject) from clusters/<name>/cluster.yaml.
+
+---
+# Injected. Environment key -> namespace name. Per-environment settings below
+# are looked up by key (dev, stage, prod), never by namespace name. Helm merges
+# maps, so to drop a default environment set its key to null.
+environments:
+  dev: dev
+  stage: stage
+  prod: prod
+
+podSecurity:
+  # Injected. Pod Security Standards version pinned on every namespace label.
+  version: "v1.36"
+  # Levels: privileged | baseline | restricted. audit and warn stay restricted
+  # everywhere so violations surface before they are enforced.
+  levels:
+    dev:
+      enforce: baseline
+      audit: restricted
+      warn: restricted
+    stage:
+      enforce: restricted
+      audit: restricted
+      warn: restricted
+    prod:
+      enforce: restricted
+      audit: restricted
+      warn: restricted
+
+# Injected. Identity provider group names (OIDC groups claim on the API server).
+groups:
+  admins: platform-admins
+  deployers: deployers
+  viewers: viewers
+
+certManager:
+  # Injected. Namespace cert-manager runs in. The CA ClusterIssuer reads the
+  # root CA secret from here (the cert-manager cluster resource namespace).
+  namespace: cert-manager
+  # Injected. ACME account contact address, required while an ACME issuer is
+  # enabled (the render fails when it is empty).
+  email: platform@example.com
+
+# Injected. Gateway listener that serves ACME HTTP-01 challenges.
+gateway:
+  name: platform
+  namespace: envoy-gateway-system
+  sectionName: http
+
+# Rendered verbatim into ResourceQuota "default" spec.hard. Sized for a lab
+# cluster; values-reference.yaml raises them. LoadBalancer and NodePort
+# Services are blocked: traffic enters through the shared Gateway.
+resourceQuota:
+  dev:
+    hard:
+      requests.cpu: "4"
+      requests.memory: 8Gi
+      limits.cpu: "8"
+      limits.memory: 16Gi
+      pods: "30"
+      requests.storage: 50Gi
+      persistentvolumeclaims: "10"
+      services.loadbalancers: "0"
+      services.nodeports: "0"
+  stage:
+    hard:
+      requests.cpu: "6"
+      requests.memory: 12Gi
+      limits.cpu: "12"
+      limits.memory: 24Gi
+      pods: "40"
+      requests.storage: 50Gi
+      persistentvolumeclaims: "10"
+      services.loadbalancers: "0"
+      services.nodeports: "0"
+  prod:
+    hard:
+      requests.cpu: "8"
+      requests.memory: 16Gi
+      limits.cpu: "16"
+      limits.memory: 32Gi
+      pods: "50"
+      requests.storage: 50Gi
+      persistentvolumeclaims: "10"
+      services.loadbalancers: "0"
+      services.nodeports: "0"
+
+# LimitRange "default", keyed by environment and then by LimitRange type. Each
+# type entry is rendered verbatim next to "type". Container defaults matter
+# because a ResourceQuota on cpu and memory rejects pods without requests and
+# limits. All environments share the same limits (YAML anchor).
+limitRange:
+  dev: &limits
+    Container:
+      default:
+        cpu: 500m
+        memory: 256Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: "2"
+        memory: 2Gi
+    PersistentVolumeClaim:
+      max:
+        storage: 20Gi
+  stage: *limits
+  prod: *limits
+
+# When false, a ServiceAccount "default" with automountServiceAccountToken:
+# false is rendered in every environment namespace. A pod that needs API access
+# uses its own ServiceAccount or sets automountServiceAccountToken: true.
+defaultServiceAccount:
+  automountToken: false
+
+rbac:
+  deployer:
+    # Environment keys where deployers may exec into pods and port-forward.
+    execEnvironments: [dev]
+  clusterReader:
+    # Cluster-wide read and node maintenance for groups.admins.
+    enabled: true
+
+issuers:
+  # Self-signed root CA and the CA ClusterIssuer "selfsigned" it backs.
+  selfsigned:
+    enabled: true
+    rootCA:
+      secretName: platform-root-ca
+      commonName: Platform Root CA
+      duration: 87600h
+      renewBefore: 720h
+      privateKey:
+        algorithm: ECDSA
+        size: 384
+  # ACME issuers. The toolchain Application enables both only when
+  # platform.issuer is an ACME issuer: Let's Encrypt registers an account when
+  # the ClusterIssuer is created and rejects example.com contact addresses, so
+  # an unused ACME issuer in the lab would stay not Ready.
+  letsencryptStaging:
+    enabled: true
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+  letsencrypt:
+    enabled: true
+    server: https://acme-v02.api.letsencrypt.org/directory
+  acme:
+    # Injected from platform.acme.solver:
+    #   http01  HTTP-01 through a Gateway API HTTPRoute on the listener in
+    #           `gateway`. No wildcard certificates.
+    #   dns01   the provider block in dns01. Required for wildcard names.
+    solver: http01
+    # Injected from platform.acme.dns01, used when solver is dns01:
+    #   provider: one of acmeDNS, akamai, azureDNS, cloudDNS, cloudflare,
+    #     digitalocean, rfc2136, route53, webhook
+    #   config: non-secret provider fields as in the cert-manager solver block
+    #   credentialsSecretRef: {name, key} of a Secret in the cert-manager
+    #     namespace; rendered as the provider's own Secret reference field
+    #     (for example apiTokenSecretRef for cloudflare). akamai and webhook
+    #     take their references in config instead.
+    # Example:
+    #   provider: cloudflare
+    #   credentialsSecretRef:
+    #     name: CHANGE_ME
+    #     key: api-token
+    dns01: {}
+    # Test only (injected from platform.acme.server and platform.acme.caBundle).
+    # server replaces the directory URL of letsencrypt-staging, for example a
+    # Pebble test server (tests/integration/acme). caBundle is the
+    # base64-encoded PEM CA that signs that server's TLS certificate. The
+    # letsencrypt issuer is never redirected. Leave both empty.
+    server: ""
+    caBundle: ""
+
+# PriorityClasses. None is the global default: pods without priorityClassName
+# keep priority 0. A PriorityClass value is immutable once created.
+priorityClasses:
+  - name: platform-critical
+    value: 1000000
+    preemptionPolicy: PreemptLowerPriority
+    description: >-
+      Platform controllers: GitOps, admission, gateway, certificates.
+  - name: workload-high
+    value: 10000
+    preemptionPolicy: PreemptLowerPriority
+    description: Latency-sensitive application workloads.
+  - name: workload-default
+    value: 1000
+    preemptionPolicy: PreemptLowerPriority
+    description: Regular application workloads.
+  - name: workload-batch
+    value: 100
+    preemptionPolicy: Never
+    description: >-
+      Batch and background jobs. Queued ahead of lower priorities, never
+      preempts.

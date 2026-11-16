@@ -1,0 +1,177 @@
+---
+# Internal values of the firewall role. Not meant to be set from the inventory.
+
+firewall__unit_name: rke2-host-firewall.service
+firewall__unit_path: /etc/systemd/system/rke2-host-firewall.service
+firewall__rules_dir: /etc/nftables.d
+firewall__rules_path: /etc/nftables.d/rke2-host.nft
+firewall__nft_path: /usr/sbin/nft
+firewall__log_prefix: "rke2-host drop: "
+firewall__conflicting_services:
+  - firewalld.service
+  - ufw.service
+
+# An IPv4 or IPv6 address with an optional prefix length. A coarse check that catches hostnames and placeholders
+# before nft sees them; nft -c validates the exact syntax.
+firewall__address_pattern: "^[0-9A-Fa-f:.]+(/[0-9]{1,3})?$"
+
+# Interfaces of the supported CNIs. Pod traffic to the host arrives on them.
+firewall__cni_interfaces:
+  - cali*
+  - flannel*
+  - cni*
+  - vxlan.calico
+  - cilium*
+  - lxc*
+  - tunl0
+
+# Rules: source is a key of firewall__sources, match is the nft match expression, families limits a rule to v4 or
+# v6. Ports follow docs.rke2.io/install/requirements (inbound rules).
+firewall__base_rules:
+  - source: ssh
+    match: tcp dport {{ firewall_ssh_port }}
+    comment: SSH
+
+firewall__node_rules:
+  - source: pods
+    match: ""
+    comment: Pod network to host
+  - source: node
+    match: tcp dport 10250
+    comment: kubelet metrics and API from nodes
+
+firewall__server_rules:
+  - source: node
+    match: tcp dport 6443
+    comment: Kubernetes API from nodes
+  - source: api
+    match: tcp dport 6443
+    comment: Kubernetes API from API clients
+  - source: node
+    match: tcp dport 9345
+    comment: RKE2 supervisor API from nodes
+  - source: etcd
+    match: tcp dport 2379-2381
+    comment: etcd client, peer and metrics from servers
+
+firewall__nodeport_rules:
+  - source: nodeport
+    match: tcp dport 30000-32767
+    comment: NodePort range
+
+firewall__ingress_rules:
+  - source: ingress
+    match: tcp dport { {{ firewall_ingress_ports | join(', ') }} }
+    comment: Ingress
+
+firewall__cni_rules:
+  canal:
+    - source: node
+      match: udp dport 8472
+      comment: "Canal: flannel VXLAN"
+    - source: node
+      match: tcp dport 9099
+      comment: "Canal: CNI health checks"
+    - source: node
+      match: udp dport 51820
+      families: [v4]
+      comment: "Canal: flannel WireGuard IPv4"
+    - source: node
+      match: udp dport 51821
+      families: [v6]
+      comment: "Canal: flannel WireGuard IPv6"
+  calico:
+    - source: node
+      match: tcp dport 179
+      comment: "Calico: BGP"
+    - source: node
+      match: udp dport 4789
+      comment: "Calico: VXLAN"
+    - source: node
+      match: tcp dport 5473
+      comment: "Calico: Typha"
+    - source: node
+      match: tcp dport 9098
+      comment: "Calico: Typha health checks"
+    - source: node
+      match: tcp dport 9099
+      comment: "Calico: CNI health checks"
+  cilium:
+    - source: node
+      match: icmp type { echo-request, echo-reply }
+      families: [v4]
+      comment: "Cilium: health checks (ICMP)"
+    - source: node
+      match: icmpv6 type { echo-request, echo-reply }
+      families: [v6]
+      comment: "Cilium: health checks (ICMPv6)"
+    - source: node
+      match: tcp dport 4240
+      comment: "Cilium: health checks"
+    - source: node
+      match: udp dport 8472
+      comment: "Cilium: VXLAN"
+    - source: node
+      match: udp dport 51871
+      comment: "Cilium: WireGuard"
+
+# firewall_extra_rules in the same shape, each with its own source set extra_<index>.
+firewall__extra_rules: >-
+  {%- set ns = namespace(rules=[]) -%}
+  {%- for rule in firewall_extra_rules -%}
+  {%-   set ns.rules = ns.rules + [{'source': 'extra_' ~ loop.index0,
+                                    'match': rule['proto'] ~ ' dport ' ~ rule['port'],
+                                    'comment': rule['comment'],
+                                    'cidrs': rule['sources']}] -%}
+  {%- endfor -%}
+  {{ ns.rules }}
+
+# Rules for the node role, in chain order.
+firewall__rules: >-
+  {{ firewall__base_rules
+     + ((firewall__node_rules
+         + (firewall__server_rules if firewall_node_role == 'server' else [])
+         + firewall__cni_rules[firewall_cni]
+         + (firewall__nodeport_rules if firewall_nodeport_enabled | bool else [])
+         + (firewall__ingress_rules if firewall_ingress_ports | length > 0 else []))
+        if firewall_node_role in ['server', 'agent'] else [])
+     + firewall__extra_rules }}
+
+# Source CIDRs by name. Only the sources that a rule references become nft sets.
+firewall__sources: >-
+  {{ {'ssh': firewall_ssh_cidrs,
+      'pods': firewall_cluster_cidr.split(',') | map('trim') | select | list,
+      'node': firewall_node_cidrs,
+      'api': firewall_api_cidrs,
+      'etcd': firewall__etcd_sources,
+      'nodeport': firewall_nodeport_cidrs,
+      'ingress': firewall_ingress_cidrs}
+     | combine(dict(firewall__extra_rules | map(attribute='source')
+                    | zip(firewall__extra_rules | map(attribute='cidrs')))) }}
+firewall__source_names: "{{ firewall__rules | map(attribute='source') | unique | list }}"
+
+# Referenced sources split by address family (an IPv6 address contains a colon), without duplicates.
+firewall__sets_v4: >-
+  {{ dict(firewall__source_names
+          | zip(firewall__source_names | map('extract', firewall__sources) | map('map', 'string')
+                | map('reject', 'search', ':') | map('unique') | map('list'))) }}
+firewall__sets_v6: >-
+  {{ dict(firewall__source_names
+          | zip(firewall__source_names | map('extract', firewall__sources) | map('map', 'string')
+                | map('select', 'search', ':') | map('unique') | map('list'))) }}
+
+# Addresses of the servers for the etcd rule.
+firewall__etcd_sources: >-
+  {%- if firewall_etcd_sources | length > 0 -%}
+  {{ firewall_etcd_sources }}
+  {%- else -%}
+  {%-   set ns = namespace(addresses=[]) -%}
+  {%-   for server in groups[firewall_servers_group] | default([]) -%}
+  {%-     set server_vars = hostvars[server] -%}
+  {%-     set ns.addresses = ns.addresses
+            + [server_vars['rke2_node_ip']
+               | default(server_vars['ansible_facts']['default_ipv4']['address']
+                         | default(server_vars['ansible_host'] | default(server)), true)] -%}
+  {%-   endfor -%}
+  {{ ns.addresses }}
+  {%- endif -%}

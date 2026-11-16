@@ -1,0 +1,58 @@
+# Lab profile: kind or a single node. Backups go to the in-cluster SeaweedFS
+# (seaweedfs toolchain), bucket `velero`, kept for 7 days.
+velero:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+  nodeAgent:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+  configMaps:
+    node-agent-config:
+      data:
+        node-agent-config.json: |
+          {
+            "podResources": {
+              "cpuRequest": "50m",
+              "memoryRequest": "128Mi",
+              "memoryLimit": "1Gi"
+            }
+          }
+
+  configuration:
+    defaultBackupTTL: 168h
+    backupStorageLocation:
+      - name: default
+        provider: aws
+        bucket: velero
+        default: true
+        accessMode: ReadWrite
+        config:
+          region: us-east-1
+          s3ForcePathStyle: "true"
+          s3Url: http://seaweedfs-s3.seaweedfs.svc:8333
+    repositoryMaintenanceJob:
+      repositoryConfigData:
+        global:
+          keepLatestMaintenanceJobs: 3
+          podResources:
+            cpuRequest: 50m
+            memoryRequest: 128Mi
+            memoryLimit: 512Mi
+
+  schedules:
+    platform-daily:
+      template:
+        ttl: 168h
+    sealing-key:
+      template:
+        ttl: 168h

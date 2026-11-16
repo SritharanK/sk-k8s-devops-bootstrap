@@ -1,0 +1,16 @@
+---
+- name: Install packages (Debian family)
+  ansible.builtin.apt:
+    name: "{{ base__package_list }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: base__packages_apt
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Install packages (RedHat family)
+  ansible.builtin.dnf:
+    name: "{{ base__package_list }}"
+    state: present
+  register: base__packages_dnf
+  when: ansible_facts['os_family'] == 'RedHat'

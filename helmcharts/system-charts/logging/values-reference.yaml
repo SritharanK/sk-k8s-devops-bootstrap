@@ -1,0 +1,135 @@
+# Reference profile: 3-node RKE2 HA cluster. Loki in simple scalable mode (read, write, backend) on
+# S3-compatible object storage, write-ahead log and backend state on persistent volumes.
+#
+# Replace the CHANGE_ME placeholders and https://s3.example.com before use.
+# S3 credentials come from Secret loki-s3-credentials (keys AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY),
+# never from these values. See README.md.
+
+loki:
+  deploymentMode: SimpleScalable
+
+  loki:
+    # commonConfig.replication_factor stays at the upstream default of 3.
+    storage:
+      type: s3
+      bucketNames:
+        chunks: CHANGE_ME-loki-chunks
+        ruler: CHANGE_ME-loki-ruler
+      s3:
+        endpoint: https://s3.example.com
+        region: CHANGE_ME
+        # Expanded by Loki at start-up from the environment (the chart always passes -config.expand-env=true).
+        # The ConfigMap only contains the variable names.
+        accessKeyId: ${AWS_ACCESS_KEY_ID}
+        secretAccessKey: ${AWS_SECRET_ACCESS_KEY}
+        # Path-style addressing (https://s3.example.com/<bucket>) is what most S3-compatible stores expect.
+        s3ForcePathStyle: true
+        insecure: false
+    schemaConfig:
+      configs:
+        - from: "2025-01-01"
+          store: tsdb
+          object_store: s3
+          schema: v13
+          index:
+            prefix: loki_index_
+            period: 24h
+    limits_config:
+      retention_period: 720h
+    compactor:
+      delete_request_store: s3
+
+  # Injected into every Loki component (read, write, backend). Not into the gateway or memcached.
+  defaults:
+    extraEnv:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: loki-s3-credentials
+            key: AWS_ACCESS_KEY_ID
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: loki-s3-credentials
+            key: AWS_SECRET_ACCESS_KEY
+
+  # Monolithic target is not used in reference.
+  singleBinary:
+    replicas: 0
+
+  # Each simple scalable target keeps the upstream hard pod anti-affinity on kubernetes.io/hostname,
+  # so the three replicas land on three different nodes.
+  write:
+    replicas: 3
+    podDisruptionBudget:
+      maxUnavailable: 1
+    persistence:
+      volumeClaimsEnabled: true
+      size: 20Gi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        memory: 2Gi
+
+  read:
+    replicas: 3
+    podDisruptionBudget:
+      maxUnavailable: 1
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        memory: 2Gi
+
+  backend:
+    replicas: 3
+    podDisruptionBudget:
+      maxUnavailable: 1
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        memory: 1Gi
+
+  # Small memcached caches. The chart sets requests and limits to 1.2 times allocatedMemory (MB).
+  # writebackSizeLimit is a buffer inside each Loki pod (upstream default 500MB); it is kept well
+  # below the read and write memory limits.
+  chunksCache:
+    enabled: true
+    replicas: 1
+    allocatedMemory: 1024
+    allocatedCPU: 200m
+    writebackSizeLimit: 100MB
+  resultsCache:
+    enabled: true
+    replicas: 1
+    allocatedMemory: 256
+    allocatedCPU: 100m
+    writebackSizeLimit: 50MB
+
+  gateway:
+    replicas: 2
+    podDisruptionBudget:
+      maxUnavailable: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+
+alloy:
+  alloy:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 768Mi

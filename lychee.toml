@@ -1,0 +1,116 @@
+# lychee link checker configuration (lychee 0.24, pinned in mise.toml).
+#
+# Run:  make lint-links
+#       lychee --config lychee.toml --offline .   (local links and anchors only)
+# Docs: https://lychee.cli.rs/guides/config/
+#       https://github.com/lycheeverse/lychee/blob/lychee-v0.24.2/lychee.example.toml
+#
+# GitHub links are checked through the API when GITHUB_TOKEN is set in the
+# environment (CI sets it); without a token they are rate limited quickly.
+# The token is never written to this file.
+
+#############################  Display  #############################
+
+# Plain log output for CI.
+no_progress = true
+
+#############################  Cache  ###############################
+
+# Results are cached in .lycheecache (gitignored) and reused for a day, so
+# repeated local runs and the scheduled CI job do not hammer the same hosts.
+cache = true
+max_cache_age = "1d"
+
+# Rate limits and server errors are transient: never cache them, so the next
+# run checks those links again instead of replaying the failure.
+cache_exclude_status = "429, 500.."
+
+#############################  Runtime  #############################
+
+max_redirects = 10
+max_retries = 3
+max_concurrency = 16
+
+# GitHub serves most links in these documents; stay well below its abuse
+# detection threshold.
+host_concurrency = 4
+
+#############################  Requests  ############################
+
+# Seconds from connect to response.
+timeout = 20
+
+# Seconds between retries of a failed request.
+retry_wait_time = 2
+
+# Any 2xx is a valid link. 429 means the host is rate limiting the checker,
+# not that the page is gone; lychee has already retried it. 403 is not
+# accepted, because it also hides removed or private pages. If a host turns
+# out to reject automated clients, exclude that host by name in `exclude`
+# below, with the reason, instead of accepting 403 everywhere.
+accept = ["200..=299", "429"]
+
+# http and https for remote links. file is required as well: relative links
+# between documents resolve to file:// URIs, and without it neither the
+# offline run nor the anchor check would test anything local.
+scheme = ["https", "http", "file"]
+
+# Check #anchors. Local Markdown anchors break silently when a heading is
+# renamed, which is the most common broken link in this repository. Text
+# fragments (#:~:text=) are not used.
+include_fragments = "anchor-only"
+
+#############################  Exclusions  ##########################
+
+# Only documentation is checked. YAML values and Helm NOTES.txt templates hold
+# placeholder or templated URLs ({{ .Values.host }}) that are not real links.
+extensions = ["md"]
+
+# Links inside code blocks and inline code are examples, often with
+# placeholders, and are not checked.
+include_verbatim = false
+
+# Mail addresses are not checked; mail servers do not answer reliably.
+include_mail = false
+
+# Loopback, link-local and private ranges (127.0.0.1, 10.x pod and service
+# CIDRs) are never reachable from CI.
+exclude_all_private = true
+
+# Respect .gitignore and skip hidden directories (default behaviour, kept
+# explicit): generated renders, caches and editor state never reach the
+# checker. Markdown under .github/ is therefore only checked when it is
+# passed as an explicit input.
+no_ignore = false
+hidden = false
+
+# URL regular expressions that are never checked.
+exclude = [
+  # Reserved documentation domains (RFC 2606) and their subdomains.
+  '^https?://([^/]+\.)?example\.(com|org|net)([:/?#]|$)',
+  # localtest.me and its subdomains resolve to 127.0.0.1 (lab ingress).
+  '^https?://([^/]+\.)?localtest\.me([:/?#]|$)',
+  '^https?://localhost([:/?#]|$)',
+  '^https?://127\.0\.0\.1([:/?#]|$)',
+  # In-cluster service DNS (kubernetes.default.svc, *.svc.cluster.local).
+  '^https?://[^/]+\.svc(\.cluster\.local)?([:/?#]|$)',
+  # Placeholders that must be replaced before use. Case-insensitive because
+  # lychee lowercases host names (https://YOUR_ORG.github.io becomes
+  # your_org.github.io before matching).
+  '(?i)your_org',
+  '(?i)change_me',
+]
+
+# Input paths (regular expressions) that are never scanned.
+exclude_path = [
+  # Generated renders.
+  '(^|/)_out/',
+  # Helm dependency archives (helmcharts/**/charts/).
+  '(^|/)charts/',
+  # Upstream charts vendored unchanged under vendor/<chart>/; their links are
+  # upstream's to fix. The README in vendor/ itself is ours and is checked.
+  '(^|/)helmcharts/.+/vendor/[^/]+/',
+  # Collections installed by ansible-galaxy and tool caches.
+  '(^|/)ansible/collections/ansible_collections/',
+  '(^|/)node_modules/',
+]

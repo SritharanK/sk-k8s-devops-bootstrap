@@ -1,0 +1,14 @@
+---
+# Exports. Items: path (absolute), clients (list of CIDRs), and optional options, owner, group and mode for the
+# exported directory (defaults: nfs_server_export_options, root, root, "0755").
+# Example:
+#   nfs_server_exports:
+#     - path: /srv/nfs/kubernetes
+#       clients: [10.10.0.0/24]
+nfs_server_exports: []
+
+# Export options for an item that sets none.
+nfs_server_export_options: rw,sync,no_subtree_check,root_squash
+
+# Enable and start nfs-server and re-export on changes. Molecule sets false: a container has no nfsd.
+nfs_server_manage_service: true

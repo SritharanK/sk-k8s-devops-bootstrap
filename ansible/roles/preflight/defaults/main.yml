@@ -1,0 +1,86 @@
+---
+# Regular expression that marks a value as not yet set. A listed variable fails the play when its value, including
+# nested lists and dictionaries, matches it.
+preflight_placeholder_pattern: CHANGE_ME
+
+# Names of the variables to check for the placeholder. Values may be secrets: only the names are ever printed.
+preflight_placeholder_vars:
+  - rke2_version
+  - rke2_token
+
+# Additional variable names to check, so an inventory can extend the list without copying it.
+preflight_placeholder_vars_extra: []
+
+# Supported distributions. A value in versions matches either ansible_facts['distribution_version'] (Ubuntu 24.04)
+# or ansible_facts['distribution_major_version'] (Debian 12 and 13, Rocky 9).
+preflight_supported_platforms:
+  - distribution: Ubuntu
+    versions: ["24.04"]
+  - distribution: Debian
+    versions: ["12", "13"]
+  - distribution: Rocky
+    versions: ["9"]
+
+# Supported CPU architectures as reported by ansible_facts['architecture'].
+preflight_supported_architectures:
+  - x86_64
+  - aarch64
+
+# Minimum kernel version. Compared with the part of ansible_facts['kernel'] before the first "-".
+preflight_min_kernel_version: "5.14"
+
+# Minimum hardware. RKE2 documents 2 CPU and 4 GB of memory; a 4 GB host reports less than 4096 MB because the kernel
+# and firmware reserve part of it.
+preflight_min_vcpus: 2
+preflight_min_memory_mb: 3500
+
+# Path whose file system must have at least preflight_min_disk_free_gb free. RKE2 keeps container images and etcd
+# data below it. The path does not have to exist yet.
+preflight_disk_path: /var/lib/rancher
+preflight_min_disk_free_gb: 20
+
+# Fail when a required TCP port is held by a process that is not part of RKE2.
+preflight_check_ports: true
+# Ports that must be free on servers and on agents.
+preflight_server_ports: [6443, 9345, 2379, 2380, 2381, 10250]
+preflight_agent_ports: [10250]
+# Process names (regular expressions, matched with search) that may hold a required port, so the play can run again
+# on an existing node. The kernel truncates process names to 15 characters (kube-controller-manager shows as
+# kube-controller).
+preflight_port_owner_allowlist:
+  - "^rke2"
+  - "^etcd$"
+  - "^kube-apiserver$"
+  - "^kube-controller"
+  - "^kube-scheduler$"
+  - "^kubelet$"
+  - "^containerd"
+  - "^kube-proxy$"
+
+# Inventory groups. A host in preflight_servers_group is checked as a server, any other host as an agent.
+preflight_servers_group: rke2_servers
+preflight_agents_group: rke2_agents
+preflight_cluster_group: k8s_cluster
+
+# Fixed registration address (virtual IP or load balancer). Required when the cluster has more than one server.
+preflight_registration_address: "{{ rke2_registration_address | default('') }}"
+
+# Run the runtime checks (tasks/runtime.yml) from the main entry point.
+preflight_runtime_checks: true
+# true: runtime findings fail the host. false: they are printed as a warning.
+preflight_runtime_fatal: true
+# Require that no swap device is active.
+preflight_swap_off_required: true
+# Kernel modules that must be loaded or built into the kernel.
+preflight_required_kernel_modules:
+  - overlay
+  - br_netfilter
+# Kernel parameters and their required values, read from /proc/sys.
+preflight_required_sysctls:
+  net.ipv4.ip_forward: 1
+  net.bridge.bridge-nf-call-iptables: 1
+# Require a synchronised system clock (etcd and certificate validation depend on it).
+preflight_time_sync_required: true
+# Seconds to wait for the clock to report synchronised before the check counts as failed. A time daemon
+# started a moment ago by the base role needs a few polls.
+preflight_time_sync_wait_seconds: 120

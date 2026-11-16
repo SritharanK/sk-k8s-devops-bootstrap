@@ -1,0 +1,59 @@
+{{- /*
+  seaweedfs: SeaweedFS S3 endpoint, the in-cluster backup target for the lab profile.
+  Optional operations component, off unless toolchains.seaweedfs.enabled is true in
+  clusters/<cluster>/cluster.yaml. toolchains.seaweedfs.values is passed as helm.valuesObject.
+  Sync wave 4 per the toolchain convention.
+*/}}
+{{- if (dig "seaweedfs" "enabled" false .Values.toolchains) }}
+{{- $values := dig "seaweedfs" "values" (dict) .Values.toolchains }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . "seaweedfs") }}
+  namespace: {{ .Values.namespaces.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/manifest-generate-paths: "."
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ include "argocd-bootstrap.platformProject" . }}
+  source:
+    repoURL: {{ .Values.git.repoURL }}
+    targetRevision: {{ .Values.git.targetRevision }}
+    path: helmcharts/system-charts/seaweedfs
+    helm:
+      releaseName: seaweedfs
+      valueFiles:
+        - values.yaml
+        - values-{{ .Values.cluster.profile }}.yaml
+      ignoreMissingValueFiles: true
+      {{- with $values }}
+      valuesObject:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  destination:
+    {{- include "argocd-bootstrap.destination" . | nindent 4 }}
+    namespace: {{ dig "seaweedfs" "seaweedfs" .Values.namespaces }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      # ServiceMonitors and other CRs whose CRDs come from another Application.
+      - SkipDryRunOnMissingResource=true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: baseline
+        pod-security.kubernetes.io/enforce-version: v{{ .Values.cluster.kubernetesMinor }}
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/audit-version: v{{ .Values.cluster.kubernetesMinor }}
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

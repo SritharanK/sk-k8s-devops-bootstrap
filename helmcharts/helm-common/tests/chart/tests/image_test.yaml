@@ -1,0 +1,173 @@
+suite: image reference
+templates:
+  - templates/deployment.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: falls back to the chart appVersion when no tag is set
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com/team/app:1.0.0
+      - equal:
+          path: metadata.labels["app.kubernetes.io/version"]
+          value: 1.0.0
+
+  - it: uses the appVersion of the consuming chart
+    chart:
+      appVersion: 3.1.0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com/team/app:3.1.0
+
+  - it: renders repository:tag when a tag is set
+    set:
+      image.tag: 2.3.4
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com/team/app:2.3.4
+      - equal:
+          path: metadata.labels["app.kubernetes.io/version"]
+          value: 2.3.4
+
+  - it: renders repository@digest and ignores the tag when a digest is set
+    set:
+      image.tag: 2.3.4
+      image.digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com/team/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+  - it: sanitises the version label
+    set:
+      image.tag: 1.2.3+build.5
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com/team/app:1.2.3+build.5
+      - equal:
+          path: metadata.labels["app.kubernetes.io/version"]
+          value: 1.2.3_build.5
+
+  - it: renders the pull policy
+    set:
+      image.pullPolicy: Always
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+
+  - it: rejects the latest tag
+    set:
+      image.tag: latest
+    asserts:
+      - failedTemplate:
+          errorPattern: "not allowed by the workload policies"
+
+  - it: rejects the latest tag in any letter case
+    set:
+      image.tag: LATEST
+    asserts:
+      - failedTemplate:
+          errorPattern: "is not allowed by the workload policies"
+
+  - it: rejects a malformed digest
+    set:
+      image.digest: sha256:abc123
+    asserts:
+      - failedTemplate:
+          errorPattern: "image.digest .* is not valid"
+
+  - it: rejects a digest with another algorithm
+    set:
+      image.digest: md5:0123456789abcdef0123456789abcdef
+    asserts:
+      - failedTemplate:
+          errorPattern: "image.digest .* is not valid"
+
+  - it: requires the repository
+    set:
+      image.repository: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "image.repository is required"
+
+  - it: rejects a repository that carries a tag
+    set:
+      image.repository: registry.example.com/team/app:latest
+    asserts:
+      - failedTemplate:
+          errorPattern: "must not contain a tag or digest"
+
+  - it: accepts a registry host with a port
+    set:
+      image.repository: registry.example.com:5000/team/app
+      image.tag: 2.0.0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com:5000/team/app:2.0.0
+
+  - it: renders image pull secrets from names
+    set:
+      imagePullSecrets:
+        - regcred
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: regcred
+
+  - it: prefixes image.registry to an image name
+    set:
+      image.registry: ghcr.io/your-org
+      image.repository: hello-api
+      image.tag: 0.1.0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/your-org/hello-api:0.1.0
+
+  - it: prefers global.imageRegistry over image.registry
+    set:
+      global.imageRegistry: registry.example.com/platform/
+      image.registry: ghcr.io/your-org
+      image.repository: hello-api
+      image.digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com/platform/hello-api@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+  - it: does not prefix a repository that already starts with a registry host
+    set:
+      global.imageRegistry: ghcr.io/your-org
+      image.repository: localhost:5000/team/app
+      image.tag: 1.2.3
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: localhost:5000/team/app:1.2.3
+
+  - it: prefixes a multi-segment repository without a registry host
+    set:
+      image.registry: ghcr.io/your-org
+      image.repository: team/app
+      image.tag: 1.2.3
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/your-org/team/app:1.2.3
+
+  - it: rejects an uppercase image path
+    set:
+      image.registry: ghcr.io/YOUR_ORG
+      image.repository: hello-api
+      image.tag: 0.1.0
+    asserts:
+      - failedTemplate:
+          errorPattern: "must be lowercase"

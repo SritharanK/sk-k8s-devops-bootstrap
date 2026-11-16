@@ -1,0 +1,31 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Read the exports file
+      ansible.builtin.slurp:
+        src: /etc/exports.d/kubernetes.exports
+      register: nfs_server_verify_exports
+
+    - name: Read the nfsd configuration
+      ansible.builtin.slurp:
+        src: /etc/nfs.conf.d/50-nfs-server.conf
+      register: nfs_server_verify_conf
+
+    - name: Read the exported directory
+      ansible.builtin.stat:
+        path: /srv/nfs/kubernetes
+        get_checksum: false
+      register: nfs_server_verify_dir
+
+    - name: Assert the exports, the NFSv4-only setting and the exported directory
+      ansible.builtin.assert:
+        that:
+          - >-
+            '/srv/nfs/kubernetes 10.10.0.0/24(rw,sync,no_subtree_check,root_squash)'
+            in (nfs_server_verify_exports.content | b64decode)
+          - "'vers3=n' in (nfs_server_verify_conf.content | b64decode)"
+          - nfs_server_verify_dir.stat.isdir
+          - nfs_server_verify_dir.stat.mode == '0755'
+          - nfs_server_verify_dir.stat.pw_name == 'root'

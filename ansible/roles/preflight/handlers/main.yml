@@ -1,0 +1,3 @@
+---
+# The preflight role only reads; it has no handlers.
+[]

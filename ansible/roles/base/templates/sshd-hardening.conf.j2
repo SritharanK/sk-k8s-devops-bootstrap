@@ -1,0 +1,19 @@
+{{ ansible_managed | comment }}
+# sshd uses the first value it reads for most keywords. This file sorts before the drop-ins written by cloud-init and
+# the installer, so these values win.
+PermitRootLogin {{ base_ssh_permit_root_login }}
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+PermitEmptyPasswords no
+X11Forwarding no
+AllowAgentForwarding no
+AllowTcpForwarding {{ 'yes' if base_ssh_allow_tcp_forwarding else 'no' }}
+MaxAuthTries {{ base_ssh_max_auth_tries }}
+LoginGraceTime {{ base_ssh_login_grace_time }}
+ClientAliveInterval {{ base_ssh_client_alive_interval }}
+ClientAliveCountMax {{ base_ssh_client_alive_count_max }}
+LogLevel {{ base_ssh_log_level }}
+{% if base_ssh_allow_groups | length > 0 %}
+AllowGroups {{ base_ssh_allow_groups | join(' ') }}
+{% endif %}

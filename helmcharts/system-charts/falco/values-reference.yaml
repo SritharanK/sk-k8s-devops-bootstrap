@@ -1,0 +1,11 @@
+# Reference profile: 3-node RKE2 HA cluster. Falco is a DaemonSet, one pod per
+# node, so replicas and PodDisruptionBudgets do not apply.
+# CPU limits are omitted on purpose: a throttled Falco drops kernel events.
+falco:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: null
+      memory: 1536Mi

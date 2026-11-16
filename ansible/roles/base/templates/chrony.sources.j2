@@ -1,0 +1,6 @@
+{{ ansible_managed | comment }}
+# Servers from base_chrony_servers. "prefer" makes chronyd select them over the distribution pool in chrony.conf
+# while at least one of them is usable. An empty list adds no sources.
+{% for server in base_chrony_servers %}
+server {{ server }} iburst prefer
+{% endfor %}

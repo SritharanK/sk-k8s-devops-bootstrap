@@ -1,0 +1,132 @@
+# Common values for the system-upgrade-controller chart.
+# Profile deltas: values-lab.yaml and values-reference.yaml.
+# Defaults reproduce upstream release v0.21.1 (upstream/system-upgrade-controller.yaml).
+
+image:
+  repository: rancher/system-upgrade-controller
+  tag: v0.21.1
+  pullPolicy: IfNotPresent
+
+# Overridden per profile. Leader election is on (SYSTEM_UPGRADE_CONTROLLER_LEADER_ELECT).
+replicas: 1
+
+# Upstream uses Recreate: the required pod anti-affinity on the hostname leaves no node for
+# a surge pod on a single control-plane node.
+strategy:
+  type: Recreate
+
+# Overridden per profile.
+resources:
+  requests:
+    cpu: 10m
+    memory: 48Mi
+  limits:
+    memory: 128Mi
+
+# Upstream sets no root filesystem option. The image is FROM scratch with one static binary,
+# and /tmp is an emptyDir, so the root filesystem is mounted read-only here.
+readOnlyRootFilesystem: true
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# Upstream scheduling: Linux control-plane nodes only, one pod per node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+            - key: kubernetes.io/os
+              operator: In
+              values:
+                - linux
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+                - system-upgrade-controller
+        topologyKey: kubernetes.io/hostname
+
+tolerations:
+  - key: CriticalAddonsOnly
+    operator: Exists
+  - key: node-role.kubernetes.io/master
+    operator: Exists
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/controlplane
+    operator: Exists
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/etcd
+    operator: Exists
+    effect: NoExecute
+
+# Contents of the default-controller-env ConfigMap (upstream defaults). The Deployment carries
+# a checksum of this map, so a change restarts the controller (upstream requires a manual
+# pod delete).
+controllerEnv:
+  SYSTEM_UPGRADE_CONTROLLER_DEBUG: "false"
+  SYSTEM_UPGRADE_CONTROLLER_LEADER_ELECT: "true"
+  SYSTEM_UPGRADE_CONTROLLER_THREADS: "2"
+  SYSTEM_UPGRADE_JOB_ACTIVE_DEADLINE_SECONDS: "900"
+  SYSTEM_UPGRADE_JOB_BACKOFF_LIMIT: "99"
+  SYSTEM_UPGRADE_JOB_IMAGE_PULL_POLICY: Always
+  # Image for the cordon and drain init containers of upgrade Jobs. Upstream defaults to
+  # v1.30.3; keep it within one minor version of the cluster (kubectl skew policy).
+  SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE: rancher/kubectl:v1.36.2
+  SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE_WINDOWS: ""
+  SYSTEM_UPGRADE_JOB_PRIVILEGED: "true"
+  SYSTEM_UPGRADE_JOB_TTL_SECONDS_AFTER_FINISH: "900"
+  SYSTEM_UPGRADE_PLAN_POLLING_INTERVAL: 15m
+
+# RKE2 upgrade Plans (templates/plans.yaml), following https://docs.rke2.io/upgrades/automated.
+# Enabling Plans with a version starts the upgrade as soon as Argo CD syncs. Upgrade the lab
+# cluster first; see the README.
+plans:
+  enabled: false
+  # Target RKE2 release, for example v1.36.6+rke2r1. The upgrade image tag is derived from it
+  # (rancher/rke2-upgrade:v1.36.6-rke2r1). Never skip a Kubernetes minor version, and never
+  # set an older release: RKE2 does not support downgrades.
+  version: CHANGE_ME
+  # Repository without a tag: the controller appends the tag from `version`.
+  image: rancher/rke2-upgrade
+  # Optional maintenance window, applied to both Plans. Jobs are only created inside the
+  # window; a running Job may continue after it closes. Example in values-reference.yaml.
+  window: {}
+  server:
+    # Control-plane nodes upgraded at the same time.
+    concurrency: 1
+    cordon: true
+    # Server taints: CriticalAddonsOnly (dedicated servers), control-plane and etcd.
+    # Upgrade Jobs always tolerate node.kubernetes.io/unschedulable (the cordon).
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/etcd
+        operator: Exists
+        effect: NoExecute
+  agent:
+    # Agent nodes upgraded at the same time.
+    concurrency: 1
+    cordon: true
+    # Optional drain before the upgrade (a drain also cordons). Off by default, as in the
+    # RKE2 documentation examples, which only cordon. Example:
+    #   drain:
+    #     force: false
+    #     ignoreDaemonSets: true
+    #     deleteEmptydirData: true
+    #     skipWaitForDeleteTimeout: 60
+    #     timeout: 10m
+    drain: {}
+    tolerations: []

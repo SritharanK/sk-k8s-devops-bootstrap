@@ -1,0 +1,86 @@
+# yamllint disable-file
+# Rendered by tests/render.sh from the chart templates. Do not edit; re-run the script.
+---
+# Source: kyverno-policies/templates/policyexceptions.yaml
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: acme-http01-solver
+  namespace: kyverno
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: platform
+    app.kubernetes.io/instance: kyverno-policies
+    helm.sh/chart: kyverno-policies-2.1.0
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    policies.kyverno.io/description: >-
+      cert-manager creates short-lived ACME HTTP-01 solver pods in the namespace
+      of the Certificate. They have no probes and a writable root filesystem.
+      The exception matches only pods that carry the solver label, are owned by
+      a cert-manager Challenge and run only the solver image.
+spec:
+  policyRefs:
+    - name: require-run-as-non-root-audit
+      kind: ValidatingPolicy
+    - name: require-run-as-non-root-enforce
+      kind: ValidatingPolicy
+    - name: disallow-privilege-escalation-audit
+      kind: ValidatingPolicy
+    - name: disallow-privilege-escalation-enforce
+      kind: ValidatingPolicy
+    - name: require-drop-all-capabilities-audit
+      kind: ValidatingPolicy
+    - name: require-drop-all-capabilities-enforce
+      kind: ValidatingPolicy
+    - name: require-seccomp-profile-audit
+      kind: ValidatingPolicy
+    - name: require-seccomp-profile-enforce
+      kind: ValidatingPolicy
+    - name: require-read-only-root-filesystem-audit
+      kind: ValidatingPolicy
+    - name: require-read-only-root-filesystem-enforce
+      kind: ValidatingPolicy
+    - name: require-requests-limits-audit
+      kind: ValidatingPolicy
+    - name: require-requests-limits-enforce
+      kind: ValidatingPolicy
+    - name: require-probes-audit
+      kind: ValidatingPolicy
+    - name: require-probes-enforce
+      kind: ValidatingPolicy
+    - name: require-image-tag-or-digest-audit
+      kind: ValidatingPolicy
+    - name: require-image-tag-or-digest-enforce
+      kind: ValidatingPolicy
+    - name: restrict-image-registries-audit
+      kind: ValidatingPolicy
+    - name: restrict-image-registries-enforce
+      kind: ValidatingPolicy
+    - name: disallow-privileged-containers-audit
+      kind: ValidatingPolicy
+    - name: disallow-privileged-containers-enforce
+      kind: ValidatingPolicy
+    - name: disallow-host-namespaces-audit
+      kind: ValidatingPolicy
+    - name: disallow-host-namespaces-enforce
+      kind: ValidatingPolicy
+    - name: disallow-host-path-audit
+      kind: ValidatingPolicy
+    - name: disallow-host-path-enforce
+      kind: ValidatingPolicy
+    - name: restrict-service-external-ips-audit
+      kind: ValidatingPolicy
+    - name: restrict-service-external-ips-enforce
+      kind: ValidatingPolicy
+  matchConditions:
+    - name: acme-http01-solver-pod
+      expression: >-
+        object.kind == 'Pod' &&
+        object.metadata.?labels[?'acme.cert-manager.io/http01-solver'].orValue('') == 'true' &&
+        object.metadata.?ownerReferences.orValue([]).exists(o,
+        o.apiVersion.startsWith('acme.cert-manager.io/') && o.kind == 'Challenge') &&
+        object.spec.containers.all(c,
+        ["quay.io/jetstack/cert-manager-acmesolver"].exists(p, c.image.startsWith(p)))
+
+

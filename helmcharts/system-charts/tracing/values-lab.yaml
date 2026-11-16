@@ -1,0 +1,30 @@
+# Lab profile: kind or a single node. Traces on the local filesystem of the pod, no persistence.
+# Trace data is disposable: it is lost when the Tempo pod is deleted or rescheduled.
+
+tempo:
+  tempo:
+    retention: 24h
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo/traces
+        wal:
+          path: /var/tempo/wal
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+    # Writable scratch space for the read-only root filesystem.
+    extraVolumeMounts:
+      - name: tempo-data
+        mountPath: /var/tempo
+
+  extraVolumes:
+    - name: tempo-data
+      emptyDir: {}
+
+  persistence:
+    enabled: false

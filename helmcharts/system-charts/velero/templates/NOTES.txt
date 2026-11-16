@@ -1,0 +1,17 @@
+Velero {{ .Chart.AppVersion }} in namespace {{ .Release.Namespace }}.
+
+Required Secret (create it before the first sync):
+  {{ .Values.velero.credentials.existingSecret }}  key: cloud  (AWS credentials file format)
+
+Recommended before the first backup that uses volumes (reference profile):
+  velero-repo-credentials  key: repository-password  (Kopia repository password)
+
+Check the backup storage location:
+  kubectl -n {{ .Release.Namespace }} get backupstoragelocations.velero.io
+
+Schedules:
+{{- range $name, $s := .Values.velero.schedules }}
+{{- if not $s.disabled }}
+  velero-{{ $name }}  "{{ $s.schedule }}" (UTC), ttl {{ $s.template.ttl }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,12 @@
+---
+# A reload keeps established sessions (including the Ansible connection) open. If sshd is not running yet (socket
+# activation on Ubuntu, a fresh container) the systemd module starts it instead.
+- name: Reload sshd
+  ansible.builtin.systemd_service:
+    name: "{{ base__ssh_service }}"
+    state: reloaded
+
+- name: Restart chrony
+  ansible.builtin.systemd_service:
+    name: "{{ base__chrony_service }}"
+    state: restarted

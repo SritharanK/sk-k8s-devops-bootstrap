@@ -1,0 +1,103 @@
+---
+# Packages installed on every managed host. The role adds per-OS packages from vars/ (chrony, curl on the Debian
+# family, storage clients and the automatic update tool when enabled).
+base_packages:
+  - ca-certificates
+  - jq
+  - openssh-server
+  - sudo
+  - tar
+
+# Additional packages for this inventory, installed with the list above.
+base_packages_extra: []
+
+# Prepare the host as a Kubernetes node: kernel modules, sysctls and swap. Set false on Jenkins hosts.
+base_kubernetes_node: true
+
+# Kernel modules persisted in /etc/modules-load.d/kubernetes.conf.
+base_kernel_modules:
+  - overlay
+  - br_netfilter
+
+# Kernel parameters written to /etc/sysctl.d/90-kubernetes.conf. With IPv6 forwarding on, the kernel ignores router
+# advertisements on interfaces with accept_ra=1; hosts that take their IPv6 route from SLAAC need accept_ra=2.
+# Remove the net.ipv6 key when IPv6 is disabled on the kernel command line.
+base_kubernetes_sysctls:
+  net.ipv4.ip_forward: 1
+  net.ipv6.conf.all.forwarding: 1
+  net.bridge.bridge-nf-call-iptables: 1
+  net.bridge.bridge-nf-call-ip6tables: 1
+  fs.inotify.max_user_instances: 8192
+  fs.inotify.max_user_watches: 524288
+
+# Turn off swap and comment out swap entries in /etc/fstab. The kubelet requires swap off by default.
+base_disable_swap: "{{ base_kubernetes_node }}"
+
+# Conservative host hardening written to /etc/sysctl.d/80-base-hardening.conf on every host. Reverse path filtering is
+# deliberately left alone because CNIs manage it per interface.
+base_hardening_sysctls:
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.default.accept_redirects: 0
+  net.ipv4.conf.all.secure_redirects: 0
+  net.ipv4.conf.default.secure_redirects: 0
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.default.send_redirects: 0
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.conf.default.accept_source_route: 0
+  net.ipv6.conf.all.accept_redirects: 0
+  net.ipv6.conf.default.accept_redirects: 0
+  net.ipv6.conf.all.accept_source_route: 0
+  net.ipv6.conf.default.accept_source_route: 0
+  net.ipv4.tcp_syncookies: 1
+  kernel.dmesg_restrict: 1
+  kernel.kptr_restrict: 1
+
+# Apply kernel settings now: load the modules, set the sysctls and run swapoff. When false only the files are written
+# (Molecule sets false because a container cannot load modules or change host kernel parameters).
+base_kernel_runtime_apply: true
+
+# Install the NFS client and open-iscsi and enable iscsid (Longhorn prerequisites). Loads iscsi_tcp.
+base_storage_clients: false
+
+# NTP servers for chrony. Empty keeps the distribution sources. See the README for how each OS family applies the list.
+base_chrony_servers: []
+
+# Unattended security updates: unattended-upgrades on the Debian family, dnf-automatic on Rocky Linux.
+# false leaves the automatic update configuration of the image untouched.
+base_unattended_upgrades: true
+
+# Reboot automatically after updates that need it. Keep false on cluster nodes: a reboot without a drain disrupts
+# workloads; use a coordinated reboot tool instead.
+base_automatic_reboot: false
+
+# Package name patterns (glob) never upgraded automatically, so cluster packages only move with the rolling upgrade.
+base_unattended_upgrades_exclude:
+  - rke2-*
+
+# Write the SSH hardening drop-in /etc/ssh/sshd_config.d/00-base-hardening.conf.
+base_ssh_hardening: true
+
+# PermitRootLogin value. The role fails when the play logs in as root over SSH and this is "no".
+base_ssh_permit_root_login: "no"
+
+# AllowTcpForwarding. Port forwarding through cluster nodes is not needed for Ansible or kubectl.
+base_ssh_allow_tcp_forwarding: false
+
+# Remaining sshd settings written to the drop-in.
+base_ssh_max_auth_tries: 3
+base_ssh_login_grace_time: 30
+base_ssh_client_alive_interval: 300
+base_ssh_client_alive_count_max: 2
+base_ssh_log_level: VERBOSE
+
+# AllowGroups. Empty writes no AllowGroups line. When set, the Ansible login user must be in one of the groups.
+base_ssh_allow_groups: []
+
+# Key-only admin accounts. Items: {name, ssh_public_keys: [], sudo: true, shell: /bin/bash, state: present}.
+# Keys are managed exclusively: keys not in the list are removed from authorized_keys.
+base_admin_users: []
+
+# Accepted public key types for admin users.
+base_admin_users_allowed_key_types:
+  - ssh-ed25519
+  - sk-ssh-ed25519@openssh.com

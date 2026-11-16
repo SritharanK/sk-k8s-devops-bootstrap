@@ -1,0 +1,81 @@
+suite: probes
+templates:
+  - templates/deployment.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: replaces the default httpGet handler with tcpSocket
+    set:
+      livenessProbe:
+        tcpSocket:
+          port: http
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe
+          value:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+      - notExists:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet
+      - exists:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+
+  - it: replaces the default handler with exec
+    set:
+      readinessProbe:
+        exec:
+          command:
+            - /bin/ready
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.exec.command
+          value:
+            - /bin/ready
+      - notExists:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+
+  - it: keeps the default handler when only timings change
+    set:
+      livenessProbe.periodSeconds: 30
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe
+          value:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+  - it: merges a changed httpGet path into the default handler
+    set:
+      livenessProbe.httpGet.path: /livez
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet
+          value:
+            path: /livez
+            port: http
+
+  - it: renders a startup probe when set
+    set:
+      startupProbe:
+        httpGet:
+          path: /healthz
+          port: http
+        failureThreshold: 30
+        periodSeconds: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe
+          value:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2

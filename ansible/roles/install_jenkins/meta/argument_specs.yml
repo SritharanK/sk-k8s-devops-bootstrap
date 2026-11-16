@@ -1,0 +1,527 @@
+---
+argument_specs:
+  main:
+    short_description: Install and configure a hardened Jenkins LTS controller
+    description:
+      - Installs Java 21 and a pinned Jenkins LTS package from pkg.jenkins.io on Ubuntu 24.04, Debian 13
+        or Enterprise Linux 9, installs pinned plugins, and configures Jenkins only through configuration
+        as code with secrets read from files.
+      - Jenkins listens on loopback. A reverse proxy on the same host terminates TLS
+        (see examples/nginx/jenkins.conf.example).
+      - Defaults are in defaults/main.yml. Secrets have no default; map them to vault_ variables
+        (see examples/group_vars/jenkins/).
+    author:
+      - Sritharan K
+    options:
+      # -----------------------------------------------------------------------
+      # Release, package repository and plugins
+      # -----------------------------------------------------------------------
+      install_jenkins_version:
+        type: str
+        required: false
+        default: "2.580.2"
+        description:
+          - Jenkins LTS version installed and held (Debian family) or excluded from routine updates
+            (Red Hat family). Releases from 2.555.1 on require Java 21 or 25.
+      install_jenkins_repo_key_fingerprint:
+        type: str
+        required: false
+        default: "5E386EADB55F01504CAE8BCF7198F4B714ABFC68"
+        description:
+          - Fingerprint of the Jenkins package signing key (jenkins.io-2026.key). rpm_key refuses a key
+            with another fingerprint. Red Hat family only.
+      install_jenkins_repo_key_sha256:
+        type: str
+        required: false
+        default: "d3b7e4096fed593eebdba3a2554c8cb9aafebe736910584e69e924b143e7b3d4"
+        description:
+          - SHA-256 checksum of the Jenkins package signing key file (jenkins.io-2026.key). get_url refuses
+            a file with another checksum. Debian family only.
+      install_jenkins_plugin_manager_version:
+        type: str
+        required: false
+        default: "2.16.0"
+        description:
+          - Version of the plugin installation manager (jenkins-plugin-manager jar) downloaded from GitHub.
+      install_jenkins_plugin_manager_sha256:
+        type: str
+        required: false
+        default: "b3e9704f8259ec3d0479703039e2ad5a0a15abb97808ad70d5a59ba2fdd73197"
+        description:
+          - SHA-256 checksum of the plugin installation manager jar.
+      install_jenkins_plugins_file:
+        type: str
+        required: false
+        default: "{{ role_path }}/files/plugins.txt"
+        description:
+          - Plugin list on the control node, one C(id:version) per line, including every transitive
+            dependency. Regenerate with ci/jenkins/scripts/resolve-plugins.py when install_jenkins_version changes.
+
+      # -----------------------------------------------------------------------
+      # Paths and service
+      # -----------------------------------------------------------------------
+      install_jenkins_user:
+        type: str
+        required: false
+        default: jenkins
+        description:
+          - Service account created by the Jenkins package.
+      install_jenkins_group:
+        type: str
+        required: false
+        default: jenkins
+        description:
+          - Group of the service account. Configuration files are owned by root and readable by this group.
+      install_jenkins_home:
+        type: str
+        required: false
+        default: /var/lib/jenkins
+        description:
+          - Jenkins home directory (mode 0750). Set through the systemd drop-in.
+      install_jenkins_war_path:
+        type: str
+        required: false
+        default: /usr/share/java/jenkins.war
+        description:
+          - Path of the war file installed by the package. The plugin installation manager reads the
+            Jenkins version from it.
+      install_jenkins_config_dir:
+        type: str
+        required: false
+        default: /etc/jenkins
+        description:
+          - Directory for the plugin list and the plugin installation manager (root, group jenkins, 0750).
+      install_jenkins_casc_dir:
+        type: str
+        required: false
+        default: /etc/jenkins/casc
+        description:
+          - Directory read by configuration as code (CASC_JENKINS_CONFIG). Holds jenkins.yaml
+            (root, group jenkins, 0640).
+      install_jenkins_casc_secrets_dir:
+        type: str
+        required: false
+        default: /etc/jenkins/casc-secrets
+        description:
+          - Directory with one file per secret (SECRETS). Directory 0700 and files 0400, owned by install_jenkins_user.
+      install_jenkins_http_listen_address:
+        type: str
+        required: false
+        default: "127.0.0.1"
+        description:
+          - Address of the Jenkins HTTP listener. Keep loopback unless another TLS hop protects the traffic.
+      install_jenkins_http_port:
+        type: int
+        required: false
+        default: 8080
+        description:
+          - Port of the Jenkins HTTP listener.
+      install_jenkins_java_heap_min:
+        type: str
+        required: false
+        default: "1g"
+        description:
+          - Initial JVM heap (C(-Xms)).
+      install_jenkins_java_heap_max:
+        type: str
+        required: false
+        default: "2g"
+        description:
+          - Maximum JVM heap (C(-Xmx)).
+      install_jenkins_java_opts_extra:
+        type: list
+        elements: str
+        required: false
+        default: []
+        description:
+          - Additional JVM options appended to the role's defaults. Each item is one option without spaces,
+            quotes or backslashes.
+      install_jenkins_startup_timeout:
+        type: int
+        required: false
+        default: 300
+        description:
+          - Seconds to wait for Jenkins after a start or restart. Also used as the systemd TimeoutStartSec.
+
+      # -----------------------------------------------------------------------
+      # Public endpoint
+      # -----------------------------------------------------------------------
+      install_jenkins_url:
+        type: str
+        required: false
+        default: "https://jenkins.example.com/"
+        description:
+          - External URL served by the reverse proxy, with a trailing slash. Must use https:// unless
+            install_jenkins_security_realm is local (lab).
+      install_jenkins_admin_email:
+        type: str
+        required: false
+        default: "jenkins@example.com"
+        description:
+          - Sender address of mails sent by Jenkins.
+      install_jenkins_system_message:
+        type: str
+        required: false
+        default: "Managed by configuration as code. Changes made in the UI are overwritten on the next run."
+        description:
+          - Message shown on the Jenkins dashboard (plain text).
+
+      # -----------------------------------------------------------------------
+      # Security realm
+      # -----------------------------------------------------------------------
+      install_jenkins_security_realm:
+        type: str
+        required: false
+        default: oidc
+        choices:
+          - oidc
+          - ldap
+          - local
+        description:
+          - Source of user identities and groups. C(local) is for a lab only and defines a break-glass
+            administrator and the build identity in the Jenkins user database.
+      install_jenkins_oidc_client_id:
+        type: str
+        required: false
+        default: CHANGE_ME
+        description:
+          - OpenID Connect client ID. Required with install_jenkins_security_realm oidc.
+      install_jenkins_oidc_well_known_url:
+        type: str
+        required: false
+        default: "https://idp.example.com/.well-known/openid-configuration"
+        description:
+          - OpenID Connect discovery document of the identity provider.
+      install_jenkins_oidc_user_name_field:
+        type: str
+        required: false
+        default: preferred_username
+        description:
+          - Claim used as the Jenkins user ID.
+      install_jenkins_oidc_full_name_field:
+        type: str
+        required: false
+        default: name
+        description:
+          - Claim used as the display name.
+      install_jenkins_oidc_email_field:
+        type: str
+        required: false
+        default: email
+        description:
+          - Claim used as the e-mail address.
+      install_jenkins_oidc_groups_field:
+        type: str
+        required: false
+        default: groups
+        description:
+          - Claim that lists the groups used by the authorization matrix.
+      install_jenkins_ldap_server:
+        type: str
+        required: false
+        default: "ldaps://ldap.example.com:636"
+        description:
+          - LDAP server URL. Use ldaps://.
+      install_jenkins_ldap_root_dn:
+        type: str
+        required: false
+        default: "dc=example,dc=com"
+        description:
+          - Root DN of the directory.
+      install_jenkins_ldap_user_search_base:
+        type: str
+        required: false
+        default: "ou=people"
+        description:
+          - User search base, relative to the root DN.
+      install_jenkins_ldap_user_search:
+        type: str
+        required: false
+        default: "uid={0}"
+        description:
+          - User search filter. C({0}) is replaced by the login name.
+      install_jenkins_ldap_group_search_base:
+        type: str
+        required: false
+        default: "ou=groups"
+        description:
+          - Group search base, relative to the root DN.
+      install_jenkins_ldap_manager_dn:
+        type: str
+        required: false
+        default: "cn=jenkins,ou=services,dc=example,dc=com"
+        description:
+          - DN of the read-only bind account.
+      install_jenkins_local_admin_user:
+        type: str
+        required: false
+        default: admin
+        description:
+          - User ID of the break-glass administrator with install_jenkins_security_realm local.
+
+      # -----------------------------------------------------------------------
+      # Authorization
+      # -----------------------------------------------------------------------
+      install_jenkins_admin_groups:
+        type: list
+        elements: str
+        required: false
+        default:
+          - platform-admins
+        description:
+          - Groups with Overall/Administer. With oidc or ldap at least one administrator group or user is required.
+      install_jenkins_admin_users:
+        type: list
+        elements: str
+        required: false
+        default: []
+        description:
+          - Users with Overall/Administer.
+      install_jenkins_developer_groups:
+        type: list
+        elements: str
+        required: false
+        default:
+          - deployers
+        description:
+          - Groups that may read, build and cancel the generated jobs.
+      install_jenkins_viewer_groups:
+        type: list
+        elements: str
+        required: false
+        default:
+          - viewers
+        description:
+          - Groups with read-only access.
+      install_jenkins_build_run_as:
+        type: str
+        required: false
+        default: user
+        choices:
+          - user
+          - system
+        description:
+          - Identity that generated jobs run as (Authorize Project). C(user) runs them as install_jenkins_build_user,
+            which the security realm must resolve. C(system) runs them as SYSTEM; read README.md first.
+      install_jenkins_build_user:
+        type: str
+        required: false
+        default: jenkins-ci
+        description:
+          - Build identity with read, build and credential use permissions only.
+
+      # -----------------------------------------------------------------------
+      # Kubernetes agents
+      # -----------------------------------------------------------------------
+      install_jenkins_k8s_api_url:
+        type: str
+        required: false
+        default: "https://kubernetes.example.com:6443"
+        description:
+          - Kubernetes API server that runs the agent pods.
+      install_jenkins_k8s_ca_certificate:
+        type: str
+        required: false
+        default: ""
+        description:
+          - PEM of the API server CA. Empty uses the Java trust store of the controller.
+      install_jenkins_k8s_namespace:
+        type: str
+        required: false
+        default: jenkins-agents
+        description:
+          - Namespace of the agent pods (see ci/jenkins/kubernetes/).
+      install_jenkins_k8s_container_cap:
+        type: int
+        required: false
+        default: 10
+        description:
+          - Maximum number of concurrent agent pods.
+      install_jenkins_k8s_jenkins_url:
+        type: str
+        required: false
+        default: "{{ install_jenkins_url }}"
+        description:
+          - URL that agent pods use to reach the controller over WebSocket.
+
+      # -----------------------------------------------------------------------
+      # Source and GitOps repository
+      # -----------------------------------------------------------------------
+      install_jenkins_git_repo_url:
+        type: str
+        required: false
+        default: "https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap.git"
+        description:
+          - Repository with the services, the pipelines and envs/ (GITOPS_REPO_URL).
+      install_jenkins_git_branch:
+        type: str
+        required: false
+        default: main
+        description:
+          - Protected branch that Jenkins builds and that promotion pull requests target.
+      install_jenkins_github_repository:
+        type: str
+        required: false
+        default: "YOUR_ORG/sk-k8s-devops-bootstrap"
+        description:
+          - Owner and name of the repository for the pull requests API (GITHUB_REPOSITORY).
+      install_jenkins_github_api_url:
+        type: str
+        required: false
+        default: "https://api.github.com"
+        description:
+          - REST API base URL (GITHUB_API_URL).
+      install_jenkins_git_commit_name:
+        type: str
+        required: false
+        default: jenkins-ci
+        description:
+          - Author name of promotion commits.
+      install_jenkins_git_commit_email:
+        type: str
+        required: false
+        default: "jenkins-ci@example.com"
+        description:
+          - Author e-mail of promotion commits.
+      install_jenkins_git_known_hosts:
+        type: str
+        required: false
+        default: ""
+        description:
+          - SSH known_hosts lines for Git over SSH. Empty keeps the strict known_hosts strategy.
+      install_jenkins_poll_scm_schedule:
+        type: str
+        required: false
+        default: "H/5 * * * *"
+        description:
+          - SCM polling schedule of the build jobs.
+
+      # -----------------------------------------------------------------------
+      # Images, signing and promotion
+      # -----------------------------------------------------------------------
+      install_jenkins_image_registry:
+        type: str
+        required: false
+        default: "ghcr.io/your-org"
+        description:
+          - Registry and namespace of the images (IMAGE_REGISTRY). Lowercase, as OCI requires.
+      install_jenkins_registry_username:
+        type: str
+        required: false
+        default: CHANGE_ME
+        description:
+          - User name of the registry-push credential.
+      install_jenkins_cosign_tlog_upload:
+        type: bool
+        required: false
+        default: false
+        description:
+          - Upload signatures to the public Rekor transparency log. Keep false for private images.
+      install_jenkins_cosign_keyless_issuer:
+        type: str
+        required: false
+        default: "https://token.actions.githubusercontent.com"
+        description:
+          - OIDC issuer of the keyless signatures that the promote job also accepts (GitHub Actions by default).
+            Empty, together with install_jenkins_cosign_keyless_identity_regexp, accepts only the Jenkins key.
+      install_jenkins_cosign_keyless_identity_regexp:
+        type: str
+        required: false
+        default: '^https://github\.com/[^/]+/sk-k8s-devops-bootstrap/\.github/workflows/build-image\.yml@refs/heads/main$'
+        description:
+          - Certificate identity regular expression of the keyless signatures that the promote job also accepts.
+      install_jenkins_argocd_server:
+        type: str
+        required: false
+        default: ""
+        description:
+          - Argo CD API host (host or host:port) for the promotion health gate. Empty disables the gate.
+
+      # -----------------------------------------------------------------------
+      # Jobs
+      # -----------------------------------------------------------------------
+      install_jenkins_services_file:
+        type: str
+        required: false
+        default: "{{ role_path }}/../../../ci/jenkins/services.yaml"
+        description:
+          - Service catalogue on the control node, read by the Job DSL.
+      install_jenkins_job_dsl_file:
+        type: str
+        required: false
+        default: "{{ role_path }}/../../../ci/jenkins/jobs/services.groovy"
+        description:
+          - Job DSL script on the control node, applied through configuration as code.
+
+      # -----------------------------------------------------------------------
+      # Secrets (no defaults; map them to vault_ variables)
+      # -----------------------------------------------------------------------
+      install_jenkins_oidc_client_secret:
+        type: str
+        required: false
+        no_log: true
+        description:
+          - OpenID Connect client secret. Required with install_jenkins_security_realm oidc. File oidc_client_secret.
+      install_jenkins_ldap_manager_password:
+        type: str
+        required: false
+        no_log: true
+        description:
+          - Password of install_jenkins_ldap_manager_dn. Required with install_jenkins_security_realm ldap.
+            File ldap_manager_password.
+      install_jenkins_local_admin_password:
+        type: str
+        required: false
+        no_log: true
+        description:
+          - Password of install_jenkins_local_admin_user. Required with install_jenkins_security_realm local.
+            File local_admin_password.
+      install_jenkins_local_build_user_password:
+        type: str
+        required: false
+        no_log: true
+        description:
+          - Password of install_jenkins_build_user in the local user database. Required with install_jenkins_security_realm local.
+            File local_build_user_password.
+      install_jenkins_registry_password:
+        type: str
+        required: true
+        no_log: true
+        description:
+          - Registry token with write access to the image repositories (credential registry-push).
+            File registry_password.
+      install_jenkins_github_token:
+        type: str
+        required: true
+        no_log: true
+        description:
+          - Token that pushes promotion branches and opens pull requests (credential github-token).
+            File github_token.
+      install_jenkins_cosign_private_key:
+        type: str
+        required: true
+        no_log: true
+        description:
+          - Full PEM text of the cosign private key, encrypted by cosign (credential cosign-key).
+            File cosign_private_key.
+      install_jenkins_cosign_password:
+        type: str
+        required: true
+        no_log: true
+        description:
+          - Password of the cosign private key (credential cosign-password). File cosign_password.
+      install_jenkins_k8s_agent_token:
+        type: str
+        required: true
+        no_log: true
+        description:
+          - Token of the jenkins-agent ServiceAccount used by the Kubernetes cloud (credential k8s-agent-token).
+            File k8s_agent_token.
+      install_jenkins_argocd_tokens:
+        type: dict
+        required: false
+        no_log: true
+        description:
+          - Map of promotion source environment (for example dev and stage) to a read-only Argo CD token of
+            the project role ci in apps-<env>. Required when install_jenkins_argocd_server is not empty.
+            Credentials argocd-token-<env>, files argocd_token_<env>.

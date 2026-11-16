@@ -1,0 +1,10 @@
+# Lab profile: kind or a single node. Small requests.
+# CPU limits are omitted on purpose: a throttled Falco drops kernel events.
+falco:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: null
+      memory: 1Gi

@@ -1,0 +1,33 @@
+---
+# Negative test: the placeholder check must fail on a nested placeholder value and name the variable in its message.
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Run the placeholder check against a placeholder value
+      block:
+        - name: Include the placeholder check
+          ansible.builtin.include_role:
+            name: preflight
+            tasks_from: placeholders
+          vars:
+            preflight_placeholder_vars: [preflight_test_secret]
+            preflight_test_secret:
+              nested:
+                - CHANGE_ME
+        - name: Record that the placeholder check passed
+          ansible.builtin.set_fact:
+            preflight_verify_rejected: false
+            preflight_verify_message: ""
+      rescue:
+        - name: Record that the placeholder check failed
+          ansible.builtin.set_fact:
+            preflight_verify_rejected: true
+            preflight_verify_message: "{{ ansible_failed_result['msg'] | default('') }}"
+
+    - name: Assert that the placeholder value was rejected and the variable named
+      ansible.builtin.assert:
+        that:
+          - preflight_verify_rejected
+          - "'preflight_test_secret' in preflight_verify_message"
+        fail_msg: "The placeholder check did not reject a nested CHANGE_ME value: {{ preflight_verify_message }}"

@@ -1,0 +1,24 @@
+---
+# Placeholder rejection. Values may be secrets, so the scan runs with no_log and the failure lists names only.
+
+- name: Reset the placeholder findings
+  ansible.builtin.set_fact:
+    preflight__placeholder_hits: []
+  tags: [preflight, preflight_placeholders]
+
+- name: Scan the listed variables for the placeholder
+  ansible.builtin.set_fact:
+    preflight__placeholder_hits: "{{ preflight__placeholder_hits + [item] }}"
+  loop: "{{ (preflight_placeholder_vars + preflight_placeholder_vars_extra) | unique }}"
+  when: (lookup('ansible.builtin.vars', item, default='') | to_json) is search(preflight_placeholder_pattern)
+  no_log: true
+  tags: [preflight, preflight_placeholders]
+
+- name: Assert that no variable still holds the placeholder
+  ansible.builtin.assert:
+    that: preflight__placeholder_hits | length == 0
+    fail_msg: >-
+      These variables still contain the placeholder pattern '{{ preflight_placeholder_pattern }}':
+      {{ preflight__placeholder_hits | join(', ') }}. Set real values in the inventory or the vault file.
+    quiet: true
+  tags: [preflight, preflight_placeholders]

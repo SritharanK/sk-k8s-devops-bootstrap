@@ -1,0 +1,117 @@
+suite: per-environment overrides
+templates:
+  - templates/deployment.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: applies environments.prod when global.environment is prod
+    set:
+      global.environment: prod
+      environments.prod.replicaCount: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+
+  - it: ignores environments.prod for another environment
+    set:
+      global.environment: dev
+      environments.prod.replicaCount: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: ignores environments when global.environment is not set
+    set:
+      environments.prod.replicaCount: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: honours false in an environment override
+    set:
+      global.environment: dev
+      environments.dev.tmpVolume.enabled: false
+    asserts:
+      - notExists:
+          path: spec.template.spec.volumes
+      - notExists:
+          path: spec.template.spec.containers[0].volumeMounts
+
+  - it: leaves the values unchanged for an unknown environment
+    set:
+      global.environment: qa
+      environments.prod.replicaCount: 3
+      environments.dev.tmpVolume.enabled: false
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - exists:
+          path: spec.template.spec.volumes
+
+  - it: wins over the consumer values and merges maps
+    set:
+      global.environment: prod
+      replicaCount: 2
+      resources.limits.memory: 256Mi
+      environments.prod.replicaCount: 4
+      environments.prod.resources.limits.cpu: "1"
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 4
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+
+  - it: replaces lists from an environment override
+    set:
+      global.environment: prod
+      env:
+        - name: A
+          value: "1"
+        - name: B
+          value: "2"
+      environments.prod.env:
+        - name: C
+          value: "3"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: C
+              value: "3"
+
+  - it: applies the probe handler rule to environment overrides
+    set:
+      global.environment: prod
+      environments.prod.readinessProbe.tcpSocket.port: http
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe
+          value:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+  - it: fails in the Deployment when an environment enables the HPA next to keda
+    set:
+      global.environment: prod
+      keda.enabled: true
+      keda.prometheus.query: up
+      environments.prod.autoscaling.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "autoscaling.enabled and keda.enabled are mutually exclusive"

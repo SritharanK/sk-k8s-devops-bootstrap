@@ -1,0 +1,91 @@
+# Set by the Argo CD Application from the cluster definition
+# (cluster.domain, cluster.environments, platform.issuer, platform.acme,
+# platform.gateway.hostnames).
+platform:
+  domain: localtest.me
+  # Application routes use <app>.<env>.<domain>. A wildcard covers one DNS
+  # label only, so wildcard certificates list *.<env>.<domain> for every
+  # environment next to <domain> and *.<domain>.
+  environments: [dev, stage, prod]
+  # ClusterIssuer from the misc chart: selfsigned, letsencrypt-staging or
+  # letsencrypt.
+  issuer: selfsigned
+  acme:
+    # Only read when the issuer is an ACME issuer (acmeIssuers below).
+    # http01: no wildcard (Let's Encrypt issues wildcards through DNS-01
+    #   only); the certificate lists platform.gateway.hostnames.
+    # dns01: wildcard names as for selfsigned.
+    solver: http01
+  gateway:
+    # Exact host names for an ACME issuer with the http01 solver, for example
+    # [argocd.example.com, hello-api.dev.example.com]. Each must be a
+    # subdomain of platform.domain.
+    hostnames: []
+
+# Issuer names that use ACME.
+acmeIssuers: [letsencrypt-staging, letsencrypt]
+
+gatewayClass:
+  name: envoy
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+
+gateway:
+  name: platform
+  # Plain HTTP only redirects to HTTPS: routes may attach to the http
+  # listener from the gateway namespace only (the redirect route and ACME
+  # HTTP-01 solvers of certificates issued in this namespace).
+  httpAllowedRoutes: Same
+  # Application routes attach to the https listener from any namespace.
+  httpsAllowedRoutes: All
+  certificate:
+    # Neutral name: the certificate is a wildcard or an explicit host list,
+    # depending on the issuer (see templates/certificate.yaml).
+    name: platform-tls
+    secretName: platform-tls
+    duration: 2160h    # 90 days
+    renewBefore: 720h  # 30 days
+    privateKey:
+      algorithm: ECDSA
+      size: 256
+
+# Data plane (Envoy proxy) settings, rendered into EnvoyProxy "platform".
+proxy:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  service:
+    type: LoadBalancer
+    # Local keeps the client source address and avoids a second hop.
+    externalTrafficPolicy: Local
+    annotations: {}
+    loadBalancerSourceRanges: []
+    # Fixed node ports per listener name, for example
+    # {http: 30080, https: 30443}. Only for type NodePort or LoadBalancer.
+    nodePorts: {}
+  # Rendered as EnvoyProxy envoyPDB when set, for example {minAvailable: 1}.
+  podDisruptionBudget: {}
+  # Pod topology spread constraints for the proxy pods.
+  topologySpreadConstraints: []
+
+# Edge policy for the Gateway (ClientTrafficPolicy).
+clientTraffic:
+  tlsMinVersion: "1.2"
+  headersWithUnderscores: RejectRequest
+  # X-Forwarded-For is not trusted by default: the client address is the TCP
+  # peer. Set numTrustedHops or trustedCIDRs only when a trusted load balancer
+  # in front of the gateway appends the header, for example
+  # {numTrustedHops: 1} or {trustedCIDRs: ["192.0.2.0/24"]}.
+  xForwardedFor: {}
+
+redirect:
+  enabled: true
+  statusCode: 301
+  # 443 is the default https port, so the Location header carries no port.
+  # Envoy keeps a non-default port from the Host header (for example a
+  # remapped kind host port such as :18080), which then points https at the
+  # http port; use host ports 80 and 443 for the redirect to work.
+  port: 443

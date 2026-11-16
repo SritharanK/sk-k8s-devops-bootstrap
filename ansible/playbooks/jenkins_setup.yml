@@ -1,0 +1,21 @@
+---
+# Optional on-premises CI adapter: installs and configures a hardened Jenkins
+# controller on the hosts in the `jenkins` inventory group.
+#
+# Variables come from the inventory, never from this file:
+#   group_vars/jenkins/vars.yml   plain settings, secrets mapped to vault_ variables
+#   group_vars/jenkins/vault.yml  encrypted with ansible-vault, never committed
+# Start from ansible/roles/install_jenkins/examples/group_vars/jenkins/.
+#
+# The OS baseline comes first (role base; inventories set
+# base_kubernetes_node: false for this group). The controller needs no Docker:
+# builds run in Kubernetes agent pods.
+#
+# Run: make install-jenkins PROFILE=<lab|reference>
+- name: Install and configure the Jenkins controller
+  hosts: jenkins
+  become: true
+  gather_facts: true
+  roles:
+    - role: base
+    - role: install_jenkins

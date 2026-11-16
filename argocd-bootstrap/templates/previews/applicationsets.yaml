@@ -1,0 +1,175 @@
+{{- /*
+Pull request previews: two ApplicationSets over the GitHub Pull Request
+generator. A pull request that carries every label in previews.github.labels
+gets, in namespace pr-<number>:
+
+  <prefix>pr-<number>-namespace  project preview-namespaces; chart
+                                 previews.namespace.chart at
+                                 git.targetRevision: the Namespace, quota,
+                                 limits and network policies.
+  <prefix>pr-<number>-<app>      project apps-preview; one per previews.apps
+                                 entry; chart and value files at the pull
+                                 request head commit.
+
+<prefix> is "<cluster>-" in hub mode. The project split is explained in
+projects.yaml.
+
+Cleanup: applicationsSync is left at the controller default (create, update
+and delete), preserveResourcesOnDeletion is false and every generated
+Application carries the resources finalizer. Closing the pull request or
+removing the label deletes the Applications; deleting the namespace
+Application deletes Namespace pr-<number> and everything in it.
+
+Untrusted input: the pull request author chooses the branch name and the
+title, so the templates use only .number and .head_sha from the generator.
+Neither can carry template or YAML syntax. .app, .chart and
+.generatePaths come from the list generator, built from previews.apps.
+*/ -}}
+{{- if dig "previews" "enabled" false .Values.toolchains }}
+{{- $cfg := include "argocd-bootstrap.previews.config" . | fromJson }}
+{{- $prefix := $cfg.prefix }}
+{{- $appsProject := include "argocd-bootstrap.name" (list . "apps-preview") }}
+{{- $nsProject := include "argocd-bootstrap.name" (list . "preview-namespaces") }}
+{{- $kubeMinor := required "cluster.kubernetesMinor is required" .Values.cluster.kubernetesMinor | toString }}
+{{- /* Platform keys win over previews.namespace.values. */}}
+{{- $nsValues := mustMergeOverwrite (deepCopy $cfg.namespace.values) (dict
+      "pullRequest" "{{ .number }}"
+      "podSecurity" (dict "version" (printf "v%s" $kubeMinor))) }}
+{{- $appValues := dict "global" (dict
+      "environment" "pr-{{ .number }}"
+      "domain" .Values.cluster.domain
+      "cluster" .Values.cluster.name
+      "profile" .Values.cluster.profile
+      "imageRegistry" .Values.platform.imageRegistry) }}
+{{- if eq $cfg.hostnameStyle "flat" }}
+{{- $_ := set $appValues "route" (dict "hostnames" (list (printf "{{ .app }}-pr-{{ .number }}.%s" .Values.cluster.domain))) }}
+{{- end }}
+{{- if dig "image" "tagFromHeadSha" false $cfg }}
+{{- $_ := set $appValues "image" (dict "tag" "sha-{{ .head_sha }}" "digest" "") }}
+{{- end }}
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . "previews-namespaces") }}
+  namespace: {{ .Values.namespaces.argocd }}
+  labels:
+    {{- include "argocd-bootstrap.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - {{ include "argocd-bootstrap.previews.generator" $cfg | indent 6 | trim }}
+  syncPolicy:
+    preserveResourcesOnDeletion: false
+  template:
+    metadata:
+      name: '{{ $prefix }}pr-{{`{{ .number }}`}}-namespace'
+      labels:
+        app.kubernetes.io/name: preview-namespace
+        app.kubernetes.io/part-of: previews
+        pull-request: '{{`{{ .number }}`}}'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: {{ $nsProject }}
+      source:
+        repoURL: {{ .Values.git.repoURL }}
+        targetRevision: {{ .Values.git.targetRevision | quote }}
+        path: {{ $cfg.namespace.chart | quote }}
+        helm:
+          releaseName: preview-namespace
+          valuesObject:
+            {{- toYaml $nsValues | nindent 12 }}
+      destination:
+        {{- include "argocd-bootstrap.destination" . | nindent 8 }}
+        namespace: 'pr-{{`{{ .number }}`}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 3m
+      revisionHistoryLimit: 10
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . "previews-apps") }}
+  namespace: {{ .Values.namespaces.argocd }}
+  labels:
+    {{- include "argocd-bootstrap.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - {{ include "argocd-bootstrap.previews.generator" $cfg | indent 12 | trim }}
+          - list:
+              elements:
+                {{- toYaml $cfg.apps | nindent 16 }}
+  syncPolicy:
+    preserveResourcesOnDeletion: false
+  template:
+    metadata:
+      name: '{{ $prefix }}pr-{{`{{ .number }}`}}-{{`{{ .app }}`}}'
+      labels:
+        app.kubernetes.io/name: '{{`{{ .app }}`}}'
+        app.kubernetes.io/part-of: previews
+        pull-request: '{{`{{ .number }}`}}'
+      annotations:
+        argocd.argoproj.io/manifest-generate-paths: '{{`{{ .generatePaths }}`}}'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: {{ $appsProject }}
+      sources:
+        - repoURL: {{ .Values.git.repoURL }}
+          targetRevision: '{{`{{ .head_sha }}`}}'
+          path: '{{`{{ .chart }}`}}'
+          helm:
+            releaseName: '{{`{{ .app }}`}}'
+            # The dev file supplies the image tag and digest that run in dev;
+            # the preview file only the preview deltas.
+            valueFiles:
+              - values.yaml
+              - '$values/envs/dev/{{`{{ .app }}`}}/values.yaml'
+              - '$values/envs/preview/{{`{{ .app }}`}}/values.yaml'
+            ignoreMissingValueFiles: true
+            valuesObject:
+              {{- toYaml $appValues | nindent 14 }}
+        - repoURL: {{ .Values.git.repoURL }}
+          targetRevision: '{{`{{ .head_sha }}`}}'
+          ref: values
+      destination:
+        {{- include "argocd-bootstrap.destination" . | nindent 8 }}
+        namespace: 'pr-{{`{{ .number }}`}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        # The namespace Application owns Namespace pr-<number>. The first
+        # attempts can run before it exists; the retry covers that.
+        syncOptions:
+          - CreateNamespace=false
+          - ServerSideApply=true
+          - PruneLast=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 5m
+      revisionHistoryLimit: 10
+{{- end }}

@@ -1,0 +1,48 @@
+{{- /*
+Kubernetes RBAC per environment namespace. Admins get ClusterRole edit in dev
+only; in stage and prod they get view and change workloads through Git and
+Argo CD. Viewers get view everywhere. The ClusterRole is part of the binding
+name because roleRef is immutable: a change of role replaces the binding
+instead of failing the sync. Bindings are pruned normally, since removing a
+binding only narrows access.
+*/ -}}
+{{- if .Values.components.namespaces }}
+{{- $admins := required "groups.admins is required" .Values.groups.admins }}
+{{- $viewers := required "groups.viewers is required" .Values.groups.viewers }}
+{{- range $env := include "tenant.environments" . | fromJsonArray }}
+{{- $ns := include "tenant.namespace" (list $ $env) }}
+{{- $adminRole := ternary "edit" "view" (eq $env "dev") }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tenant-admins-{{ $adminRole }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.envLabels" (list $ $env) | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $adminRole }}
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: {{ $admins | quote }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tenant-viewers-view
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.envLabels" (list $ $env) | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: {{ $viewers | quote }}
+{{- end }}
+{{- end }}

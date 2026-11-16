@@ -1,0 +1,47 @@
+{{- /*
+Application namespaces: deny all ingress and egress. The only other platform
+policy there is allow-dns; every other flow, including ingress from the
+gateway and from Prometheus, comes from the per-app policies of the
+application chart. Prune=false,Delete=false: the namespace itself is never
+deleted by Argo CD (misc chart), so its default deny stays as well when an
+environment is dropped or this Application is deleted.
+*/}}
+{{- range $env, $ns := .Values.environments }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: {{ required (printf "environments.%s must name a namespace" $env) $ns }}
+  labels:
+    {{- include "network-policies.labels" $ | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+{{- end }}
+{{- /*
+Platform namespaces: deny ingress only. Egress stays open because the
+controllers reach the API server, whose endpoints are on the host network
+and cannot be selected portably with namespace or pod selectors, plus image
+registries and ACME servers outside the cluster.
+*/}}
+{{- range $key, $cfg := .Values.platformNamespaces }}
+{{- if $cfg.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: {{ required (printf "platformNamespaces.%s.namespace is required" $key) $cfg.namespace }}
+  labels:
+    {{- include "network-policies.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+{{- end }}
+{{- end }}

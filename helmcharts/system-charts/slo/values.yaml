@@ -1,0 +1,9 @@
+# Labels the monitoring Prometheus uses to select PrometheusRule objects.
+# The monitoring chart selects release=monitoring in every namespace.
+ruleSelectorLabels:
+  release: monitoring
+
+# Rule files from rules/ to leave out, by file name without the .yaml extension.
+# Example: [hello-api] on a cluster that does not run the hello-api sample service.
+# An unknown name fails the render, so a typo cannot silently install everything.
+disabledRuleFiles: []

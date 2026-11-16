@@ -1,0 +1,13 @@
+{
+  "name": "catalog-lint",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pinned Backstage entity validator for catalog-info.yaml (make lint-catalog).",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@roadiehq/backstage-entity-validator": "0.7.0"
+  }
+}

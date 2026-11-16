@@ -1,0 +1,6 @@
+# No toolchains.kargo: the workflows promote.
+---
+cluster:
+  name: lab
+toolchains:
+  monitoring: {enabled: true}

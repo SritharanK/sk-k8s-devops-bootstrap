@@ -1,0 +1,26 @@
+{{- if .Values.redirect.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ .Values.gateway.name }}-https-redirect
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform-gateway.labels" . | nindent 4 }}
+  annotations:
+    {{- include "platform-gateway.annotations" . | nindent 4 }}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .Values.gateway.name }}
+      sectionName: http
+  rules:
+    # No match means every path. More specific routes on the http listener,
+    # such as ACME HTTP-01 solver routes, take precedence.
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            port: {{ .Values.redirect.port }}
+            statusCode: {{ .Values.redirect.statusCode }}
+{{- end }}

@@ -1,0 +1,52 @@
+# Images are referenced by digest: verifyDigest is on, and the CLI does not
+# perform the admission-time tag to digest mutation.
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: signed
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      # yamllint disable-line rule:line-length
+      image: ghcr.io/kyverno/test-images/cosign@sha256:a76ae9c1c1e08ab65bd0ac0c3ec63626734c3d57787e8a3a0992fbdc45ae622f
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unsigned
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      # yamllint disable-line rule:line-length
+      image: ghcr.io/kyverno/test-images/cosign@sha256:349061b401c9fcfaa173ebddd2a98c85f6a40edd17e7935c87d3b5c14bf8ccf1
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unsigned-init
+  namespace: prod
+spec:
+  initContainers:
+    - name: init
+      # yamllint disable-line rule:line-length
+      image: ghcr.io/kyverno/test-images/cosign@sha256:349061b401c9fcfaa173ebddd2a98c85f6a40edd17e7935c87d3b5c14bf8ccf1
+  containers:
+    - name: app
+      # yamllint disable-line rule:line-length
+      image: ghcr.io/kyverno/test-images/cosign@sha256:a76ae9c1c1e08ab65bd0ac0c3ec63626734c3d57787e8a3a0992fbdc45ae622f
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: signed-with-unmatched-image
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      # yamllint disable-line rule:line-length
+      image: ghcr.io/kyverno/test-images/cosign@sha256:a76ae9c1c1e08ab65bd0ac0c3ec63626734c3d57787e8a3a0992fbdc45ae622f
+    - name: sidecar
+      image: docker.io/library/busybox:1.37.0

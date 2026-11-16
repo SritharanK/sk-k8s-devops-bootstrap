@@ -1,0 +1,42 @@
+{{- /*
+PolicyExceptions live in the release namespace (the Kyverno namespace), the
+only namespace from which the engine accepts them
+(features.policyExceptions.namespace in the kyverno chart).
+*/ -}}
+{{- with .Values.exceptions.acmeHttp01Solver }}
+{{- if .enabled }}
+{{- $names := include "kyverno-policies.renderedPolicyNames" $ | fromYamlArray }}
+{{- if $names }}
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: acme-http01-solver
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "kyverno-policies.labels" $ | nindent 4 }}
+  annotations:
+    {{- include "kyverno-policies.syncAnnotations" $ | nindent 4 }}
+    policies.kyverno.io/description: >-
+      cert-manager creates short-lived ACME HTTP-01 solver pods in the namespace
+      of the Certificate. They have no probes and a writable root filesystem.
+      The exception matches only pods that carry the solver label, are owned by
+      a cert-manager Challenge and run only the solver image.
+spec:
+  policyRefs:
+    {{- range $name := $names }}
+    - name: {{ $name }}
+      kind: ValidatingPolicy
+    {{- end }}
+  matchConditions:
+    - name: acme-http01-solver-pod
+      expression: >-
+        object.kind == 'Pod' &&
+        object.metadata.?labels[?'acme.cert-manager.io/http01-solver'].orValue('') == 'true' &&
+        object.metadata.?ownerReferences.orValue([]).exists(o,
+        o.apiVersion.startsWith('acme.cert-manager.io/') && o.kind == 'Challenge') &&
+        object.spec.containers.all(c,
+        {{ .imagePrefixes | toJson }}.exists(p, c.image.startsWith(p)))
+{{- end }}
+{{- end }}
+{{- end }}

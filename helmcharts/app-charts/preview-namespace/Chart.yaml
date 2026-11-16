@@ -1,0 +1,15 @@
+---
+apiVersion: v2
+name: preview-namespace
+description: >-
+  Guardrails of one pull request preview namespace: the Namespace with Pod
+  Security restricted, a ResourceQuota, a LimitRange and default-deny network
+  policies with DNS egress.
+type: application
+version: 0.1.0
+home: https://github.com/SritharanK/sk-k8s-devops-bootstrap
+sources:
+  - https://github.com/SritharanK/sk-k8s-devops-bootstrap/tree/main/helmcharts/app-charts/preview-namespace
+maintainers:
+  - name: Sritharan K
+    url: https://www.skengineer.be

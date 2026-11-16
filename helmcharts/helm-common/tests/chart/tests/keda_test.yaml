@@ -1,0 +1,365 @@
+suite: KEDA ScaledObject
+templates:
+  - templates/scaledobject.yaml
+  - templates/deployment.yaml
+  - templates/rollout.yaml
+  - templates/hpa.yaml
+  - templates/pdb.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: is not rendered by default
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/scaledobject.yaml
+      - equal:
+          path: spec.replicas
+          value: 1
+        template: templates/deployment.yaml
+
+  - it: fails without a query and without triggers
+    set:
+      keda.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "keda.enabled requires a trigger: set keda.prometheus.query"
+        template: templates/scaledobject.yaml
+
+  - it: targets the Deployment with the Prometheus trigger and omits the Deployment replicas
+    set:
+      keda.enabled: true
+      replicaCount: 3
+      keda.prometheus.query: sum(rate(http_requests_total[2m]))
+    asserts:
+      - isKind:
+          of: ScaledObject
+        template: templates/scaledobject.yaml
+      - equal:
+          path: apiVersion
+          value: keda.sh/v1alpha1
+        template: templates/scaledobject.yaml
+      - equal:
+          path: metadata.namespace
+          value: dev
+        template: templates/scaledobject.yaml
+      - equal:
+          path: spec
+          value:
+            scaleTargetRef:
+              apiVersion: apps/v1
+              kind: Deployment
+              name: web-helm-common-test
+            pollingInterval: 30
+            cooldownPeriod: 300
+            minReplicaCount: 1
+            maxReplicaCount: 5
+            triggers:
+              - type: prometheus
+                metricType: AverageValue
+                metadata:
+                  serverAddress: http://monitoring-prometheus.monitoring.svc:9090
+                  query: sum(rate(http_requests_total[2m]))
+                  threshold: "10"
+        template: templates/scaledobject.yaml
+      - notExists:
+          path: spec.replicas
+        template: templates/deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/hpa.yaml
+
+  - it: targets the Rollout and sets replicas on neither workload
+    set:
+      keda.enabled: true
+      rollout.enabled: true
+      keda.prometheus.query: sum(rate(http_requests_total[2m]))
+    asserts:
+      - equal:
+          path: spec.scaleTargetRef
+          value:
+            apiVersion: argoproj.io/v1alpha1
+            kind: Rollout
+            name: web-helm-common-test
+        template: templates/scaledobject.yaml
+      - notExists:
+          path: spec.replicas
+        template: templates/rollout.yaml
+      - notExists:
+          path: spec.replicas
+        template: templates/deployment.yaml
+
+  - it: renders the query through tpl
+    set:
+      keda.enabled: true
+      fullnameOverride: shop
+      keda.prometheus.query: sum(rate(http_requests_total{namespace="{{ .Release.Namespace }}",service="{{ include "common.names.fullname" . }}"}[2m]))
+    asserts:
+      - equal:
+          path: spec.triggers[0].metadata.query
+          value: sum(rate(http_requests_total{namespace="dev",service="shop"}[2m]))
+        template: templates/scaledobject.yaml
+      - equal:
+          path: spec.scaleTargetRef.name
+          value: shop
+        template: templates/scaledobject.yaml
+
+  - it: renders the activation threshold and the authentication reference
+    set:
+      keda.enabled: true
+      keda.prometheus.query: up
+      keda.prometheus.threshold: "25"
+      keda.prometheus.activationThreshold: "5"
+      keda.prometheus.authenticationRef:
+        name: prometheus-auth
+        kind: TriggerAuthentication
+    asserts:
+      - equal:
+          path: spec.triggers[0]
+          value:
+            type: prometheus
+            metricType: AverageValue
+            metadata:
+              serverAddress: http://monitoring-prometheus.monitoring.svc:9090
+              query: up
+              threshold: "25"
+              activationThreshold: "5"
+            authenticationRef:
+              name: prometheus-auth
+              kind: TriggerAuthentication
+        template: templates/scaledobject.yaml
+
+  - it: replaces the Prometheus trigger with keda.triggers and renders metadata as strings
+    set:
+      keda.enabled: true
+      keda.triggers:
+        - type: cron
+          name: office-hours
+          metadata:
+            timezone: Europe/Brussels
+            start: 0 7 * * 1-5
+            end: 0 19 * * 1-5
+            desiredReplicas: 3
+        - type: cpu
+          metricType: Utilization
+          metadata:
+            value: 70
+    asserts:
+      - equal:
+          path: spec.triggers
+          value:
+            - type: cron
+              name: office-hours
+              metadata:
+                timezone: Europe/Brussels
+                start: 0 7 * * 1-5
+                end: 0 19 * * 1-5
+                desiredReplicas: "3"
+            - type: cpu
+              metricType: Utilization
+              metadata:
+                value: "70"
+        template: templates/scaledobject.yaml
+
+  - it: fails for a trigger without a type
+    set:
+      keda.enabled: true
+      keda.triggers:
+        - metadata:
+            value: "70"
+    asserts:
+      - failedTemplate:
+          errorPattern: "keda.triggers\\[0\\].type is required"
+        template: templates/scaledobject.yaml
+
+  - it: renders scale to zero, fallback, behavior and the optional periods
+    set:
+      keda.enabled: true
+      keda.prometheus.query: up
+      keda.minReplicaCount: 2
+      keda.maxReplicaCount: 8
+      keda.idleReplicaCount: 0
+      keda.initialCooldownPeriod: 120
+      keda.pollingInterval: 15
+      keda.cooldownPeriod: null
+      keda.fallback:
+        failureThreshold: 3
+        replicas: 2
+      keda.behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+    asserts:
+      - equal:
+          path: spec.idleReplicaCount
+          value: 0
+        template: templates/scaledobject.yaml
+      - equal:
+          path: spec.minReplicaCount
+          value: 2
+        template: templates/scaledobject.yaml
+      - equal:
+          path: spec.maxReplicaCount
+          value: 8
+        template: templates/scaledobject.yaml
+      - equal:
+          path: spec.initialCooldownPeriod
+          value: 120
+        template: templates/scaledobject.yaml
+      - equal:
+          path: spec.pollingInterval
+          value: 15
+        template: templates/scaledobject.yaml
+      - notExists:
+          path: spec.cooldownPeriod
+        template: templates/scaledobject.yaml
+      - equal:
+          path: spec.fallback
+          value:
+            failureThreshold: 3
+            replicas: 2
+        template: templates/scaledobject.yaml
+      - equal:
+          path: spec.advanced
+          value:
+            horizontalPodAutoscalerConfig:
+              behavior:
+                scaleDown:
+                  stabilizationWindowSeconds: 300
+        template: templates/scaledobject.yaml
+
+  - it: omits idleReplicaCount, fallback and advanced by default
+    set:
+      keda.enabled: true
+      keda.prometheus.query: up
+    asserts:
+      - notExists:
+          path: spec.idleReplicaCount
+        template: templates/scaledobject.yaml
+      - notExists:
+          path: spec.initialCooldownPeriod
+        template: templates/scaledobject.yaml
+      - notExists:
+          path: spec.fallback
+        template: templates/scaledobject.yaml
+      - notExists:
+          path: spec.advanced
+        template: templates/scaledobject.yaml
+
+  - it: fails when idleReplicaCount is not below minReplicaCount
+    set:
+      keda.enabled: true
+      keda.prometheus.query: up
+      keda.minReplicaCount: 0
+      keda.idleReplicaCount: 0
+    asserts:
+      - failedTemplate:
+          errorPattern: "keda.idleReplicaCount \\(0\\) must be lower than keda.minReplicaCount \\(0\\)"
+        template: templates/scaledobject.yaml
+
+  - it: fails when minReplicaCount is above maxReplicaCount
+    set:
+      keda.enabled: true
+      keda.prometheus.query: up
+      keda.minReplicaCount: 6
+    asserts:
+      - failedTemplate:
+          errorPattern: "keda.minReplicaCount \\(6\\) must not be greater than keda.maxReplicaCount \\(5\\)"
+        template: templates/scaledobject.yaml
+
+  - it: fails together with autoscaling in the ScaledObject
+    set:
+      keda.enabled: true
+      keda.prometheus.query: up
+      autoscaling.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "autoscaling.enabled and keda.enabled are mutually exclusive"
+        template: templates/scaledobject.yaml
+
+  - it: renders a PodDisruptionBudget when keda.minReplicaCount is above 1
+    set:
+      keda.enabled: true
+      keda.prometheus.query: up
+      keda.minReplicaCount: 2
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+        template: templates/pdb.yaml
+
+  - it: uses keda.minReplicaCount instead of replicaCount for the PodDisruptionBudget
+    set:
+      replicaCount: 3
+      keda.enabled: true
+      keda.prometheus.query: up
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/pdb.yaml
+
+  - it: renders no PodDisruptionBudget with scale to zero
+    set:
+      keda.enabled: true
+      keda.prometheus.query: up
+      keda.minReplicaCount: 3
+      keda.idleReplicaCount: 0
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/pdb.yaml
+
+  - it: is enabled per environment and needs the environment HPA switched off
+    set:
+      global.environment: prod
+      keda.prometheus.query: up
+      environments.prod.keda.enabled: true
+      environments.prod.keda.minReplicaCount: 2
+    asserts:
+      - equal:
+          path: spec.minReplicaCount
+          value: 2
+        template: templates/scaledobject.yaml
+      - notExists:
+          path: spec.replicas
+        template: templates/deployment.yaml
+
+  - it: fails when the environment enables both autoscalers
+    set:
+      global.environment: prod
+      keda.enabled: true
+      keda.prometheus.query: up
+      environments.prod.autoscaling.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "autoscaling.enabled and keda.enabled are mutually exclusive"
+        template: templates/scaledobject.yaml
+
+  - it: renders when the environment switches its HPA off
+    set:
+      global.environment: prod
+      keda.enabled: true
+      keda.prometheus.query: up
+      autoscaling.enabled: true
+      environments.prod.autoscaling.enabled: false
+    asserts:
+      - isKind:
+          of: ScaledObject
+        template: templates/scaledobject.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/hpa.yaml
+
+  - it: leaves the HPA in place for another environment
+    set:
+      global.environment: dev
+      keda.prometheus.query: up
+      autoscaling.enabled: true
+      environments.prod.keda.enabled: true
+      environments.prod.autoscaling.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/scaledobject.yaml
+      - isKind:
+          of: HorizontalPodAutoscaler
+        template: templates/hpa.yaml

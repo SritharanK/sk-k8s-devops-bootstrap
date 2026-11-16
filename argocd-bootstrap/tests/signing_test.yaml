@@ -1,0 +1,115 @@
+suite: image signing identity
+templates:
+  - templates/toolchains/kyverno-policies.yaml
+release:
+  name: argocd-bootstrap
+  namespace: argocd
+set:
+  toolchains.kyverno-policies.enabled: true
+tests:
+  - it: derives the identity from an HTTPS github.com URL
+    set:
+      git.repoURL: https://github.com/example-owner/example-repo.git
+    asserts:
+      - equal:
+          path: spec.source.helm.valuesObject.imageVerification.subjectRegExp
+          value: ^https://github\.com/example-owner/example-repo/\.github/workflows/build-image\.yml@refs/heads/main$
+
+  - it: derives the identity from an HTTPS URL without the .git suffix
+    set:
+      git.repoURL: https://github.com/example-owner/example-repo
+    asserts:
+      - equal:
+          path: spec.source.helm.valuesObject.imageVerification.subjectRegExp
+          value: ^https://github\.com/example-owner/example-repo/\.github/workflows/build-image\.yml@refs/heads/main$
+
+  - it: derives the identity from an SSH URL
+    set:
+      git.repoURL: git@github.com:example-owner/example-repo.git
+    asserts:
+      - equal:
+          path: spec.source.helm.valuesObject.imageVerification.subjectRegExp
+          value: ^https://github\.com/example-owner/example-repo/\.github/workflows/build-image\.yml@refs/heads/main$
+
+  - it: derives the identity from an ssh:// URL
+    set:
+      git.repoURL: ssh://git@github.com/example-owner/example-repo.git
+    asserts:
+      - equal:
+          path: spec.source.helm.valuesObject.imageVerification.subjectRegExp
+          value: ^https://github\.com/example-owner/example-repo/\.github/workflows/build-image\.yml@refs/heads/main$
+
+  - it: escapes regular expression characters in the repository name
+    set:
+      git.repoURL: https://github.com/example-owner/example.repo.git
+    asserts:
+      - equal:
+          path: spec.source.helm.valuesObject.imageVerification.subjectRegExp
+          value: ^https://github\.com/example-owner/example\.repo/\.github/workflows/build-image\.yml@refs/heads/main$
+
+  - it: lets an explicit subjectRegExp in the cluster file win
+    set:
+      git.repoURL: https://github.com/example-owner/example-repo.git
+      toolchains.kyverno-policies.values.imageVerification.subjectRegExp: ^https://github\.com/other-owner/other-repo/.*$
+    asserts:
+      - equal:
+          path: spec.source.helm.valuesObject.imageVerification.subjectRegExp
+          value: ^https://github\.com/other-owner/other-repo/.*$
+
+  - it: fails in the reference profile when no identity can be derived or is set
+    set:
+      cluster.profile: reference
+      git.repoURL: https://git.example.com/platform/sk-k8s-devops-bootstrap.git
+    asserts:
+      - failedTemplate:
+          errorPattern: "image verification is enabled but no signing identity can be derived"
+
+  - it: fails when the cluster file enables verification without an identity
+    set:
+      git.repoURL: https://git.example.com/platform/sk-k8s-devops-bootstrap.git
+      toolchains.kyverno-policies.values.imageVerification.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "image verification is enabled but no signing identity can be derived"
+
+  - it: accepts a non-GitHub URL in the reference profile with an explicit subjectRegExp
+    set:
+      cluster.profile: reference
+      git.repoURL: https://git.example.com/platform/sk-k8s-devops-bootstrap.git
+      toolchains.kyverno-policies.values.imageVerification.subjectRegExp: ^https://github\.com/example-owner/example-repo/.*$
+    asserts:
+      - equal:
+          path: spec.source.helm.valuesObject.imageVerification.subjectRegExp
+          value: ^https://github\.com/example-owner/example-repo/.*$
+
+  - it: accepts a non-GitHub URL in the reference profile with a public key instead of an identity
+    set:
+      cluster.profile: reference
+      git.repoURL: https://git.example.com/platform/sk-k8s-devops-bootstrap.git
+      toolchains.kyverno-policies.values.imageVerification.publicKey: |
+        -----BEGIN PUBLIC KEY-----
+        CHANGE_ME
+        -----END PUBLIC KEY-----
+    asserts:
+      - notFailedTemplate: {}
+      - notExists:
+          path: spec.source.helm.valuesObject.imageVerification.subjectRegExp
+
+  - it: renders without an identity when verification is off (lab profile)
+    set:
+      git.repoURL: https://git.example.com/platform/sk-k8s-devops-bootstrap.git
+    asserts:
+      - notExists:
+          path: spec.source.helm.valuesObject.imageVerification.subjectRegExp
+      - equal:
+          path: spec.source.helm.valuesObject.imageVerification.registries
+          value:
+            - ghcr.io/your-org/*
+
+  - it: does not fail when the reference profile turns verification off explicitly
+    set:
+      cluster.profile: reference
+      git.repoURL: https://git.example.com/platform/sk-k8s-devops-bootstrap.git
+      toolchains.kyverno-policies.values.imageVerification.enabled: false
+    asserts:
+      - notFailedTemplate: {}

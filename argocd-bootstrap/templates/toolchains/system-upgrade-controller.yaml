@@ -1,0 +1,66 @@
+{{- /*
+  system-upgrade-controller: system-upgrade-controller and RKE2 upgrade Plans.
+  Privileged namespace: upgrade Jobs run with host access on the nodes.
+  Optional operations component, off unless toolchains.system-upgrade-controller.enabled is true in
+  clusters/<cluster>/cluster.yaml. toolchains.system-upgrade-controller.values is passed as helm.valuesObject.
+  Sync wave 4 per the toolchain convention.
+*/}}
+{{- if (dig "system-upgrade-controller" "enabled" false .Values.toolchains) }}
+{{- /* rke2.version from the cluster definition is the upgrade target (plans.version). */}}
+{{- $clusterValues := dict }}
+{{- $rke2Version := dig "version" "" (.Values.rke2 | default dict) }}
+{{- if and $rke2Version (ne $rke2Version "CHANGE_ME") }}
+{{- $_ := set $clusterValues "plans" (dict "version" $rke2Version) }}
+{{- end }}
+{{- $values := mustMergeOverwrite $clusterValues (deepCopy (dig "system-upgrade-controller" "values" (dict) .Values.toolchains)) }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . "system-upgrade-controller") }}
+  namespace: {{ .Values.namespaces.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/manifest-generate-paths: "."
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ include "argocd-bootstrap.platformProject" . }}
+  source:
+    repoURL: {{ .Values.git.repoURL }}
+    targetRevision: {{ .Values.git.targetRevision }}
+    path: helmcharts/system-charts/system-upgrade-controller
+    helm:
+      releaseName: system-upgrade-controller
+      valueFiles:
+        - values.yaml
+        - values-{{ .Values.cluster.profile }}.yaml
+      ignoreMissingValueFiles: true
+      {{- with $values }}
+      valuesObject:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  destination:
+    {{- include "argocd-bootstrap.destination" . | nindent 4 }}
+    namespace: {{ dig "systemUpgrade" "system-upgrade" .Values.namespaces }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      # ServiceMonitors and other CRs whose CRDs come from another Application.
+      - SkipDryRunOnMissingResource=true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: privileged
+        pod-security.kubernetes.io/enforce-version: v{{ .Values.cluster.kubernetesMinor }}
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/audit-version: v{{ .Values.cluster.kubernetesMinor }}
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

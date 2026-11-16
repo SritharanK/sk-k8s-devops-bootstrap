@@ -1,0 +1,26 @@
+---
+# Jenkins LTS YUM repository with a fingerprint-pinned signing key. The
+# repository excludes the jenkins package, so a routine `dnf update` never
+# moves Jenkins; only install.yml changes its version.
+
+- name: Import the Jenkins package signing key
+  ansible.builtin.rpm_key:
+    key: "{{ __jenkins_repo_key_url }}"
+    fingerprint: "{{ install_jenkins_repo_key_fingerprint }}"
+    state: present
+
+- name: Configure the Jenkins YUM repository
+  ansible.builtin.yum_repository:
+    name: jenkins
+    description: Jenkins LTS
+    baseurl: "{{ __jenkins_repo_url }}"
+    gpgcheck: true
+    repo_gpgcheck: true
+    gpgkey: "{{ __jenkins_repo_key_url }}"
+    exclude:
+      - jenkins
+    enabled: true
+    owner: root
+    group: root
+    mode: "0644"
+    state: present

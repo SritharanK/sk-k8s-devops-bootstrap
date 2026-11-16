@@ -1,0 +1,70 @@
+{{- /*
+Kyverno engine and CRDs (wave 1). Policies follow in wave 3 (kyverno-policies).
+Webhooks exclude the Kubernetes system namespaces and the Argo CD namespace,
+so the controller that reconciles Kyverno is never blocked by it.
+*/ -}}
+{{- $name := "kyverno" }}
+{{- if (dig "kyverno" "enabled" false .Values.toolchains) }}
+{{- $ns := .Values.namespaces.kyverno }}
+{{- $excluded := list "kube-system" "kube-public" "kube-node-lease" .Values.namespaces.argocd }}
+{{- $selector := dict "matchExpressions" (list (dict "key" "kubernetes.io/metadata.name" "operator" "NotIn" "values" $excluded)) }}
+{{- $values := dict "kyverno" (dict
+      "config" (dict "webhooks" (dict "namespaceSelector" $selector))
+      "features" (dict "policyExceptions" (dict "namespace" $ns))) }}
+{{- $values = mustMergeOverwrite $values (dig $name "values" dict .Values.toolchains) }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . $name) }}
+  namespace: {{ .Values.namespaces.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/manifest-generate-paths: "."
+    # Kyverno platform notes for Argo CD: diff on the server so defaulted
+    # fields and webhook-managed fields do not show as drift.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: {{ include "argocd-bootstrap.platformProject" . }}
+  source:
+    repoURL: {{ .Values.git.repoURL }}
+    targetRevision: {{ .Values.git.targetRevision }}
+    path: helmcharts/system-charts/{{ $name }}
+    helm:
+      releaseName: {{ $name }}
+      # The chart's test Pods are Helm test hooks, which Argo CD never runs.
+      skipTests: true
+      valueFiles: [values.yaml, values-{{ .Values.cluster.profile }}.yaml]
+      ignoreMissingValueFiles: true
+      valuesObject:
+        {{- toYaml $values | nindent 8 }}
+  destination:
+    {{- include "argocd-bootstrap.destination" . | nindent 4 }}
+    namespace: {{ $ns }}
+  # The aggregated ClusterRoles get their rules from the aggregation
+  # controller, not from the chart.
+  ignoreDifferences:
+    {{- range $role := list "admission-controller" "background-controller" "cleanup-controller" "reports-controller" }}
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: kyverno:{{ $role }}
+      jqPathExpressions: [.rules]
+    {{- end }}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true, ServerSideApply=true, RespectIgnoreDifferences=true]
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/enforce-version: v{{ .Values.cluster.kubernetesMinor }}
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/audit-version: v{{ .Values.cluster.kubernetesMinor }}
+        pod-security.kubernetes.io/warn: restricted
+        pod-security.kubernetes.io/warn-version: v{{ .Values.cluster.kubernetesMinor }}
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

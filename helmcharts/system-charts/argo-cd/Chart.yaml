@@ -1,0 +1,17 @@
+apiVersion: v2
+name: argo-cd
+description: Platform wrapper for the upstream Argo CD chart (argo-helm), with lab and reference profiles.
+type: application
+version: 1.0.0
+appVersion: "v3.6.1"
+kubeVersion: ">=1.35.0-0"
+home: https://github.com/SritharanK/sk-k8s-devops-bootstrap
+sources:
+  - https://github.com/argoproj/argo-helm/tree/argo-cd-10.18.0/charts/argo-cd
+  - https://github.com/argoproj/argo-cd/releases/tag/v3.6.1
+dependencies:
+  # Upstream chart 10.18.0 ships Argo CD v3.6.1. Verify the provenance before
+  # changing this pin; see README.md, section "Pinned version".
+  - name: argo-cd
+    version: 10.18.0
+    repository: oci://ghcr.io/argoproj/argo-helm

@@ -1,0 +1,12 @@
+---
+# Applies the role with the lab security realm (local). The test values,
+# including the fake secrets, are inventory group_vars in molecule.yml so
+# that verify.yml can check against the same values.
+- name: Converge
+  hosts: jenkins
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Apply the install_jenkins role
+      ansible.builtin.include_role:
+        name: install_jenkins

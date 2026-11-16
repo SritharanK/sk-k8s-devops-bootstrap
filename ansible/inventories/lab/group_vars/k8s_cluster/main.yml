@@ -1,0 +1,11 @@
+---
+# Settings for RKE2 nodes in the lab profile: one server, optionally one agent.
+base_storage_clients: false
+
+# Topology values (node CIDRs, SSH sources) are host-specific and belong in hosts.yml; preflight
+# rejects them while they still hold CHANGE_ME.
+preflight_placeholder_vars_extra:
+  - firewall_node_cidrs
+  - firewall_ssh_cidrs
+
+rke2_kube_vip_enabled: false

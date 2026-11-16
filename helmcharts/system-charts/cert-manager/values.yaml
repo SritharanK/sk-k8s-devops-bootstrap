@@ -1,0 +1,62 @@
+cert-manager:
+  # CRDs are part of the release. keep adds helm.sh/resource-policy: keep,
+  # which Argo CD treats as Delete=false: removing the Application never
+  # deletes the CRDs (and with them every Certificate and Issuer).
+  crds:
+    enabled: true
+    keep: true
+
+  global:
+    # Keep the leader election lease in the release namespace instead of
+    # kube-system, so the release needs no Role outside its own namespace.
+    leaderElection:
+      namespace: cert-manager
+
+  # Controller configuration file. enableGatewayAPI lets ACME HTTP-01
+  # solvers attach HTTPRoutes to a Gateway and enables the Gateway
+  # annotation shim. The Gateway API CRDs come from the gateway-api chart.
+  config:
+    apiVersion: controller.config.cert-manager.io/v1alpha1
+    kind: ControllerConfiguration
+    enableGatewayAPI: true
+
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+  webhook:
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+
+  cainjector:
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 20m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+  startupapicheck:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 64Mi
+
+  # Metrics endpoints stay on. No ServiceMonitor is rendered, so Prometheus
+  # does not scrape cert-manager until one is enabled here.
+  prometheus:
+    enabled: true
+    servicemonitor:
+      enabled: false

@@ -1,0 +1,136 @@
+{{- /*
+Stages of each app, in the order of apps[].stages: the first takes Freight
+from the Warehouse, each later stage only Freight verified in the stage
+before it.
+
+A promotion clones git.branch, sets image.tag and image.digest in
+envs/<stage>/<app>/values.yaml, commits, and then either pushes to
+git.branch or pushes a branch, opens a pull request and waits until it is
+merged (stages.<name>.pullRequest). Last, argocd-update asks Argo CD to sync
+the stage's Application and waits until it runs that commit. The
+Application must carry kargo.akuity.io/authorized-stage: <project>:<stage>.
+
+Kargo expressions are written as Go raw strings so Helm prints them as is.
+*/ -}}
+{{- $v := .Values }}
+{{- $provider := .Values.pullRequest.provider }}
+{{- range $app := .Values.apps }}
+{{- $project := include "kargo-pipelines.project" (list $ $app.name) }}
+{{- range $i, $stage := $app.stages }}
+{{- $cfg := include "kargo-pipelines.stage" (list $ $stage.name) | fromYaml }}
+{{- $tag := `${{ imageFrom(vars.imageRepo).Tag }}` }}
+{{- $title := printf "chore(promote): %s %s to %s" $app.name $tag $stage.name }}
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: {{ $stage.name }}
+  namespace: {{ $project }}
+  labels:
+    {{- include "kargo-pipelines.labels" $ | nindent 4 }}
+  annotations:
+    {{- include "kargo-pipelines.annotations" "2" | nindent 4 }}
+spec:
+  vars:
+    - name: gitRepo
+      value: {{ $v.git.repoURL | quote }}
+    - name: branch
+      value: {{ $v.git.branch | quote }}
+    - name: imageRepo
+      value: {{ printf "%s/%s" (trimSuffix "/" $v.imageRegistry) $app.name | quote }}
+    - name: valuesFile
+      value: {{ printf "envs/%s/%s/values.yaml" $stage.name $app.name | quote }}
+  requestedFreight:
+    - origin:
+        kind: Warehouse
+        name: {{ $app.name }}
+      sources:
+        {{- if eq $i 0 }}
+        direct: true
+        {{- else }}
+        stages:
+          - {{ (index $app.stages (sub $i 1)).name }}
+        {{- end }}
+  promotionTemplate:
+    spec:
+      steps:
+        - uses: git-clone
+          config:
+            repoURL: {{ `${{ vars.gitRepo }}` }}
+            checkout:
+              - branch: {{ `${{ vars.branch }}` }}
+                path: ./repo
+        - uses: yaml-update
+          as: update-image
+          config:
+            path: {{ `./repo/${{ vars.valuesFile }}` }}
+            updates:
+              - key: image.tag
+                value: {{ $tag }}
+              - key: image.digest
+                value: {{ `${{ imageFrom(vars.imageRepo).Digest }}` }}
+        - uses: git-commit
+          as: commit
+          config:
+            path: ./repo
+            message: {{ $title | quote }}
+        {{- if $cfg.pullRequest }}
+        - uses: git-push
+          as: push
+          config:
+            path: ./repo
+            generateTargetBranch: true
+        - uses: git-open-pr
+          as: open-pr
+          config:
+            repoURL: {{ `${{ vars.gitRepo }}` }}
+            {{- with $provider }}
+            provider: {{ . }}
+            {{- end }}
+            sourceBranch: {{ `${{ outputs.push.branch }}` }}
+            targetBranch: {{ `${{ vars.branch }}` }}
+            title: {{ $title | quote }}
+            description: {{ printf "Promotes %s %s (%s) to %s. Opened by the Kargo promotion %s of Freight %s. Only image.tag and image.digest change in %s." $app.name $tag `${{ imageFrom(vars.imageRepo).Digest }}` $stage.name `${{ ctx.promotion }}` `${{ ctx.targetFreight.name }}` `${{ vars.valuesFile }}` | quote }}
+        - uses: git-wait-for-pr
+          as: wait-for-pr
+          retry:
+            timeout: {{ $v.pullRequest.timeout }}
+          config:
+            repoURL: {{ `${{ vars.gitRepo }}` }}
+            {{- with $provider }}
+            provider: {{ . }}
+            {{- end }}
+            prNumber: {{ `${{ outputs['open-pr'].pr.id }}` }}
+        {{- else }}
+        - uses: git-push
+          as: push
+          config:
+            path: ./repo
+            targetBranch: {{ `${{ vars.branch }}` }}
+        {{- end }}
+        - uses: argocd-update
+          config:
+            apps:
+              - name: {{ $stage.application }}
+                namespace: {{ $v.argocd.namespace }}
+                sources:
+                  - repoURL: {{ `${{ vars.gitRepo }}` }}
+                    {{- if $cfg.pullRequest }}
+                    desiredRevision: {{ `${{ outputs['wait-for-pr'].commit }}` }}
+                    {{- else }}
+                    desiredRevision: {{ `${{ outputs.push.commit }}` }}
+                    {{- end }}
+  {{- if $v.verification.enabled }}
+  verification:
+    analysisTemplates:
+      {{- toYaml $v.verification.analysisTemplates | nindent 6 }}
+    args:
+      - name: service-name
+        value: {{ $app.name | quote }}
+      - name: namespace
+        value: {{ $stage.namespace | quote }}
+      - name: threshold
+        value: {{ $v.verification.threshold | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}

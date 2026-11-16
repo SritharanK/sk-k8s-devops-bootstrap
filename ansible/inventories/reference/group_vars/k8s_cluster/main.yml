@@ -1,0 +1,19 @@
+---
+# Settings for RKE2 nodes in the reference profile: three servers behind a registration address
+# (load balancer or kube-vip VIP) plus agents.
+# NFS client and open-iscsi for the Longhorn storage profile.
+base_storage_clients: true
+
+preflight_placeholder_vars_extra:
+  - firewall_node_cidrs
+  - firewall_ssh_cidrs
+  - rke2_registration_address
+  - rke2_etcd_s3
+
+# Servers run the control plane and etcd only; workloads go to agents.
+rke2_server_taint: true
+
+# The Hetzner example in infra/ uses a cloud load balancer. On an L2 network without a load balancer,
+# enable kube-vip and set rke2.registrationAddress in cluster.yaml to the VIP.
+rke2_kube_vip_enabled: false
+rke2_kube_vip_interface: ""

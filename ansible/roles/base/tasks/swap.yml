@@ -1,0 +1,24 @@
+---
+- name: Turn off active swap
+  ansible.builtin.command:
+    cmd: swapoff -a
+  register: base__swapoff
+  changed_when: true
+  failed_when: base__swapoff.rc != 0
+  when:
+    - base_kernel_runtime_apply
+    - ansible_facts['swaptotal_mb'] | int > 0
+
+- name: Check for /etc/fstab
+  ansible.builtin.stat:
+    path: /etc/fstab
+  register: base__fstab
+
+# Matches uncommented lines whose third field (file system type) is swap; commented lines never match, so the task
+# is idempotent.
+- name: Comment out swap entries in /etc/fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([ \t]*[^#\s]\S*[ \t]+\S+[ \t]+swap(?:[ \t].*)?)$'
+    replace: '# \1'
+  when: base__fstab.stat.exists

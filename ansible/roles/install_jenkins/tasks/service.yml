@@ -1,0 +1,23 @@
+---
+# Pending handlers run first: on a first install or an upgrade the restart
+# handler is the single start of Jenkins with its final configuration. The
+# next task then only enables the unit and starts Jenkins if something else
+# stopped it.
+
+- name: Apply pending systemd reloads and Jenkins restarts
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure Jenkins is enabled and running
+  ansible.builtin.systemd_service:
+    name: jenkins
+    enabled: true
+    state: started
+
+- name: Wait until Jenkins answers on the login page
+  ansible.builtin.uri:
+    url: "http://{{ install_jenkins_http_listen_address }}:{{ install_jenkins_http_port }}/login"
+    status_code: 200
+  register: __jenkins_login
+  until: __jenkins_login.status == 200
+  retries: "{{ ((install_jenkins_startup_timeout | int) / 5) | round(0, 'ceil') | int }}"
+  delay: 5

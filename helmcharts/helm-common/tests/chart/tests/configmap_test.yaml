@@ -1,0 +1,142 @@
+suite: ConfigMaps
+templates:
+  - templates/configmap.yaml
+  - templates/deployment.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: renders nothing and no checksum by default
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/configmap.yaml
+      - notExists:
+          path: spec.template.metadata.annotations
+        template: templates/deployment.yaml
+
+  - it: renders one ConfigMap per entry with string data
+    values:
+      - ./values/configmaps.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+        template: templates/configmap.yaml
+      - isKind:
+          of: ConfigMap
+        template: templates/configmap.yaml
+      - equal:
+          path: metadata.name
+          value: web-helm-common-test-app-settings
+        template: templates/configmap.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.namespace
+          value: dev
+        template: templates/configmap.yaml
+        documentIndex: 0
+      - equal:
+          path: data
+          value:
+            LOG_LEVEL: info
+            WORKERS: "4"
+        template: templates/configmap.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: web-helm-common-test-files
+        template: templates/configmap.yaml
+        documentIndex: 1
+      - equal:
+          path: data["app.conf"]
+          value: |
+            listen 8080
+        template: templates/configmap.yaml
+        documentIndex: 1
+
+  - it: adds a configMapRef to envFrom for asEnv entries
+    values:
+      - ./values/configmaps.yaml
+    set:
+      envFrom:
+        - secretRef:
+            name: app-env
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom
+          value:
+            - secretRef:
+                name: app-env
+            - configMapRef:
+                name: web-helm-common-test-app-settings
+        template: templates/deployment.yaml
+
+  - it: mounts entries with a mountPath read-only
+    values:
+      - ./values/configmaps.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: config-files
+            configMap:
+              name: web-helm-common-test-files
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: config-files
+            mountPath: /etc/app
+            readOnly: true
+        template: templates/deployment.yaml
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: config-app-settings
+            configMap:
+              name: web-helm-common-test-app-settings
+        template: templates/deployment.yaml
+
+  - it: adds a checksum of the data to the pod template
+    values:
+      - ./values/configmaps.yaml
+    set:
+      podAnnotations:
+        team: platform
+    asserts:
+      - matchRegex:
+          path: spec.template.metadata.annotations["checksum/config"]
+          pattern: ^[a-f0-9]{64}$
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.metadata.annotations.team
+          value: platform
+        template: templates/deployment.yaml
+
+  - it: computes a stable checksum from the data
+    values:
+      - ./values/configmaps.yaml
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: 71f5278be270f90fbf6fc33d70dcb3d71e1dadd030817f148b523bcf7028239c
+        template: templates/deployment.yaml
+
+  - it: changes the checksum when the data changes
+    values:
+      - ./values/configmaps.yaml
+    set:
+      configMaps.app-settings.data.LOG_LEVEL: debug
+    asserts:
+      - notEqual:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: 71f5278be270f90fbf6fc33d70dcb3d71e1dadd030817f148b523bcf7028239c
+        template: templates/deployment.yaml
+
+  - it: requires data on every entry
+    set:
+      configMaps.broken.mountPath: /etc/broken
+    asserts:
+      - failedTemplate:
+          errorPattern: "configMaps.broken.data is required"
+        template: templates/configmap.yaml

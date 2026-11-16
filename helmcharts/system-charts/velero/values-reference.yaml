@@ -1,0 +1,66 @@
+# Reference profile: 3-node RKE2 HA cluster. Backups go to the external S3
+# service, outside the failure domain of the cluster, kept for 30 days.
+# Velero runs one server replica by design (the upstream chart fixes
+# replicas: 1 with a Recreate strategy), so there is no PodDisruptionBudget:
+# a budget of minAvailable 1 on a single replica would block node drains.
+velero:
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+  nodeAgent:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+
+  configMaps:
+    node-agent-config:
+      data:
+        node-agent-config.json: |
+          {
+            "podResources": {
+              "cpuRequest": "500m",
+              "memoryRequest": "512Mi",
+              "memoryLimit": "2Gi"
+            }
+          }
+
+  configuration:
+    defaultBackupTTL: 720h
+    backupStorageLocation:
+      - name: default
+        provider: aws
+        bucket: CHANGE_ME-velero
+        default: true
+        accessMode: ReadWrite
+        config:
+          region: CHANGE_ME
+          s3Url: https://s3.example.com
+          # Most self-hosted S3 services need path-style addressing.
+          s3ForcePathStyle: "true"
+          # Backups contain Secrets in plain JSON. Enable default encryption on
+          # the bucket at the provider. If the provider supports SSE-S3 per
+          # request, also set:
+          # serverSideEncryption: AES256
+    repositoryMaintenanceJob:
+      repositoryConfigData:
+        global:
+          keepLatestMaintenanceJobs: 3
+          podResources:
+            cpuRequest: 500m
+            memoryRequest: 512Mi
+            memoryLimit: 2Gi
+
+  schedules:
+    platform-daily:
+      template:
+        ttl: 720h
+    sealing-key:
+      template:
+        ttl: 720h

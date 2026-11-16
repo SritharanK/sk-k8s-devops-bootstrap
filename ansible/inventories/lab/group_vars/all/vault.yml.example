@@ -1,0 +1,14 @@
+---
+# Secrets for the lab inventory. Copy this file to vault.yml in the same directory, replace every
+# CHANGE_ME, then encrypt it with a vault ID per environment:
+#   ansible-vault encrypt --vault-id lab@prompt inventories/lab/group_vars/all/vault.yml
+# vault.yml is gitignored. Keep it out of Git in encrypted form as well; store the vault password in
+# a password manager. Usernames and addresses are not secrets and belong in hosts.yml.
+
+# Cluster join token for servers and agents. Generate with: openssl rand -hex 32
+vault_rke2_token: CHANGE_ME
+# Optional separate token for agents, so a compromised agent cannot join as a server.
+vault_rke2_agent_token: ""
+# Credentials for etcd snapshot uploads, used only when rke2.etcdSnapshots.s3.enabled is true.
+vault_rke2_etcd_s3_access_key: ""
+vault_rke2_etcd_s3_secret_key: ""

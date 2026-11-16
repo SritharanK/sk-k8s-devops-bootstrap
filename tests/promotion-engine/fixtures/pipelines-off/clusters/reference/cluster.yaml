@@ -1,0 +1,9 @@
+# Kargo installed without pipelines: it writes nothing.
+---
+cluster:
+  name: reference
+toolchains:
+  kargo:
+    enabled: true
+    pipelines:
+      enabled: false

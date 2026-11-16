@@ -1,0 +1,101 @@
+# TLS reverse proxy for the Jenkins controller.
+#
+# Jenkins listens on 127.0.0.1:8080 only (install_jenkins_http_listen_address and
+# install_jenkins_http_port). This server block is the only way in from the network.
+#
+# Install on the controller host, for example as /etc/nginx/conf.d/jenkins.conf,
+# replace jenkins.example.com and the certificate paths, then run `nginx -t`
+# and reload nginx. install_jenkins_url must be https://<server_name>/ with the
+# trailing slash. On SELinux hosts (Enterprise Linux) allow the proxy to
+# connect: setsebool -P httpd_can_network_connect 1
+#
+# Only directives of the standard nginx build are used. HTTP/2 can be added
+# with `http2 on;` on nginx 1.25.1 or later.
+
+upstream jenkins_controller {
+    server 127.0.0.1:8080;
+    keepalive 16;
+}
+
+# WebSocket upgrade. Requests without an Upgrade header get an empty
+# Connection header, which keeps the upstream keepalive connection usable.
+map $http_upgrade $jenkins_connection_upgrade {
+    default upgrade;
+    ""      "";
+}
+
+# Plain HTTP only redirects to HTTPS.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name jenkins.example.com;
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name jenkins.example.com;
+
+    server_tokens off;
+
+    # Certificate chain and key (placeholders).
+    ssl_certificate     /etc/nginx/tls/jenkins.example.com/fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/jenkins.example.com/privkey.pem;
+
+    # TLS 1.2 and 1.3 only, forward-secret AEAD suites for TLS 1.2.
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:jenkins_tls:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # Browsers use HTTPS only for this host for one year. Add includeSubDomains
+    # only when every subdomain is served over HTTPS.
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    # Uploads: file parameters and job configuration. Plugins are never
+    # uploaded through the UI (they come from plugins.txt).
+    client_max_body_size 50m;
+    client_body_buffer_size 128k;
+
+    # Settings shared by both locations below.
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header X-Forwarded-Port  443;
+    proxy_set_header Upgrade           $http_upgrade;
+    proxy_set_header Connection        $jenkins_connection_upgrade;
+
+    # Jenkins builds absolute redirects from the X-Forwarded-* headers above.
+    # Rewrite any redirect that still points to plain HTTP, so the proxy never
+    # sends a client back to an unencrypted URL.
+    proxy_redirect http:// https://;
+
+    # WebSocket connections of the Kubernetes agents. They stay open for the
+    # whole build. Jenkins pings them every 30 seconds by default; the long
+    # timeouts only cover short network interruptions.
+    location /wsagents/ {
+        proxy_pass http://jenkins_controller;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # Everything else: UI, REST API, CLI over WebSocket (/cli/ws).
+    location / {
+        proxy_pass http://jenkins_controller;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 90s;
+        proxy_send_timeout 90s;
+        # Stream large responses (artefacts, logs) instead of buffering them
+        # to disk, and pass request bodies through for the HTTP CLI.
+        proxy_max_temp_file_size 0;
+        proxy_request_buffering off;
+    }
+}

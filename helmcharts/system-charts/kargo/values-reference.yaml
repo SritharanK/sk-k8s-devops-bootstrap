@@ -1,0 +1,32 @@
+# Reference profile: 3-node RKE2 HA cluster. SSO only, no local admin
+# account, two API replicas, credentials from the platform secret store.
+kargo:
+  api:
+    replicas: 2
+    adminAccount:
+      enabled: false
+    # Register a public client with PKCE at the identity provider, redirect
+    # URIs https://<kargo.api.host>/login (UI) and http://localhost/auth/callback
+    # (CLI). Replace every CHANGE_ME.
+    oidc:
+      enabled: true
+      issuerURL: https://CHANGE_ME.example.com
+      clientID: CHANGE_ME
+      cliClientID: CHANGE_ME
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+  controller:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 2Gi
+
+credentials:
+  externalSecret:
+    enabled: true

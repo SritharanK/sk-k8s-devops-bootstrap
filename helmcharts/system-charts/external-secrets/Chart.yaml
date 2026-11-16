@@ -1,0 +1,14 @@
+apiVersion: v2
+name: external-secrets
+description: External Secrets Operator, syncing Kubernetes Secrets from external secret stores
+type: application
+version: 0.1.0
+appVersion: v2.15.0
+kubeVersion: ">=1.35.0-0"
+home: https://external-secrets.io/
+sources:
+  - https://github.com/external-secrets/external-secrets
+dependencies:
+  - name: external-secrets
+    version: 2.15.0
+    repository: oci://ghcr.io/external-secrets/charts

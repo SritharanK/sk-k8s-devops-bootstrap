@@ -1,0 +1,32 @@
+---
+# Maps the cluster definition (clusters/<cluster_name>/cluster.yaml, schema clusters/schema.json, loaded
+# by every play through vars_files) onto role variables. Change cluster settings in cluster.yaml, not here.
+# Keys that the schema marks optional fall back to the role defaults.
+# Secrets come from vault.yml in this directory (see vault.yml.example); a missing secret resolves to
+# CHANGE_ME so the preflight role rejects it with a readable message.
+
+rke2_cluster_name: "{{ cluster.name }}"
+rke2_version: "{{ rke2.version }}"
+rke2_channel: "{{ rke2.channel }}"
+rke2_cni: "{{ rke2.cni }}"
+rke2_cluster_cidr: "{{ rke2.podCidr }}"
+rke2_service_cidr: "{{ rke2.serviceCidr }}"
+# cluster.yaml wins when it holds a real address. When it is empty or still CHANGE_ME, the address
+# rendered by infra/ into hosts.yml (infra_registration_address) is used; if neither is set, the
+# placeholder stays and preflight rejects it.
+rke2_registration_address: >-
+  {{ rke2.registrationAddress
+     if rke2.registrationAddress | default('') not in ['', 'CHANGE_ME']
+     else infra_registration_address | default(rke2.registrationAddress | default('')) }}
+rke2_cis_profile: "{{ rke2.cisProfile | default(false) | bool }}"
+rke2_etcd_snapshot_schedule: "{{ (rke2.etcdSnapshots | default({})).schedule | default('0 */6 * * *') }}"
+rke2_etcd_snapshot_retention: "{{ (rke2.etcdSnapshots | default({})).retention | default(10) }}"
+rke2_etcd_s3: "{{ (rke2.etcdSnapshots | default({})).s3 | default({'enabled': false}) }}"
+
+rke2_token: "{{ vault_rke2_token | default('CHANGE_ME') }}"
+rke2_agent_token: "{{ vault_rke2_agent_token | default('') }}"
+rke2_etcd_s3_access_key: "{{ vault_rke2_etcd_s3_access_key | default('') }}"
+rke2_etcd_s3_secret_key: "{{ vault_rke2_etcd_s3_secret_key | default('') }}"
+
+firewall_cni: "{{ rke2.cni }}"
+firewall_cluster_cidr: "{{ rke2.podCidr }}"

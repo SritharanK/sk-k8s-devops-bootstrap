@@ -1,0 +1,66 @@
+---
+# Plain settings for the Jenkins controller.
+#
+# Copy to ansible/inventories/<env>/group_vars/jenkins/vars.yml next to the
+# encrypted vault.yml (from vault.yml.example) and replace every CHANGE_ME,
+# example.com and YOUR_ORG value. The role rejects CHANGE_ME in any setting
+# of the active configuration. Every variable is documented in
+# ansible/roles/install_jenkins/meta/argument_specs.yml; only the usual
+# overrides are listed here.
+
+# Public endpoint served by the TLS reverse proxy (trailing slash required).
+install_jenkins_url: "https://jenkins.example.com/"
+install_jenkins_admin_email: "jenkins@example.com"
+
+# Security realm: oidc, ldap, or local (lab only).
+install_jenkins_security_realm: oidc
+
+install_jenkins_oidc_client_id: CHANGE_ME
+install_jenkins_oidc_well_known_url: "https://idp.example.com/.well-known/openid-configuration"
+
+# Used only with install_jenkins_security_realm: ldap.
+install_jenkins_ldap_server: "ldaps://ldap.example.com:636"
+install_jenkins_ldap_root_dn: "dc=example,dc=com"
+install_jenkins_ldap_manager_dn: "cn=jenkins,ou=services,dc=example,dc=com"
+
+# Authorization groups as delivered by the security realm.
+install_jenkins_admin_groups:
+  - platform-admins
+install_jenkins_developer_groups:
+  - deployers
+install_jenkins_viewer_groups:
+  - viewers
+
+# Build identity (Authorize Project). Keep "user" unless the realm cannot
+# resolve the account; read the README before choosing "system".
+install_jenkins_build_run_as: user
+install_jenkins_build_user: jenkins-ci
+
+# Kubernetes cluster that runs the agent pods (see ci/jenkins/kubernetes/).
+install_jenkins_k8s_api_url: "https://kubernetes.example.com:6443"
+install_jenkins_k8s_namespace: jenkins-agents
+# PEM of the API server CA, or empty to use the Java trust store.
+install_jenkins_k8s_ca_certificate: ""
+
+# Repository, registry and promotion.
+install_jenkins_git_repo_url: "https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap.git"
+install_jenkins_github_repository: "YOUR_ORG/sk-k8s-devops-bootstrap"
+install_jenkins_image_registry: "ghcr.io/your-org"
+install_jenkins_registry_username: CHANGE_ME
+install_jenkins_git_commit_email: "jenkins-ci@example.com"
+# Host or host:port of the Argo CD API; empty disables the health gate.
+install_jenkins_argocd_server: ""
+
+# Secrets: never put a value here. Each role variable points to its
+# encrypted counterpart in vault.yml. Only the secrets of the selected
+# realm (and the Argo CD tokens when install_jenkins_argocd_server is set) are used.
+install_jenkins_oidc_client_secret: "{{ vault_jenkins_oidc_client_secret }}"
+install_jenkins_ldap_manager_password: "{{ vault_jenkins_ldap_manager_password }}"
+install_jenkins_local_admin_password: "{{ vault_jenkins_local_admin_password }}"
+install_jenkins_local_build_user_password: "{{ vault_jenkins_local_build_user_password }}"
+install_jenkins_registry_password: "{{ vault_jenkins_registry_password }}"
+install_jenkins_github_token: "{{ vault_jenkins_github_token }}"
+install_jenkins_cosign_private_key: "{{ vault_jenkins_cosign_private_key }}"
+install_jenkins_cosign_password: "{{ vault_jenkins_cosign_password }}"
+install_jenkins_k8s_agent_token: "{{ vault_jenkins_k8s_agent_token }}"
+install_jenkins_argocd_tokens: "{{ vault_jenkins_argocd_tokens }}"

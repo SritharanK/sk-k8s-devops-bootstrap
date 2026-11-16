@@ -1,0 +1,68 @@
+---
+- name: Install nftables (Debian family)
+  ansible.builtin.apt:
+    name: nftables
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Install nftables (RedHat family)
+  ansible.builtin.dnf:
+    name: nftables
+    state: present
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+- name: Stop and disable conflicting firewall services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ firewall__conflicting_services }}"
+  when:
+    - firewall_disable_conflicting | bool
+    - item in ansible_facts['services']
+    - ansible_facts['services'][item]['status'] not in ['not-found', 'masked']
+
+- name: Create the nftables include directory
+  ansible.builtin.file:
+    path: "{{ firewall__rules_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  register: firewall__rules_dir_result
+
+- name: Write the firewall rules
+  ansible.builtin.template:
+    src: rke2-host.nft.j2
+    dest: "{{ firewall__rules_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+    validate: "{{ firewall__nft_path }} -c -f %s"
+  # In check mode the directory may not exist yet.
+  when: not (ansible_check_mode and firewall__rules_dir_result is changed)
+  notify: Reload rke2 host firewall
+
+- name: Write the firewall unit
+  ansible.builtin.template:
+    src: rke2-host-firewall.service.j2
+    dest: "{{ firewall__unit_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: firewall__unit_result
+  notify: Restart rke2 host firewall
+
+- name: Enable and start the firewall unit
+  ansible.builtin.systemd_service:
+    name: "{{ firewall__unit_name }}"
+    enabled: true
+    state: started
+    daemon_reload: "{{ firewall__unit_result is changed }}"
+  # In check mode systemd cannot know a unit that is only about to be written.
+  when: not ansible_check_mode or firewall__unit_name in ansible_facts['services']

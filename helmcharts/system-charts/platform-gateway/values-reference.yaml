@@ -1,0 +1,20 @@
+# reference: two proxy replicas spread over nodes behind a LoadBalancer
+# Service. The cluster needs a load balancer implementation (for example
+# kube-vip or MetalLB) or an external load balancer pointing at node ports.
+proxy:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  service:
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+  podDisruptionBudget:
+    minAvailable: 1
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: DoNotSchedule

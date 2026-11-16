@@ -1,0 +1,27 @@
+{{- /*
+Container defaults, so pods without requests or limits still fit the quota,
+and a per-container maximum.
+*/ -}}
+{{- $lr := .Values.limitRange }}
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: preview-limits
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "preview-namespace.labels" . | nindent 4 }}
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: {{ include "preview-namespace.quantity" (required "limitRange.default.cpu is required" $lr.default.cpu) }}
+        memory: {{ include "preview-namespace.quantity" (required "limitRange.default.memory is required" $lr.default.memory) }}
+      defaultRequest:
+        cpu: {{ include "preview-namespace.quantity" (required "limitRange.defaultRequest.cpu is required" $lr.defaultRequest.cpu) }}
+        memory: {{ include "preview-namespace.quantity" (required "limitRange.defaultRequest.memory is required" $lr.defaultRequest.memory) }}
+      {{- with $lr.max }}
+      max:
+        {{- range $key, $value := . }}
+        {{ $key }}: {{ include "preview-namespace.quantity" $value }}
+        {{- end }}
+      {{- end }}

@@ -1,0 +1,47 @@
+{{- /*
+Server certificate for the OpenBao listener. Sync wave -1: the Secret exists
+before the StatefulSet pods mount it. The SANs cover every Service the
+subchart creates plus the per-pod names behind the headless Service, and
+127.0.0.1 for the CLI inside the pod.
+*/ -}}
+{{- $fullname := include "openbao-wrapper.fullname" . -}}
+{{- $ns := .Release.Namespace -}}
+{{- $domain := .Values.tls.clusterDomain -}}
+{{- $names := list $fullname (printf "%s-active" $fullname) (printf "%s-standby" $fullname) (printf "%s-internal" $fullname) (printf "*.%s-internal" $fullname) -}}
+{{- if eq (toString .Values.openbao.ui.enabled) "true" -}}
+{{- $names = append $names (printf "%s-ui" $fullname) -}}
+{{- end -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.tls.secretName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "openbao-wrapper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tls
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  secretName: {{ .Values.tls.secretName }}
+  issuerRef:
+    {{- toYaml .Values.tls.issuerRef | nindent 4 }}
+  duration: {{ .Values.tls.duration }}
+  renewBefore: {{ .Values.tls.renewBefore }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+    - server auth
+    - client auth
+    - digital signature
+  dnsNames:
+    {{- range $names }}
+    - {{ . | quote }}
+    - {{ printf "%s.%s" . $ns | quote }}
+    - {{ printf "%s.%s.svc" . $ns | quote }}
+    - {{ printf "%s.%s.svc.%s" . $ns $domain | quote }}
+    {{- end }}
+  ipAddresses:
+    - 127.0.0.1

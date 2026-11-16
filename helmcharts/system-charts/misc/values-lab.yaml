@@ -1,0 +1,9 @@
+# Lab profile (values-lab.yaml), applied after values.yaml.
+# The quotas in values.yaml are already sized for a lab cluster. The lab uses
+# the selfsigned CA issuer only (platform.issuer: selfsigned).
+---
+issuers:
+  letsencryptStaging:
+    enabled: false
+  letsencrypt:
+    enabled: false

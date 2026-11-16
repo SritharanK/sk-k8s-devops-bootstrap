@@ -1,0 +1,485 @@
+# Validate: the blocking CI of this repository.
+#
+# Each job runs one or more Make targets, the same commands a developer runs
+# locally (see `make help`). Tools come from mise.toml through
+# .github/actions/setup-tools. No job uses continue-on-error or masks a
+# failure. The ci-gate job is the single required status check for main.
+#
+# Supply chain: every action is pinned by full commit SHA with its version in
+# a comment; Renovate updates both (renovate.json). Checkouts do not persist
+# credentials. Jobs get read-only contents access unless stated otherwise.
+
+name: Validate
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly: full-history secret scan and a fresh run of every job.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  workflow-lint:
+    name: workflow-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:rhysd/actionlint aqua:zizmorcore/zizmor aqua:koalaman/shellcheck
+      - name: actionlint and zizmor
+        env:
+          # Enables the online zizmor audits (impostor commits, known
+          # vulnerable actions, tag and SHA consistency).
+          GH_TOKEN: ${{ github.token }}
+        run: make lint-workflows
+
+  secrets:
+    name: secrets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out with full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:gitleaks/gitleaks aqua:mikefarah/yq
+      - name: Scan the committed tree
+        run: make secrets
+      - name: Scan the commits of this change
+        if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = 0000000000000000000000000000000000000000 ]; then
+            echo "No base commit for this event; the tree scan above covers the change."
+            exit 0
+          fi
+          make secrets-range BASE="${BASE_SHA}"
+      - name: Self-test of the gitleaks rules
+        run: make secrets-test
+      - name: Scan the full history
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: make secrets-history
+
+  commit-lint:
+    name: commit-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out with full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Conventional Commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          if [ -z "${BASE_SHA}" ]; then
+            echo "Not a pull request or merge queue run; commits on main were checked in their pull request."
+            exit 0
+          fi
+          make lint-commits BASE="${BASE_SHA}"
+
+  yaml-lint:
+    name: yaml-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:astral-sh/uv pypi:yamllint
+      - name: yamllint
+        run: make lint-yaml
+
+  docs:
+    name: docs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: node npm:markdownlint-cli2 aqua:lycheeverse/lychee
+      - name: markdownlint
+        run: make lint-markdown
+      - name: Link check
+        env:
+          # Raises the GitHub rate limit for links to github.com.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: make lint-links
+
+  catalog-lint:
+    name: catalog-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: node aqua:mikefarah/yq
+      - name: Backstage entity validator
+        run: make lint-catalog
+
+  shell-lint:
+    name: shell-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:koalaman/shellcheck aqua:mvdan/sh aqua:mikefarah/yq
+      - name: shellcheck and shfmt
+        run: make lint-shell
+      - name: Shell library self-test
+        run: make test-lib
+      - name: Promotion engine selection test
+        run: make promotion-engine-test
+
+  config:
+    name: config
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:astral-sh/uv pypi:check-jsonschema aqua:mikefarah/yq
+      - name: Validate cluster definitions
+        run: make validate-config
+
+  ansible:
+    name: ansible
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:astral-sh/uv pypi:ansible-core pypi:ansible-lint pypi:molecule
+      - name: ansible-lint
+        run: make ansible-lint
+      - name: Syntax check
+        run: make ansible-syntax
+      - name: Molecule
+        run: make molecule
+
+  opentofu:
+    name: opentofu
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:opentofu/opentofu
+      - name: fmt, init without backend, validate
+        run: make tofu-validate
+
+  helm:
+    name: helm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:helm/helm aqua:mikefarah/yq
+      - name: Lint every chart and run the unit tests
+        run: make helm
+
+  argocd-bootstrap:
+    name: argocd-bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:helm/helm aqua:mikefarah/yq aqua:yannh/kubeconform
+      # One make invocation renders once for both targets. The weekly run
+      # evaluates the support matrix status columns on today's date; pull
+      # requests use the date of the committed document.
+      - name: Render, validate schemas, check AppProjects and the support matrix
+        env:
+          SCHEDULED: ${{ github.event_name == 'schedule' }}
+        run: |
+          if [[ "$SCHEDULED" == "true" ]]; then
+            SUPPORT_MATRIX_DATE="$(date -u +%F)"
+            export SUPPORT_MATRIX_DATE
+          fi
+          make argocd-bootstrap support-matrix-check
+
+  policy-test:
+    name: policy-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:helm/helm aqua:mikefarah/yq aqua:kyverno/kyverno
+      - name: kyverno test and kyverno apply
+        run: make policy-test
+
+  # The vulnerability attestation gate needs signed and attested images. The
+  # test pushes them to a throwaway registry container on the runner and signs
+  # them with an ephemeral key, so it needs Docker, cosign and no secrets.
+  policy-test-attestations:
+    name: policy-test-attestations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:helm/helm aqua:kyverno/kyverno aqua:sigstore/cosign
+      - name: Vulnerability attestation gate against a local registry
+        run: make policy-test-attestations
+
+  dockerfile-lint:
+    name: dockerfile-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:hadolint/hadolint
+      - name: hadolint
+        run: make lint-dockerfiles
+      - name: Container smoke test
+        run: make image-smoke
+
+  trivy-config:
+    name: trivy-config
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write # Upload of the SARIF report to code scanning.
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:helm/helm aqua:mikefarah/yq
+      - name: Install Trivy
+        id: trivy
+        uses: ./.github/actions/install-trivy
+      - name: Trivy misconfiguration scan of the rendered manifests
+        env:
+          TRIVY: ${{ steps.trivy.outputs.path }}
+        run: make trivy-config TRIVY="${TRIVY}"
+      - name: Upload SARIF to code scanning
+        # Fork pull requests get a read-only token; the table output above
+        # still gates them.
+        if: >-
+          always() && hashFiles('_out/trivy-config.sarif') != '' &&
+          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: _out/trivy-config.sarif
+          category: trivy-config
+
+  jenkins-lint:
+    name: jenkins-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:mikefarah/yq aqua:astral-sh/uv pypi:ansible-core
+      - name: Declarative pipeline linter in a local controller
+        run: make jenkins-lint
+
+  e2e-kind:
+    name: e2e-kind
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: >-
+            aqua:kubernetes-sigs/kind aqua:kubernetes/kubernetes/kubectl
+            aqua:helm/helm aqua:mikefarah/yq aqua:kyverno/chainsaw aqua:sigstore/cosign
+      - name: Raise inotify limits for a multi-node kind cluster
+        # kind known issue: "too many open files" with several nodes on
+        # the default runner limits.
+        run: |
+          sudo sysctl -w fs.inotify.max_user_watches=524288
+          sudo sysctl -w fs.inotify.max_user_instances=512
+      - name: make demo plus assertions
+        env:
+          DEMO_CLUSTER: e2e
+          KEEP: "0"
+        run: make e2e
+      - name: Keep diagnostics and the JUnit report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-diagnostics
+          path: _out/e2e/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  ci-gate:
+    name: ci-gate
+    # Runs even when a dependency failed or was cancelled, so the required
+    # check reports a result instead of staying pending.
+    if: always()
+    needs:
+      - workflow-lint
+      - secrets
+      - commit-lint
+      - yaml-lint
+      - docs
+      - catalog-lint
+      - shell-lint
+      - config
+      - ansible
+      - opentofu
+      - helm
+      - argocd-bootstrap
+      - policy-test
+      - policy-test-attestations
+      - dockerfile-lint
+      - trivy-config
+      - jenkins-lint
+      - e2e-kind
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require every job to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          failed="$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key): \(.value.result)"' <<<"${RESULTS}")"
+          if [ -n "${failed}" ]; then
+            echo "::error::Required jobs did not succeed:"
+            echo "${failed}"
+            exit 1
+          fi
+          echo "All required jobs succeeded."

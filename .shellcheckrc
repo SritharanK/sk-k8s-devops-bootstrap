@@ -1,0 +1,13 @@
+# shellcheck configuration, found from any working directory because
+# shellcheck searches upwards from each script.
+#
+# Follow sourced files, so the strict mode set by scripts/lib/common.sh is
+# visible to the checks (equivalent to shellcheck -x).
+external-sources=true
+# Resolve `# shellcheck source=scripts/lib/common.sh` from scripts up to three
+# directory levels below the repository root (hack/, hack/demo/,
+# scripts/lib/tests/, ...).
+source-path=SCRIPTDIR
+source-path=SCRIPTDIR/..
+source-path=SCRIPTDIR/../..
+source-path=SCRIPTDIR/../../..

@@ -1,0 +1,6 @@
+commonLabels:
+  team: platform
+  app.kubernetes.io/name: not-allowed
+podLabels:
+  tier: web
+  app.kubernetes.io/instance: not-allowed

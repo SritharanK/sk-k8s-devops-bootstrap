@@ -1,0 +1,37 @@
+# Pod Security Admission and Argo CD sync options of the environment
+# Namespaces. dev enforces baseline (audit and warn restricted); stage and prod
+# enforce restricted. enforce-version must be pinned (v1.<minor>), not latest.
+# Inside an expression, "a.b/c" is a JMESPath quoted identifier (the map key),
+# 'x' is a string literal.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  (labels):
+    (contains(['baseline', 'restricted'], "pod-security.kubernetes.io/enforce" || '')): true
+    (starts_with("pod-security.kubernetes.io/enforce-version" || '', 'v1.')): true
+  (annotations):
+    (contains("argocd.argoproj.io/sync-options" || '', 'Prune=false')): true
+    (contains("argocd.argoproj.io/sync-options" || '', 'Delete=false')): true
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stage
+  (labels):
+    pod-security.kubernetes.io/enforce: restricted
+    (starts_with("pod-security.kubernetes.io/enforce-version" || '', 'v1.')): true
+  (annotations):
+    (contains("argocd.argoproj.io/sync-options" || '', 'Prune=false')): true
+    (contains("argocd.argoproj.io/sync-options" || '', 'Delete=false')): true
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: prod
+  (labels):
+    pod-security.kubernetes.io/enforce: restricted
+    (starts_with("pod-security.kubernetes.io/enforce-version" || '', 'v1.')): true
+  (annotations):
+    (contains("argocd.argoproj.io/sync-options" || '', 'Prune=false')): true
+    (contains("argocd.argoproj.io/sync-options" || '', 'Delete=false')): true

@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/v0.2.15/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: applications-healthy
+spec:
+  description: >-
+    Every Argo CD Application is Synced and Healthy, the core toolchain Applications exist and each
+    configured environment has a hello-api Application.
+  concurrent: false
+  catch:
+    - script:
+        content: |
+          cols='NAME:.metadata.name,WAVE:.metadata.annotations.argocd\.argoproj\.io/sync-wave,SYNC:.status.sync.status'
+          cols="${cols},HEALTH:.status.health.status,OPERATION:.status.operationState.phase,MESSAGE:.status.operationState.message"
+          kubectl get applications.argoproj.io -n argocd \
+            -o custom-columns="${cols}"
+    - script:
+        content: |
+          kubectl get events -n argocd --field-selector involvedObject.kind=Application -o json |
+            jq -r '.items | sort_by(.lastTimestamp // .eventTime) | .[-40:][]
+              | "\(.lastTimestamp // .eventTime) \(.involvedObject.name): \(.message)"'
+  steps:
+    - name: all-applications-synced-and-healthy
+      try:
+        # Fails while any Application in argocd is not Healthy or not Synced;
+        # polls until none is left or the timeout ends.
+        - error:
+            timeout: 5m
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Application
+              metadata:
+                namespace: argocd
+              (status.health.status != 'Healthy' || status.sync.status != 'Synced'): true
+    - name: core-toolchain-applications-exist
+      try:
+        # Convergence is already proven above, so a missing one fails fast.
+        - assert:
+            timeout: 30s
+            file: toolchain-applications.yaml
+    - name: hello-api-application-per-environment
+      try:
+        - script:
+            content: bash ../lib/check-hello-api-apps.sh

@@ -1,0 +1,6 @@
+dependencies:
+- name: opencost
+  repository: oci://ghcr.io/opencost/charts
+  version: 2.5.34
+digest: sha256:87b51c59a67c77f07fcab7450225401f4776c945a430ab9398b8c751b0135da9
+generated: "2026-11-16T01:16:31.809692+01:00"

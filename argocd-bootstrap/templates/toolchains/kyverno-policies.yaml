@@ -1,0 +1,86 @@
+{{- /*
+Workload admission policies (wave 3, after the engine in wave 1). The
+PolicyExceptions land in the Kyverno namespace, the only namespace the engine
+accepts them from. Environments not hosted by this cluster are disabled.
+*/ -}}
+{{- $name := "kyverno-policies" }}
+{{- if (dig "kyverno-policies" "enabled" false .Values.toolchains) }}
+{{- $hosted := include "argocd-bootstrap.environments" . | fromJsonArray }}
+{{- $envs := dict }}
+{{- range $env := list "dev" "stage" "prod" }}
+{{- if has $env $hosted }}
+{{- $_ := set $envs $env (dict "enabled" true "namespace" (required (printf "namespaces.%s is required" $env) (index $.Values.namespaces $env))) }}
+{{- else }}
+{{- $_ := set $envs $env (dict "enabled" false) }}
+{{- end }}
+{{- end }}
+{{- $registry := trimSuffix "/" (required "platform.imageRegistry is required" .Values.platform.imageRegistry) }}
+{{- $verification := dict "registries" (list (printf "%s/*" $registry)) }}
+{{- /* Signing identity: the build-image workflow on main of the repository in
+git.repoURL, so only this owner and repository can sign admitted images.
+Accepted forms: https://github.com/<owner>/<repo>[.git],
+git@github.com:<owner>/<repo>[.git] and ssh://git@github.com/<owner>/<repo>[.git].
+An explicit toolchains.kyverno-policies.values.imageVerification.subjectRegExp
+wins. When verification is on and neither gives an identity, the render fails:
+the chart default would accept any owner's repository of the same name.
+Verification is on when the cluster file says so, otherwise in the reference
+profile, as values-reference.yaml of the chart sets it. A publicKey in the
+cluster file replaces the keyless identity, so no identity is needed then. */ -}}
+{{- $userValues := dig $name "values" dict .Values.toolchains }}
+{{- $userVerification := dig "imageVerification" dict $userValues }}
+{{- $url := trimSuffix "/" .Values.git.repoURL }}
+{{- $repoPath := "" }}
+{{- range $prefix := list "https://github.com/" "git@github.com:" "ssh://git@github.com/" }}
+{{- if hasPrefix $prefix $url }}
+{{- $repoPath = trimSuffix ".git" (trimPrefix $prefix $url) }}
+{{- end }}
+{{- end }}
+{{- if regexMatch "^[A-Za-z0-9_-]+/[A-Za-z0-9._-]+$" $repoPath }}
+{{- $_ := set $verification "subjectRegExp" (printf "^https://github\\.com/%s/\\.github/workflows/build-image\\.yml@refs/heads/main$" (regexQuoteMeta $repoPath)) }}
+{{- else }}
+{{- $verifyOn := dig "enabled" (eq .Values.cluster.profile "reference") $userVerification }}
+{{- if and $verifyOn (not (dig "subjectRegExp" "" $userVerification)) (not (dig "publicKey" "" $userVerification)) }}
+{{- fail (printf "kyverno-policies: image verification is enabled but no signing identity can be derived from git.repoURL %q (not a github.com repository); set toolchains.kyverno-policies.values.imageVerification.subjectRegExp in the cluster file" .Values.git.repoURL) }}
+{{- end }}
+{{- end }}
+{{- $values := dict
+      "environments" $envs
+      "allowedRegistries" (list (printf "%s/" $registry))
+      "imageVerification" $verification }}
+{{- $values = mustMergeOverwrite $values (dig $name "values" dict .Values.toolchains) }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . $name) }}
+  namespace: {{ .Values.namespaces.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/manifest-generate-paths: "."
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: {{ include "argocd-bootstrap.platformProject" . }}
+  source:
+    repoURL: {{ .Values.git.repoURL }}
+    targetRevision: {{ .Values.git.targetRevision }}
+    path: helmcharts/system-charts/{{ $name }}
+    helm:
+      releaseName: {{ $name }}
+      valueFiles: [values.yaml, values-{{ .Values.cluster.profile }}.yaml]
+      ignoreMissingValueFiles: true
+      valuesObject:
+        {{- toYaml $values | nindent 8 }}
+  destination:
+    {{- include "argocd-bootstrap.destination" . | nindent 4 }}
+    namespace: {{ .Values.namespaces.kyverno }}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    # The namespace belongs to the kyverno Application.
+    syncOptions: [CreateNamespace=false, ServerSideApply=true]
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

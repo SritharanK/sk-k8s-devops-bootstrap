@@ -1,0 +1,28 @@
+{{- /*
+Container defaults per environment namespace, so that pods without requests
+or limits still fit the quota. Kept on prune and on Application deletion.
+*/ -}}
+{{- if .Values.components.namespaces }}
+{{- $lr := .Values.limitRange }}
+{{- range $env := include "tenant.environments" . | fromJsonArray }}
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: tenant-limits
+  namespace: {{ include "tenant.namespace" (list $ $env) }}
+  labels:
+    {{- include "tenant.envLabels" (list $ $env) | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: {{ include "tenant.quantity" (required "limitRange.default.cpu is required" $lr.default.cpu) }}
+        memory: {{ include "tenant.quantity" (required "limitRange.default.memory is required" $lr.default.memory) }}
+      defaultRequest:
+        cpu: {{ include "tenant.quantity" (required "limitRange.defaultRequest.cpu is required" $lr.defaultRequest.cpu) }}
+        memory: {{ include "tenant.quantity" (required "limitRange.defaultRequest.memory is required" $lr.defaultRequest.memory) }}
+{{- end }}
+{{- end }}

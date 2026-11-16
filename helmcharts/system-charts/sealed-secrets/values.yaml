@@ -1,0 +1,53 @@
+sealed-secrets:
+  # kubeseal looks for a controller named sealed-secrets-controller in
+  # kube-system by default. The namespace comes from the release namespace.
+  fullnameOverride: sealed-secrets-controller
+
+  # Empty keeps the controller default: a new sealing key every 30 days
+  # (720h). Old keys stay active for decryption. "0" disables renewal.
+  keyrenewperiod: ""
+
+  # The chart derives GOMAXPROCS and GOMEMLIMIT from these limits.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  # Pod Security Standards "restricted". The container values match the
+  # upstream defaults and are pinned here so an upstream default change
+  # cannot weaken them. runAsNonRoot at pod level is not an upstream default.
+  # fsGroup (65534) and runAsUser (1001) stay at the upstream defaults.
+  podSecurityContext:
+    enabled: true
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    enabled: true
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  # Single replica: a minAvailable 1 budget would block node drains.
+  pdb:
+    create: false
+
+  # The public certificate is fetched through the API server service proxy
+  # (kubeseal --fetch-cert), so no Ingress is needed.
+  ingress:
+    enabled: false
+
+  # Monitoring integration is decided by the observability design.
+  metrics:
+    serviceMonitor:
+      enabled: false
+    prometheusRule:
+      enabled: false
+    dashboards:
+      create: false

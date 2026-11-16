@@ -1,0 +1,38 @@
+# longhorn lab profile: single-node RKE2 lab, one replica per volume.
+# Longhorn cannot run on kind: the V1 data engine needs open-iscsi with iscsid on
+# every node, which kind node containers do not provide.
+longhorn:
+  persistence:
+    # local-path is the default class in the lab. Set this to true when the lab runs
+    # Longhorn without local-path.
+    defaultClass: false
+    defaultClassReplicaCount: 1
+
+  defaultSettings:
+    defaultReplicaCount:
+      v1: "1"
+      v2: "1"
+    # With a single node the last replica is always on the drained node. Allow the
+    # drain once the workload is gone and the replica has stopped.
+    nodeDrainPolicy: allow-if-replica-is-stopped
+    # Share of node CPU requested by each instance-manager pod (upstream 12).
+    guaranteedInstanceManagerCPU:
+      v1: "5"
+      v2: "5"
+
+  csi:
+    attacherReplicaCount: 1
+    provisionerReplicaCount: 1
+    resizerReplicaCount: 1
+    snapshotterReplicaCount: 1
+
+  longhornUI:
+    replicas: 1
+
+  longhornManager:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi

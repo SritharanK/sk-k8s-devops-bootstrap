@@ -1,0 +1,69 @@
+# SLOs for the hello-api sample service, measured in the prod namespace.
+# Run ../generate.sh after every change and commit the regenerated rules/hello-api.yaml.
+#
+# Probe and metrics handlers are not user traffic and stay out of both SLIs.
+# The error side of the availability SLI falls back to 0 because the 5xx series
+# only exist after the first 5xx response. The "> 0" on the total side drops windows
+# without traffic, so they produce no sample instead of NaN, which would otherwise
+# poison the 30-day average for a full period.
+version: "prometheus/v1"
+service: "hello-api"
+labels:
+  owner: platform
+slos:
+  - name: "requests-availability"
+    objective: 99.5
+    description: "99.5% of hello-api requests in prod return a non-5xx response, over 30 days."
+    sli:
+      events:
+        error_query: |
+          (
+            sum(rate(http_requests_total{namespace="prod", service="hello-api", handler!~"/healthz|/readyz|/metrics", code=~"5.."}[{{.window}}]))
+            or on() vector(0)
+          )
+        total_query: |
+          sum(rate(http_requests_total{namespace="prod", service="hello-api", handler!~"/healthz|/readyz|/metrics"}[{{.window}}])) > 0
+    alerting:
+      name: HelloApiAvailabilityBudgetBurn
+      labels:
+        category: availability
+      annotations:
+        runbook_url: https://github.com/SritharanK/sk-k8s-devops-bootstrap/blob/main/docs/operations/troubleshooting.md
+      page_alert:
+        labels:
+          severity: critical
+        annotations:
+          summary: "hello-api in prod is burning its 30-day availability error budget fast (5xx responses)."
+      ticket_alert:
+        labels:
+          severity: warning
+        annotations:
+          summary: "hello-api in prod is burning its 30-day availability error budget steadily (5xx responses)."
+
+  - name: "requests-latency"
+    objective: 99
+    description: "99% of hello-api requests in prod complete within 250 ms, over 30 days."
+    sli:
+      events:
+        error_query: |
+          sum(rate(http_request_duration_seconds_count{namespace="prod", service="hello-api", handler!~"/healthz|/readyz|/metrics"}[{{.window}}]))
+          -
+          sum(rate(http_request_duration_seconds_bucket{namespace="prod", service="hello-api", handler!~"/healthz|/readyz|/metrics", le="0.25"}[{{.window}}]))
+        total_query: |
+          sum(rate(http_request_duration_seconds_count{namespace="prod", service="hello-api", handler!~"/healthz|/readyz|/metrics"}[{{.window}}])) > 0
+    alerting:
+      name: HelloApiLatencyBudgetBurn
+      labels:
+        category: latency
+      annotations:
+        runbook_url: https://github.com/SritharanK/sk-k8s-devops-bootstrap/blob/main/docs/operations/troubleshooting.md
+      page_alert:
+        labels:
+          severity: critical
+        annotations:
+          summary: "hello-api in prod is burning its 30-day latency error budget fast (requests slower than 250 ms)."
+      ticket_alert:
+        labels:
+          severity: warning
+        annotations:
+          summary: "hello-api in prod is burning its 30-day latency error budget steadily (requests slower than 250 ms)."

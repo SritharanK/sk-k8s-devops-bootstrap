@@ -1,0 +1,4 @@
+{{ ansible_managed | comment }}
+# NetworkManager must not manage the interfaces that the CNI creates (docs.rke2.io/known_issues).
+[keyfile]
+unmanaged-devices={{ rke2__nm_unmanaged_devices | join(';') }}

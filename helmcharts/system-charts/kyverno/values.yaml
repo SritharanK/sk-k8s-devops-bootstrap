@@ -1,0 +1,128 @@
+# Kyverno wrapper values shared by every profile. Profile deltas live in
+# values-lab.yaml and values-reference.yaml.
+# Upstream reference: https://artifacthub.io/packages/helm/kyverno/kyverno
+#
+# This chart installs the engine and its CRDs only. Policies are managed by the
+# kyverno-policies chart, which syncs in a later wave.
+
+---
+kyverno:
+  config:
+    # true adds helm.sh/resource-policy: keep to the Kyverno ConfigMap, which
+    # Argo CD then never prunes. false follows the Kyverno platform notes for
+    # Argo CD.
+    preserve: false
+
+    # Map shape: `webhooks` is a single webhook configuration whose
+    # namespaceSelector applies to every webhook Kyverno registers. The list
+    # shape is a per-webhook override keyed by webhook name, and broke the
+    # 3.3.x helper. The chart appends the Kyverno namespace
+    # itself because `excludeKyvernoNamespace` is true.
+    #
+    # Excluded: the Kubernetes system namespaces, and the Argo CD namespace, so
+    # that the controller that reconciles Kyverno can never be blocked by a
+    # Kyverno webhook that fails closed. The toolchain Application replaces this
+    # list with the namespace names of the cluster definition.
+    webhooks:
+      namespaceSelector:
+        matchExpressions:
+          - key: kubernetes.io/metadata.name
+            operator: NotIn
+            values:
+              - kube-system
+              - kube-public
+              - kube-node-lease
+              - argocd
+    excludeKyvernoNamespace: true
+
+  features:
+    # PolicyException objects are accepted only from the Kyverno namespace,
+    # which only platform administrators can write to.
+    policyExceptions:
+      enabled: true
+      namespace: kyverno
+
+  # Pod-level security context for every Kyverno workload and hook. The upstream
+  # chart sets a restrictive container securityContext but leaves the pod
+  # securityContext empty; this matches the restricted Pod Security Standard of
+  # the namespace at both levels.
+  admissionController:
+    replicas: 1
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    container:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 512Mi
+
+  backgroundController:
+    replicas: 1
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+
+  cleanupController:
+    replicas: 1
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+
+  reportsController:
+    replicas: 1
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    # The workload policies also match pods/ephemeralcontainers. Without read
+    # access to that subresource Kyverno marks them not ready for reporting
+    # (condition RBACPermissionsGranted). The chart grants get, list, watch.
+    rbac:
+      clusterRole:
+        extraResources:
+          - apiGroups: [""]
+            resources: [pods/ephemeralcontainers]
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+  # Helm hook Jobs (pre-install policy check, post-upgrade migration, pre-delete
+  # webhook cleanup and scale to zero).
+  upgrade:
+    legacyPolicyCheck:
+      podSecurityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+  crds:
+    migration:
+      podSecurityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+  webhooksCleanup:
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault

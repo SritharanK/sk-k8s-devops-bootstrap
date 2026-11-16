@@ -1,0 +1,15 @@
+apiVersion: v2
+name: tracing
+description: Optional trace backend for the platform. Grafana Tempo in single binary mode with OTLP gRPC and HTTP receivers.
+type: application
+version: 0.1.0
+appVersion: "3.1.1"
+kubeVersion: ">=1.35.0-0"
+home: https://grafana.com/oss/tempo/
+sources:
+  - https://github.com/grafana/tempo
+  - https://github.com/grafana-community/helm-charts/tree/main/charts/tempo
+dependencies:
+  - name: tempo
+    version: 3.2.1
+    repository: oci://ghcr.io/grafana-community/helm-charts

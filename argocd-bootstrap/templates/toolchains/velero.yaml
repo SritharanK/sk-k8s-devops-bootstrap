@@ -1,0 +1,60 @@
+{{- /*
+  velero: Velero with Kopia file-system backup.
+  Privileged namespace: the node agent mounts the kubelet pod directory through hostPath.
+  Optional operations component, off unless toolchains.velero.enabled is true in
+  clusters/<cluster>/cluster.yaml. toolchains.velero.values is passed as helm.valuesObject.
+  Sync wave 4 per the toolchain convention.
+*/}}
+{{- if (dig "velero" "enabled" false .Values.toolchains) }}
+{{- $values := dig "velero" "values" (dict) .Values.toolchains }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . "velero") }}
+  namespace: {{ .Values.namespaces.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/manifest-generate-paths: "."
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ include "argocd-bootstrap.platformProject" . }}
+  source:
+    repoURL: {{ .Values.git.repoURL }}
+    targetRevision: {{ .Values.git.targetRevision }}
+    path: helmcharts/system-charts/velero
+    helm:
+      releaseName: velero
+      valueFiles:
+        - values.yaml
+        - values-{{ .Values.cluster.profile }}.yaml
+      ignoreMissingValueFiles: true
+      {{- with $values }}
+      valuesObject:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  destination:
+    {{- include "argocd-bootstrap.destination" . | nindent 4 }}
+    namespace: {{ dig "velero" "velero" .Values.namespaces }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      # ServiceMonitors and other CRs whose CRDs come from another Application.
+      - SkipDryRunOnMissingResource=true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: privileged
+        pod-security.kubernetes.io/enforce-version: v{{ .Values.cluster.kubernetesMinor }}
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/audit-version: v{{ .Values.cluster.kubernetesMinor }}
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

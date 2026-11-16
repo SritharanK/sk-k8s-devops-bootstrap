@@ -1,0 +1,342 @@
+# Accepted Trivy findings (make trivy-config, build-image.yml).
+#
+# Every entry needs an ID, the narrowest paths or packages it applies to, a
+# statement with the reason, and an expiry date no more than 90 days out.
+# An expired entry stops matching, so the finding fails CI again and is
+# reviewed instead of being accepted forever. Format:
+# https://trivy.dev/latest/docs/configuration/filtering/#trivyignoreyaml
+#
+# Example:
+#   misconfigurations:
+#     - id: KSV-0014
+#       paths:
+#         - "lab/apps/example.yaml"
+#       statement: Upstream chart cannot run with a read-only root file system yet.
+#       expired_at: 2027-02-01
+# Paths are relative to the render output (make render): <profile>/apps/<application>.yaml
+# and <profile>/charts/helmcharts__system-charts__<chart>.yaml.
+misconfigurations:
+  # Optional operations components (owner: operations). Accepted from
+  # upstream behaviour that the component needs to do its job.
+  - id: KSV-0009
+    paths:
+      - '*/charts/helmcharts__system-charts__monitoring.yaml'
+      - '*/apps/monitoring.yaml'
+    statement: "node-exporter needs the host network namespace to report node network metrics."
+    expired_at: 2027-02-13
+  - id: KSV-0010
+    paths:
+      - '*/charts/helmcharts__system-charts__monitoring.yaml'
+      - '*/apps/monitoring.yaml'
+    statement: "node-exporter reads host process statistics through hostPID."
+    expired_at: 2027-02-13
+  - id: KSV-0014
+    paths:
+      - '*/charts/helmcharts__system-charts__falco.yaml'
+      - '*/apps/falco.yaml'
+      - '*/charts/helmcharts__system-charts__longhorn.yaml'
+      - '*/apps/longhorn.yaml'
+      - '*/charts/helmcharts__system-charts__opencost.yaml'
+      - '*/apps/opencost.yaml'
+    statement: >-
+      Upstream images write to their root file system: Falco and Longhorn
+      privileged agents, the OpenCost UI entrypoint rewrites files under /var/www.
+    expired_at: 2027-02-13
+  - id: KSV-0017
+    paths:
+      - '*/charts/helmcharts__system-charts__falco.yaml'
+      - '*/apps/falco.yaml'
+      - '*/charts/helmcharts__system-charts__longhorn.yaml'
+      - '*/apps/longhorn.yaml'
+    statement: >-
+      Falco loads the modern eBPF probe and Longhorn manages block devices on the
+      node; both require privileged containers (namespaces enforce PSS
+      privileged).
+    expired_at: 2027-02-13
+  - id: KSV-0041
+    paths:
+      - '*/charts/helmcharts__system-charts__argo-rollouts.yaml'
+      - '*/apps/argo-rollouts.yaml'
+      - '*/charts/helmcharts__system-charts__cloudnative-pg.yaml'
+      - '*/apps/cloudnative-pg.yaml'
+      - '*/charts/helmcharts__system-charts__keda.yaml'
+      - '*/apps/keda.yaml'
+      - '*/charts/helmcharts__system-charts__longhorn.yaml'
+      - '*/apps/longhorn.yaml'
+      - '*/charts/helmcharts__system-charts__monitoring.yaml'
+      - '*/apps/monitoring.yaml'
+      - '*/charts/helmcharts__system-charts__trivy-operator.yaml'
+      - '*/apps/trivy-operator.yaml'
+    statement: >-
+      Operators that read or create Secrets as part of their function (TLS,
+      credentials, scrape auth, scan credentials).
+    expired_at: 2027-02-13
+  - id: KSV-0044
+    paths:
+      - '*/charts/helmcharts__system-charts__velero.yaml'
+      - '*/apps/velero.yaml'
+    statement: >-
+      Velero must read and restore every resource kind; upstream binds the server
+      to cluster-admin.
+    expired_at: 2027-02-13
+  - id: KSV-0045
+    paths:
+      - '*/charts/helmcharts__system-charts__longhorn.yaml'
+      - '*/apps/longhorn.yaml'
+    statement: >-
+      Upstream Longhorn ClusterRole uses wildcard verbs on its own API group and
+      on storage resources.
+    expired_at: 2027-02-13
+  - id: KSV-0046
+    paths:
+      - '*/charts/helmcharts__system-charts__keda.yaml'
+      - '*/apps/keda.yaml'
+    statement: "KEDA scales arbitrary workloads through the scale subresource of any kind."
+    expired_at: 2027-02-13
+  - id: KSV-0047
+    paths:
+      - '*/charts/helmcharts__system-charts__trivy-operator.yaml'
+      - '*/apps/trivy-operator.yaml'
+    statement: "Trivy Operator reads node data through nodes/proxy for the infra assessment."
+    expired_at: 2027-02-13
+  - id: KSV-0050
+    paths:
+      - '*/charts/helmcharts__system-charts__longhorn.yaml'
+      - '*/apps/longhorn.yaml'
+    statement: "Longhorn manages RBAC for its own components at runtime."
+    expired_at: 2027-02-13
+  - id: KSV-0053
+    paths:
+      - '*/charts/helmcharts__system-charts__cloudnative-pg.yaml'
+      - '*/apps/cloudnative-pg.yaml'
+    statement: >-
+      The CloudNativePG operator executes commands in PostgreSQL instance pods
+      (switchover, backup).
+    expired_at: 2027-02-13
+  - id: KSV-0056
+    paths:
+      - '*/charts/helmcharts__system-charts__argo-rollouts.yaml'
+      - '*/apps/argo-rollouts.yaml'
+      - '*/charts/helmcharts__system-charts__cloudnative-pg.yaml'
+      - '*/apps/cloudnative-pg.yaml'
+      - '*/charts/helmcharts__system-charts__longhorn.yaml'
+      - '*/apps/longhorn.yaml'
+      - '*/charts/helmcharts__system-charts__monitoring.yaml'
+      - '*/apps/monitoring.yaml'
+    statement: >-
+      Controllers that manage Services, Endpoints or routes they own (canary
+      routing, database services, scrape targets).
+    expired_at: 2027-02-13
+  - id: KSV-0109
+    paths:
+      - '*/charts/helmcharts__system-charts__longhorn.yaml'
+      - '*/apps/longhorn.yaml'
+      - '*/charts/helmcharts__system-charts__trivy-operator.yaml'
+      - '*/apps/trivy-operator.yaml'
+    statement: >-
+      False positive: ConfigMaps carry setting names (for example backup
+      credential secret names), not secret values.
+    expired_at: 2027-02-13
+  - id: KSV-0112
+    paths:
+      - '*/charts/helmcharts__system-charts__velero.yaml'
+      - '*/apps/velero.yaml'
+    statement: "Velero restores every namespaced kind in the namespaces it restores."
+    expired_at: 2027-02-13
+  - id: KSV-0114
+    paths:
+      - '*/charts/helmcharts__system-charts__cloudnative-pg.yaml'
+      - '*/apps/cloudnative-pg.yaml'
+      - '*/charts/helmcharts__system-charts__keda.yaml'
+      - '*/apps/keda.yaml'
+      - '*/charts/helmcharts__system-charts__longhorn.yaml'
+      - '*/apps/longhorn.yaml'
+    statement: "Operators that patch caBundle on their own webhook configurations."
+    expired_at: 2027-02-13
+  - id: KSV-0118
+    paths:
+      - '*/charts/helmcharts__system-charts__falco.yaml'
+      - '*/apps/falco.yaml'
+      - '*/charts/helmcharts__system-charts__longhorn.yaml'
+      - '*/apps/longhorn.yaml'
+    statement: "Privileged node agents run as root by design; see KSV-0017."
+    expired_at: 2027-02-13
+  - id: KSV-0121
+    paths:
+      - '*/charts/helmcharts__system-charts__falco.yaml'
+      - '*/apps/falco.yaml'
+      - '*/charts/helmcharts__system-charts__monitoring.yaml'
+      - '*/apps/monitoring.yaml'
+    statement: >-
+      Falco and node-exporter mount host paths (/proc, /sys, /, /dev) read-only to
+      observe the node.
+    expired_at: 2027-02-13
+  - id: KSV-0014
+    paths:
+      - '*/charts/helmcharts__system-charts__velero.yaml'
+      - '*/apps/velero.yaml'
+    statement: >-
+      The Velero node agent keeps Kopia caches and temporary files on its root
+      file system; the chart has no writable mounts for a read-only root there
+      (the server runs read-only).
+    expired_at: 2027-02-13
+  # Core platform controllers. Each entry covers one rule in one component;
+  # the permission is what the controller needs to do its job. Workload
+  # security contexts are fixed in values, not accepted here.
+  - id: KSV-0041
+    paths:
+      - '*/apps/argo-cd.yaml'
+      - '*/charts/helmcharts__system-charts__argo-cd.yaml'
+    statement: "The notifications controller lists and watches Secrets for its notification credentials (upstream ClusterRole)."
+    expired_at: 2027-02-13
+  - id: KSV-0041
+    paths:
+      - '*/apps/cert-manager.yaml'
+      - '*/charts/helmcharts__system-charts__cert-manager.yaml'
+    statement: "cert-manager stores issued certificates and ACME account keys in Secrets; the cainjector reads CA data from them."
+    expired_at: 2027-02-13
+  - id: KSV-0041
+    paths:
+      - '*/apps/envoy-gateway.yaml'
+      - '*/charts/helmcharts__system-charts__envoy-gateway.yaml'
+    statement: "Envoy Gateway reads the TLS Secrets referenced by Gateway listeners and writes its own control plane certificates."
+    expired_at: 2027-02-13
+  - id: KSV-0041
+    paths:
+      - '*/apps/sealed-secrets.yaml'
+      - '*/charts/helmcharts__system-charts__sealed-secrets.yaml'
+    statement: "The Sealed Secrets controller creates and updates the Secrets it unseals; that is its only function."
+    expired_at: 2027-02-13
+  - id: KSV-0041
+    paths:
+      - '*/apps/external-secrets.yaml'
+      - '*/charts/helmcharts__system-charts__external-secrets.yaml'
+    statement: "External Secrets creates and updates the Secrets it syncs; the cert controller rotates its webhook certificate Secret."
+    expired_at: 2027-02-13
+  - id: KSV-0044
+    paths:
+      - '*/apps/argo-cd.yaml'
+      - '*/charts/helmcharts__system-charts__argo-cd.yaml'
+    statement: "The application controller ClusterRole is cluster-admin equivalent so it can apply every kind; AppProjects limit each Application."
+    expired_at: 2027-02-13
+  - id: KSV-0046
+    paths:
+      - '*/apps/argo-cd.yaml'
+      - '*/charts/helmcharts__system-charts__argo-cd.yaml'
+    statement: "The application controller and the API server act on every kind Argo CD deploys; argocd-rbac-cm and AppProjects restrict users."
+    expired_at: 2027-02-13
+  - id: KSV-0046
+    paths:
+      - '*/apps/kyverno.yaml'
+      - '*/charts/helmcharts__system-charts__kyverno.yaml'
+    statement: "The post-upgrade migration Job rewrites stored Kyverno and policies.kyverno.io objects of every kind after a CRD version change."
+    expired_at: 2027-02-13
+  - id: KSV-0053
+    paths:
+      - '*/apps/misc.yaml'
+      - '*/charts/helmcharts__system-charts__misc.yaml'
+    statement: "The deployer Role grants pods/exec and pods/portforward only in the namespaces listed in rbac.deployer.execEnvironments (dev by default)."
+    expired_at: 2027-02-13
+  - id: KSV-0056
+    paths:
+      - '*/apps/cert-manager.yaml'
+      - '*/charts/helmcharts__system-charts__cert-manager.yaml'
+    statement: "The ACME HTTP-01 solver creates a Service and a route for every challenge."
+    expired_at: 2027-02-13
+  - id: KSV-0056
+    paths:
+      - '*/apps/envoy-gateway.yaml'
+      - '*/charts/helmcharts__system-charts__envoy-gateway.yaml'
+    statement: "The infrastructure manager creates the Envoy proxy Service of every Gateway in its own namespace."
+    expired_at: 2027-02-13
+  - id: KSV-0056
+    paths:
+      - '*/apps/kyverno.yaml'
+      - '*/charts/helmcharts__system-charts__kyverno.yaml'
+    statement: "Upstream core role of the background controller, which applies generate and mutate-existing policies to namespaced resources."
+    expired_at: 2027-02-13
+  - id: KSV-0056
+    paths:
+      - '*/apps/nfs-subdir-external-provisioner.yaml'
+      - '*/charts/helmcharts__system-charts__nfs-subdir-external-provisioner.yaml'
+    statement: "The provisioner takes its leader election lock on an Endpoints object in its own namespace (upstream Role)."
+    expired_at: 2027-02-13
+  - id: KSV-0109
+    paths:
+      - '*/apps/argo-cd.yaml'
+      - '*/charts/helmcharts__system-charts__argo-cd.yaml'
+    statement: "False positive: oidc.config.clientSecret is the reference $argocd-oidc:clientSecret to a Secret, not a secret value."
+    expired_at: 2027-02-13
+  - id: KSV-0114
+    paths:
+      - '*/apps/cert-manager.yaml'
+      - '*/charts/helmcharts__system-charts__cert-manager.yaml'
+    statement: "The cainjector writes caBundle into webhook configurations and CRDs that request injection."
+    expired_at: 2027-02-13
+  - id: KSV-0114
+    paths:
+      - '*/apps/envoy-gateway.yaml'
+      - '*/charts/helmcharts__system-charts__envoy-gateway.yaml'
+    statement: "The certgen Job patches caBundle on the Envoy Gateway webhook configuration it ships."
+    expired_at: 2027-02-13
+  - id: KSV-0114
+    paths:
+      - '*/apps/kyverno.yaml'
+      - '*/charts/helmcharts__system-charts__kyverno.yaml'
+    statement: "The admission and cleanup controllers register and update their own webhook configurations at runtime."
+    expired_at: 2027-02-13
+  - id: KSV-0114
+    paths:
+      - '*/apps/external-secrets.yaml'
+      - '*/charts/helmcharts__system-charts__external-secrets.yaml'
+    statement: "The cert controller patches caBundle on the External Secrets webhook configurations."
+    expired_at: 2027-02-13
+  # Kargo (optional promotion orchestration, upstream chart 1.12.5). RBAC as
+  # the upstream chart ships it; reviewed against its use below.
+  - id: KSV-0041
+    paths:
+      - '*/apps/kargo.yaml'
+      - '*/charts/helmcharts__system-charts__kargo.yaml'
+    statement: >-
+      Kargo manages repository credentials as Secrets in Project namespaces and
+      the shared namespace: the controller reads them for Git and registry
+      access, the API and the project-admin role create them from the UI, and
+      the management controller and webhooks set up per-Project RBAC over them.
+    expired_at: 2027-02-13
+  - id: KSV-0045
+    paths:
+      - '*/apps/kargo.yaml'
+      - '*/charts/helmcharts__system-charts__kargo.yaml'
+    statement: >-
+      Kargo's namespaced roles grant all verbs on its own kinds (Stages,
+      Warehouses, Freight, Promotions) in the shared and system namespaces and
+      in Project namespaces; no wildcard on resources or API groups.
+    expired_at: 2027-02-13
+  - id: KSV-0050
+    paths:
+      - '*/apps/kargo.yaml'
+      - '*/charts/helmcharts__system-charts__kargo.yaml'
+    statement: >-
+      The management controller and the webhooks server create the default
+      Roles and RoleBindings of every Project namespace (kargo-admin,
+      kargo-promoter, kargo-viewer), and project admins bind users to them.
+    expired_at: 2027-02-13
+  - id: KSV-0109
+    paths:
+      - '*/apps/kargo.yaml'
+      - '*/charts/helmcharts__system-charts__kargo.yaml'
+    statement: "SECRET_MANAGEMENT_ENABLED in ConfigMap kargo-api is a feature switch, not a secret."
+    expired_at: 2027-02-13
+  - id: KSV-0118
+    paths:
+      - '*/apps/kargo.yaml'
+      - '*/charts/helmcharts__system-charts__kargo.yaml'
+    statement: >-
+      The upstream chart has no pod-level securityContext; the wrapper sets
+      runAsNonRoot, no privilege escalation, dropped capabilities, RuntimeDefault
+      seccomp and a read-only root file system on every container, which meets
+      Pod Security restricted (tests/integration/kargo).
+    expired_at: 2027-02-13
+vulnerabilities: []
+secrets: []
+licenses: []

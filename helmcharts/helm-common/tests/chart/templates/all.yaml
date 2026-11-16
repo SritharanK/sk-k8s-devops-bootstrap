@@ -1,0 +1,4 @@
+{{- /* Renders every object through common.all. Off by default so the per-kind files are not duplicated; the all_test suite turns it on. */ -}}
+{{- if index .Values "renderAll" }}
+{{ include "common.all" . }}
+{{- end }}

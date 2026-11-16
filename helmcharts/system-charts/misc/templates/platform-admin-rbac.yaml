@@ -1,0 +1,123 @@
+{{- /*
+Platform admin RBAC (groups.admins).
+
+Break-glass model: there is no standing cluster-admin binding in this chart.
+Break-glass access uses the local admin kubeconfig on an RKE2 server node
+(/etc/rancher/rke2/rke2.yaml), and the API server audit log records its use.
+That relies on the audit policy set by the provisioning layer: the RKE2
+default policy logs nothing. Group names come from OIDC tokens, so Group
+subjects require API server OIDC, which the provisioning layer configures.
+
+Namespace scope: the built-in "admin" ClusterRole through a RoleBinding in
+each environment namespace (full control there, including Secrets and RBAC).
+Cluster scope (rbac.clusterReader.enabled): read-mostly. Cluster-wide "view"
+(no Secrets) plus "platform-cluster-reader" for cluster-scoped and platform
+kinds; node maintenance (cordon, drain) is the only write.
+*/}}
+{{- $admins := required "groups.admins is required" .Values.groups.admins }}
+{{- range $env, $ns := .Values.environments }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: platform-admins
+  namespace: {{ $ns }}
+  labels:
+    {{- include "misc.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: {{ $admins | quote }}
+{{- end }}
+{{- if .Values.rbac.clusterReader.enabled }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: platform-admins-view
+  labels:
+    {{- include "misc.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: {{ $admins | quote }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: platform-cluster-reader
+  labels:
+    {{- include "misc.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [nodes, namespaces, persistentvolumes]
+    verbs: [get, list, watch]
+  - apiGroups: [storage.k8s.io]
+    resources: [storageclasses, csidrivers, csinodes, volumeattachments]
+    verbs: [get, list, watch]
+  - apiGroups: [apiextensions.k8s.io]
+    resources: [customresourcedefinitions]
+    verbs: [get, list, watch]
+  - apiGroups: [scheduling.k8s.io]
+    resources: [priorityclasses]
+    verbs: [get, list, watch]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterroles, clusterrolebindings, roles, rolebindings]
+    verbs: [get, list, watch]
+  - apiGroups: [admissionregistration.k8s.io]
+    resources:
+      - validatingwebhookconfigurations
+      - mutatingwebhookconfigurations
+      - validatingadmissionpolicies
+      - validatingadmissionpolicybindings
+    verbs: [get, list, watch]
+  - apiGroups: [apiregistration.k8s.io]
+    resources: [apiservices]
+    verbs: [get, list, watch]
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [gatewayclasses, gateways]
+    verbs: [get, list, watch]
+  - apiGroups: [cert-manager.io]
+    resources: [clusterissuers, issuers, certificates]
+    verbs: [get, list, watch]
+  - apiGroups: [policies.kyverno.io]
+    resources: [validatingpolicies, imagevalidatingpolicies, policyexceptions]
+    verbs: [get, list, watch]
+  - apiGroups: [wgpolicyk8s.io, openreports.io]
+    resources: [policyreports, clusterpolicyreports]
+    verbs: [get, list, watch]
+  - apiGroups: [argoproj.io]
+    resources: [applications, appprojects]
+    verbs: [get, list, watch]
+  # Node maintenance. patch on nodes covers cordon and uncordon, and also allows
+  # label and taint changes. Eviction honours PodDisruptionBudgets.
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [patch]
+  - apiGroups: [""]
+    resources: [pods/eviction]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: platform-admins-cluster-reader
+  labels:
+    {{- include "misc.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: platform-cluster-reader
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: {{ $admins | quote }}
+{{- end }}

@@ -1,0 +1,27 @@
+---
+# Upper bound for all agent pods together. The pod count matches the
+# controller's container cap (install_jenkins_k8s_container_cap, default 10). One
+# build pod requests 1.75 CPU, about 3.3 GiB memory and 7.4 GiB local
+# storage, and is limited to 7.25 CPU, about 12 GiB memory and 37 GiB local
+# storage
+# (see ci/jenkins/pod-templates/build.yaml). Size these values to the nodes
+# that run agents; when the quota is exhausted, new agent pods stay pending
+# until running builds finish.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: jenkins-agents
+  namespace: jenkins-agents
+spec:
+  hard:
+    pods: "10"
+    requests.cpu: "20"
+    requests.memory: 40Gi
+    requests.ephemeral-storage: 100Gi
+    limits.cpu: "80"
+    limits.memory: 128Gi
+    limits.ephemeral-storage: 500Gi
+    # Agents need none of these objects; the controller cannot create them
+    # either, this only makes the intent explicit.
+    services: "0"
+    persistentvolumeclaims: "0"

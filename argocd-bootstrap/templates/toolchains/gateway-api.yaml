@@ -1,0 +1,47 @@
+{{- /*
+Gateway API standard-channel CRDs and Envoy Gateway CRDs (wave 0).
+CRD-only Application: Prune=false and Delete=false at Application level, so
+neither a sync nor removing the Application deletes a CRD and, with it,
+every Gateway and route in the cluster.
+*/ -}}
+{{- $name := "gateway-api" }}
+{{- if (dig "gateway-api" "enabled" false .Values.toolchains) }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . $name) }}
+  namespace: {{ .Values.namespaces.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/manifest-generate-paths: "."
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: {{ include "argocd-bootstrap.platformProject" . }}
+  source:
+    repoURL: {{ .Values.git.repoURL }}
+    targetRevision: {{ .Values.git.targetRevision }}
+    path: helmcharts/system-charts/{{ $name }}
+    helm:
+      releaseName: {{ $name }}
+      valueFiles: [values.yaml, values-{{ .Values.cluster.profile }}.yaml]
+      ignoreMissingValueFiles: true
+      {{- with (dig $name "values" dict .Values.toolchains) }}
+      valuesObject:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  destination:
+    {{- include "argocd-bootstrap.destination" . | nindent 4 }}
+    namespace: {{ dig "gateway" "envoy-gateway-system" .Values.namespaces }}
+  syncPolicy:
+    automated: {prune: false, selfHeal: true}
+    syncOptions:
+      - ServerSideApply=true
+      - Prune=false
+      - Delete=false
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

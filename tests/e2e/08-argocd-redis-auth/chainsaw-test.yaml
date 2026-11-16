@@ -1,0 +1,79 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/v0.2.15/.schemas/json/test-chainsaw-v1alpha1.json
+#
+# Two protections are asserted by lib/redis-auth.sh: the NetworkPolicy in
+# argocd drops connections from the test namespace (timeout), and Redis itself
+# answers NOAUTH to an unauthenticated client inside the Redis pod.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: argocd-redis-auth
+spec:
+  description: Argo CD Redis is unreachable from another namespace and requires a password even from inside its own pod.
+  concurrent: false
+  catch:
+    - describe:
+        apiVersion: v1
+        kind: Pod
+        name: redis-client
+    - script:
+        content: |
+          kubectl get services,networkpolicies -n argocd
+  steps:
+    - name: start-client-pod
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: redis-client
+                labels:
+                  app.kubernetes.io/name: redis-client
+                  app.kubernetes.io/part-of: lab-e2e
+              spec:
+                automountServiceAccountToken: false
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 65532
+                  runAsGroup: 65532
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: redis
+                    image: docker.io/library/redis:8.2.11-alpine@sha256:da23c2478319ceb4903857d77a2fd7aa5137d9e9d4c8165dafbacedac6403e95
+                    imagePullPolicy: IfNotPresent
+                    command:
+                      - sleep
+                      - "3600"
+                    securityContext:
+                      runAsNonRoot: true
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                        drop:
+                          - ALL
+                      seccompProfile:
+                        type: RuntimeDefault
+                    resources:
+                      requests:
+                        cpu: 10m
+                        memory: 16Mi
+                      limits:
+                        cpu: 100m
+                        memory: 64Mi
+        - assert:
+            timeout: 3m
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: redis-client
+              status:
+                phase: Running
+                (conditions[?type == 'Ready']):
+                  - status: 'True'
+    - name: network-isolation-and-password
+      try:
+        - script:
+            timeout: 2m
+            content: bash ../lib/redis-auth.sh redis-client

@@ -1,0 +1,6 @@
+# Kargo on in one of two clusters.
+---
+cluster:
+  name: reference
+toolchains:
+  kargo: {enabled: true}

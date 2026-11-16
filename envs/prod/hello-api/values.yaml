@@ -1,0 +1,9 @@
+# hello-api in prod. Applied after helmcharts/app-charts/hello-api/values.yaml.
+# Holds only what differs per environment. image.tag and
+# image.digest change only through a reviewed promotion pull request from
+# stage (.github/workflows/promote.yml). Merges are subject to CODEOWNERS on
+# envs/prod/ and to the prod sync window of the reference profile.
+---
+image:
+  tag: "0.1.0"
+  digest: ""

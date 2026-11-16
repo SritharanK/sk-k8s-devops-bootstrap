@@ -1,0 +1,12 @@
+# Reference profile (values-reference.yaml), applied after values.yaml.
+# Only deltas from values.yaml: production-sized quota for the prod namespace.
+# Keys not listed here keep their values.yaml defaults (Helm merges maps).
+---
+resourceQuota:
+  prod:
+    hard:
+      requests.cpu: "16"
+      requests.memory: 32Gi
+      limits.cpu: "32"
+      limits.memory: 64Gi
+      pods: "100"

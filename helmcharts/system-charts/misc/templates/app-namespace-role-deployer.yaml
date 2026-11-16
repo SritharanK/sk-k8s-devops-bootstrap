@@ -1,0 +1,96 @@
+{{- /*
+Deployers (groups.deployers). Argo CD applies manifests, so deployers operate
+workloads rather than apply them: read workload state, restart, promote or abort
+a rollout, delete a pod, run a Job from a CronJob. No rule grants Secrets.
+
+Limits of this model: patch on a workload and create on Jobs can change or run a
+pod spec, and such a pod can mount any Secret or use any ServiceAccount in the
+namespace. Argo CD self-heal reverts workload drift, Pod Security Admission and
+the quota bound what runs, and the audit log records who did it.
+*/}}
+{{- $deployers := required "groups.deployers is required" .Values.groups.deployers }}
+{{- range $env, $ns := .Values.environments }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deployer
+  namespace: {{ $ns }}
+  labels:
+    {{- include "misc.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - services
+      - endpoints
+      - configmaps
+      - events
+      - persistentvolumeclaims
+      - serviceaccounts
+    verbs: [get, list, watch]
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets, daemonsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [httproutes]
+    verbs: [get, list, watch]
+  - apiGroups: [argoproj.io]
+    resources: [rollouts]
+    verbs: [get, list, watch]
+  # kubectl rollout restart
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [patch]
+  # kubectl argo rollouts promote and abort patch the status subresource first
+  - apiGroups: [argoproj.io]
+    resources: [rollouts, rollouts/status]
+    verbs: [patch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [delete]
+  # kubectl create job --from=cronjob/<name>
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [create]
+  {{- if has $env $.Values.rbac.deployer.execEnvironments }}
+  # SPDY clients connect with POST (create). WebSocket clients connect with GET
+  # (get) and, from Kubernetes 1.35, are also checked for create
+  # (AuthorizePodWebsocketUpgradeCreatePermission), so both verbs are granted.
+  - apiGroups: [""]
+    resources: [pods/exec, pods/portforward]
+    verbs: [get, create]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployers
+  namespace: {{ $ns }}
+  labels:
+    {{- include "misc.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: deployer
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: {{ $deployers | quote }}
+{{- end }}

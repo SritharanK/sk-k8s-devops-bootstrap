@@ -1,0 +1,32 @@
+# Installs tools pinned in mise.toml, so a CI job runs the same versions as a
+# local `make` target. The mise binary itself is pinned by version and by the
+# SHA-256 of the linux-x64 release binary (from SHASUMS256.txt of that
+# release); every job in this repository runs on ubuntu-24.04 x64.
+name: Set up pinned tools
+description: Install tools from mise.toml with a pinned and checksum-verified mise.
+
+inputs:
+  tools:
+    description: >-
+      Space-separated tool names exactly as written in mise.toml, for example
+      "aqua:helm/helm aqua:mikefarah/yq". Empty installs every tool.
+    required: false
+    default: ""
+  cache:
+    description: >-
+      Cache installed tools between runs. Set to "false" in workflows that
+      publish artifacts, to rule out cache poisoning.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install mise and the requested tools
+      uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
+      with:
+        # renovate: datasource=github-releases depName=jdx/mise
+        version: 2026.11.3
+        sha256: c2f7e814cb39f60b7f67a0ff36cb805e94128bf2dff09d175309d0f095b8cc3b
+        install_args: ${{ inputs.tools }}
+        cache: ${{ inputs.cache }}

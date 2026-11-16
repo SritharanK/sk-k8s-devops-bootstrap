@@ -1,0 +1,132 @@
+{{ ansible_managed | comment }}
+# RKE2 {{ rke2__node_type }} configuration. Reference: https://docs.rke2.io/reference/server_config
+# String values are rendered as JSON strings, which are valid YAML scalars for any content.
+{% set is_server = rke2__node_type == 'server' %}
+{% set has_agents = rke2__agents | length > 0 %}
+{% set node_taints = rke2_node_taints | list %}
+{% if is_server and rke2_server_taint | bool and has_agents %}
+{%   set node_taints = node_taints + ['CriticalAddonsOnly=true:NoExecute'] %}
+{% endif %}
+{% if not rke2__is_bootstrap | bool %}
+server: {{ rke2__server_url | to_json }}
+{% endif %}
+{% if is_server %}
+token: {{ rke2_token | string | to_json }}
+{%   if rke2_agent_token | string | length > 0 %}
+agent-token: {{ rke2_agent_token | string | to_json }}
+{%   endif %}
+{% else %}
+token: {{ (rke2_agent_token if rke2_agent_token | string | length > 0 else rke2_token) | string | to_json }}
+{% endif %}
+data-dir: {{ rke2_data_dir | to_json }}
+{% if rke2_node_name | length > 0 %}
+node-name: {{ rke2_node_name | to_json }}
+{% endif %}
+{% if rke2__node_ip | length > 0 %}
+node-ip: {{ rke2__node_ip | to_json }}
+{% endif %}
+{% if rke2_node_external_ip | length > 0 %}
+node-external-ip: {{ rke2_node_external_ip | to_json }}
+{% endif %}
+{% if rke2_node_labels | length > 0 %}
+node-label:
+{%   for label in rke2_node_labels %}
+  - {{ label | to_json }}
+{%   endfor %}
+{% endif %}
+{% if node_taints | length > 0 %}
+node-taint:
+{%   for taint in node_taints %}
+  - {{ taint | to_json }}
+{%   endfor %}
+{% endif %}
+{% if rke2_kubelet_args | length > 0 %}
+kubelet-arg:
+{%   for arg in rke2_kubelet_args %}
+  - {{ arg | to_json }}
+{%   endfor %}
+{% endif %}
+{% if rke2__selinux_enabled | bool %}
+selinux: true
+{% endif %}
+{% if rke2_cis_profile | bool %}
+profile: "cis"
+{% endif %}
+{% if is_server %}
+{%   set tls_sans = ([rke2_registration_address, rke2_api_endpoint, rke2__node_ip] + rke2_tls_san_extra)
+                    | select | unique | list %}
+{%   set ingress_option = (rke2__version_minor | int) >= rke2__ingress_controller_min_minor %}
+{%   set disable = rke2_disable_components | list %}
+{%   if not ingress_option and rke2_ingress_controller == 'none' %}
+{%     set disable = disable + ['rke2-ingress-nginx'] %}
+{%   endif %}
+{%   set apiserver_args = [] %}
+{%   if rke2_audit_policy_enabled | bool %}
+{%     set apiserver_args = apiserver_args + [
+         'audit-log-maxage=' ~ rke2_audit_log_maxage,
+         'audit-log-maxbackup=' ~ rke2_audit_log_maxbackup,
+         'audit-log-maxsize=' ~ rke2_audit_log_maxsize] %}
+{%   endif %}
+{%   if rke2_apiserver_oidc.enabled | default(false) | bool %}
+{%     set apiserver_args = apiserver_args + [
+         'oidc-issuer-url=' ~ rke2_apiserver_oidc.issuer_url,
+         'oidc-client-id=' ~ rke2_apiserver_oidc.client_id,
+         'oidc-username-claim=' ~ rke2_apiserver_oidc.username_claim | default('email'),
+         'oidc-groups-claim=' ~ rke2_apiserver_oidc.groups_claim | default('groups'),
+         'oidc-username-prefix=' ~ rke2_apiserver_oidc.username_prefix | default('oidc:'),
+         'oidc-groups-prefix=' ~ rke2_apiserver_oidc.groups_prefix | default('oidc:')] %}
+{%   endif %}
+{%   set apiserver_args = apiserver_args + rke2_kube_apiserver_args %}
+write-kubeconfig-mode: "0600"
+{%   if tls_sans | length > 0 %}
+tls-san:
+{%     for san in tls_sans %}
+  - {{ san | to_json }}
+{%     endfor %}
+{%   endif %}
+cni: {{ rke2_cni | to_json }}
+cluster-cidr: {{ rke2_cluster_cidr | to_json }}
+service-cidr: {{ rke2_service_cidr | to_json }}
+# RKE2 always encrypts Secrets at rest; stated here so the intent is visible.
+secrets-encryption: true
+{%   if ingress_option %}
+ingress-controller: {{ rke2_ingress_controller | to_json }}
+{%   endif %}
+{%   if disable | length > 0 %}
+disable:
+{%     for component in disable | unique %}
+  - {{ component | to_json }}
+{%     endfor %}
+{%   endif %}
+etcd-snapshot-schedule-cron: {{ rke2_etcd_snapshot_schedule | to_json }}
+etcd-snapshot-retention: {{ rke2_etcd_snapshot_retention | int }}
+{%   if rke2_etcd_s3.enabled | default(false) | bool %}
+etcd-s3: true
+etcd-s3-endpoint: {{ rke2_etcd_s3.endpoint | to_json }}
+etcd-s3-bucket: {{ rke2_etcd_s3.bucket | to_json }}
+{%     if rke2_etcd_s3.folder | default('') | length > 0 %}
+etcd-s3-folder: {{ rke2_etcd_s3.folder | to_json }}
+{%     endif %}
+{%     if rke2_etcd_s3.region | default('') | length > 0 %}
+etcd-s3-region: {{ rke2_etcd_s3.region | to_json }}
+{%     endif %}
+{%     if rke2_etcd_s3_access_key | string | length > 0 %}
+etcd-s3-access-key: {{ rke2_etcd_s3_access_key | string | to_json }}
+{%     endif %}
+{%     if rke2_etcd_s3_secret_key | string | length > 0 %}
+etcd-s3-secret-key: {{ rke2_etcd_s3_secret_key | string | to_json }}
+{%     endif %}
+{%     if rke2_etcd_s3_retention | int > 0 %}
+etcd-s3-retention: {{ rke2_etcd_s3_retention | int }}
+{%     endif %}
+{%   endif %}
+{%   if rke2_audit_policy_enabled | bool %}
+audit-policy-file: {{ rke2__audit_policy_file | to_json }}
+{%   endif %}
+{%   if apiserver_args | length > 0 %}
+kube-apiserver-arg:
+{%     for arg in apiserver_args %}
+  - {{ arg | to_json }}
+{%     endfor %}
+{%   endif %}
+{% endif %}

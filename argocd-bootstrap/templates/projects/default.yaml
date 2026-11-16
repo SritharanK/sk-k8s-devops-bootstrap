@@ -1,0 +1,26 @@
+{{- /*
+Lock the built-in default project: no sources, no destinations, no kinds.
+Every Application must name platform or apps-<env>. Rendered only for the
+cluster Argo CD runs in; in hub mode the hub's own root owns it.
+*/ -}}
+{{- if not (include "argocd-bootstrap.isRemote" .) }}
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: default
+  namespace: {{ .Values.namespaces.argocd }}
+  labels:
+    {{- include "argocd-bootstrap.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  description: Locked. Use the platform or apps-<env> projects.
+  sourceRepos: []
+  sourceNamespaces: []
+  destinations: []
+  clusterResourceWhitelist: []
+  namespaceResourceBlacklist:
+    - group: "*"
+      kind: "*"
+{{- end }}

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: kargo-pipelines
+description: Kargo promotion pipelines for the applications of the app inventory, rendered from the cluster definition.
+type: application
+version: 0.1.0
+appVersion: v1.12.5
+kubeVersion: ">=1.35.0-0"
+home: https://github.com/SritharanK/sk-k8s-devops-bootstrap
+sources:
+  - https://docs.kargo.io/user-guide/reference-docs/promotion-steps/

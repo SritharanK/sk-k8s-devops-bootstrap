@@ -1,0 +1,124 @@
+---
+# Defaults for the rke2 role. Every variable is documented in meta/argument_specs.yml.
+# Cluster-wide values are mapped from clusters/<name>/cluster.yaml by the inventory
+# (inventories/<name>/group_vars/all/cluster.yml); secrets come from the vault through the same file.
+
+# Inventory groups. A host in the servers group runs rke2-server, a host in the agents group runs rke2-agent.
+rke2_servers_group: rke2_servers
+rke2_agents_group: rke2_agents
+# Group that holds every cluster node; the uninstall entry point refuses hosts outside it.
+rke2_cluster_group: k8s_cluster
+# Server that initialises the cluster. Its config has no server: key. Override only when the first
+# server in the inventory is being replaced, so that an existing server stays the bootstrap host.
+rke2_bootstrap_host: "{{ groups[rke2_servers_group] | default([]) | first | default('') }}"
+
+# Cluster identity and release.
+rke2_cluster_name: rke2
+# Exact release, for example v1.36.6+rke2r1. The inventory must supply it.
+rke2_version: CHANGE_ME
+# Release channel. An exact rke2_version always wins; RPM installs use the channel to pick the
+# rpm.rancher.io repository (stable, latest, testing or v1.<minor>).
+rke2_channel: stable
+# Install method for the upstream script: "" lets the script choose (rpm on the RHEL family, tar
+# elsewhere), "tar" or "rpm" force one.
+rke2_install_method: ""
+# Shared secret that joins servers and agents. Required; the inventory maps it from the vault.
+rke2_token: ""
+# Optional secret that joins agents only. Empty means agents use rke2_token.
+rke2_agent_token: ""
+# RKE2 state directory.
+rke2_data_dir: /var/lib/rancher/rke2
+
+# Networking. cluster-cidr and service-cidr must be identical on every server.
+rke2_cni: canal
+rke2_cluster_cidr: 10.42.0.0/16
+rke2_service_cidr: 10.43.0.0/16
+# Fixed registration address (VIP or load balancer) in front of the servers, port 9345 and 6443.
+# Required when there is more than one server.
+rke2_registration_address: ""
+# Address written into the fetched kubeconfig, for example a load balancer's public address.
+rke2_api_endpoint: ""
+# Extra Subject Alternative Names for the API server certificate.
+rke2_tls_san_extra: []
+# Packaged ingress controller: none, traefik or ingress-nginx. This platform uses Envoy Gateway.
+rke2_ingress_controller: none
+# Packaged components to disable, for example rke2-metrics-server.
+rke2_disable_components: []
+
+# Security.
+# CIS profile: restricted Pod Security Admission cluster-wide, NetworkPolicies in the system
+# namespaces, protect-kernel-defaults. Prepares the etcd user and the CIS kernel parameters.
+rke2_cis_profile: false
+# Install the audit policy from this role and enable API server audit logging.
+rke2_audit_policy_enabled: true
+rke2_audit_log_maxage: 30
+rke2_audit_log_maxbackup: 10
+rke2_audit_log_maxsize: 100
+# API server OpenID Connect authentication. The prefixes keep OIDC identities apart from
+# Kubernetes-internal users and groups.
+rke2_apiserver_oidc:
+  enabled: false
+  issuer_url: ""
+  client_id: ""
+  username_claim: email
+  groups_claim: groups
+  username_prefix: "oidc:"
+  groups_prefix: "oidc:"
+# Extra kube-apiserver and kubelet flags as key=value strings.
+rke2_kube_apiserver_args: []
+rke2_kubelet_args: []
+# Taint servers with CriticalAddonsOnly=true:NoExecute when the cluster has agents.
+rke2_server_taint: false
+
+# etcd snapshots.
+rke2_etcd_snapshot_schedule: "0 */6 * * *"
+# Local snapshots kept on each server.
+rke2_etcd_snapshot_retention: 10
+# Upload snapshots to an S3 compatible store. Keys: enabled, endpoint, bucket, folder, region.
+rke2_etcd_s3:
+  enabled: false
+  endpoint: ""
+  bucket: ""
+  folder: ""
+  region: ""
+rke2_etcd_s3_access_key: ""
+rke2_etcd_s3_secret_key: ""
+# Snapshots kept in the bucket for the whole cluster. 0 keeps the RKE2 default (5). Size it as
+# servers x schedule cycles to keep, for example 3 servers x 10 cycles = 30.
+rke2_etcd_s3_retention: 0
+
+# Contents of /etc/rancher/rke2/registries.yaml (mirrors and configs). Empty writes no file.
+rke2_registries: {}
+
+# kube-vip static pod on the servers, ARP mode, control plane VIP only. L2 networks only.
+rke2_kube_vip_enabled: false
+rke2_kube_vip_image: ghcr.io/kube-vip/kube-vip
+rke2_kube_vip_version: v1.3.1
+# Interface that carries the VIP, for example eth0. Required when kube-vip is enabled.
+rke2_kube_vip_interface: ""
+
+# Service start and readiness.
+# Upper bound in seconds for a start or restart of the RKE2 service.
+rke2_service_start_timeout: 900
+rke2_node_ready_retries: 60
+rke2_node_ready_delay: 10
+
+# Upgrades.
+rke2_allow_downgrade: false
+
+# Kubeconfig fetched from the bootstrap server to the control node.
+rke2_kubeconfig_fetch: true
+rke2_kubeconfig_local_path: "{{ playbook_dir }}/../data/kubeconfig-{{ rke2_cluster_name }}.yaml"
+
+# Uninstall entry point (tasks_from: uninstall). Must be set to true explicitly.
+rke2_uninstall_confirm: false
+
+# Host-level values, usually set per host in the inventory.
+# Private address for cluster traffic. Empty uses ansible_facts['default_ipv4']['address'].
+rke2_node_ip: ""
+rke2_node_external_ip: ""
+# Node labels as key=value and taints as key=value:Effect. Applied when the node registers.
+rke2_node_labels: []
+rke2_node_taints: []
+# Node name. Empty keeps the RKE2 default, the lowercased system hostname.
+rke2_node_name: ""

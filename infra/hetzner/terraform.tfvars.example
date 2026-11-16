@@ -1,0 +1,40 @@
+# Copy to reference.tfvars, replace every CHANGE_ME, and pass it with
+# -var-file=reference.tfvars. Keep the copy out of version control.
+#
+# hcloud_token is not set here. Export it instead:
+#   export TF_VAR_hcloud_token=CHANGE_ME
+
+cluster_name = "reference"
+
+location     = "nbg1"
+network_zone = "eu-central"
+
+network_cidr = "10.20.0.0/16"
+subnet_cidr  = "10.20.0.0/24"
+
+server_count = 3
+agent_count  = 2
+
+server_type = "cpx32"
+agent_type  = "cpx32"
+image       = "ubuntu-24.04"
+
+# One-line ed25519 public key. The placeholder fails validation on purpose.
+ssh_public_key = "ssh-ed25519 AAAA...CHANGE_ME"
+admin_username = "ops"
+
+# Networks allowed to reach SSH on the nodes. Replace the documentation
+# ranges with your office, VPN or bastion egress ranges.
+admin_cidrs = [
+  "203.0.113.0/24",
+  "198.51.100.0/24",
+]
+allow_ssh_from_anywhere = false
+
+load_balancer_type   = "lb11"
+load_balancer_public = true
+
+labels = {
+  environment = "lab"
+  owner       = "CHANGE_ME"
+}

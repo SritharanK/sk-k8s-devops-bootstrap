@@ -1,0 +1,46 @@
+{{- /*
+Default deny for ingress and egress, plus DNS egress to the cluster DNS pods,
+as the network-policies chart renders for dev, stage and prod. Ingress from
+the gateway and from monitoring belongs to each application, which renders
+its own NetworkPolicy through helm-common.
+*/ -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "preview-namespace.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "preview-namespace.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ required "dns.namespace is required" .Values.dns.namespace | quote }}
+          {{- with .Values.dns.podSelector }}
+          podSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- else }}
+          podSelector: {}
+          {{- end }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

@@ -1,0 +1,30 @@
+---
+# Installs, configures and upgrades RKE2 on one node. The playbook decides the rollout order:
+# bootstrap server first, then the other servers with serial: 1, then the agents.
+
+- name: Validate role input
+  ansible.builtin.import_tasks: assert.yml
+  tags: [rke2, rke2_assert]
+
+- name: Prepare the host
+  ansible.builtin.import_tasks: prepare.yml
+  tags: [rke2, rke2_prepare]
+
+- name: Install or upgrade RKE2
+  ansible.builtin.import_tasks: install.yml
+  tags: [rke2, rke2_install]
+
+- name: Write the RKE2 configuration
+  ansible.builtin.import_tasks: config.yml
+  tags: [rke2, rke2_config]
+
+- name: Start RKE2 and wait for the node
+  ansible.builtin.import_tasks: service.yml
+  tags: [rke2, rke2_service]
+
+- name: Fetch the admin kubeconfig from the bootstrap server
+  ansible.builtin.import_tasks: kubeconfig.yml
+  when:
+    - rke2_kubeconfig_fetch | bool
+    - rke2__is_bootstrap | bool
+  tags: [rke2, rke2_kubeconfig]

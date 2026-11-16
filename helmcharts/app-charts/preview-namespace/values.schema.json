@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "preview-namespace values",
+  "description": "Validated by Helm on every render, including in Argo CD, after merging values.yaml, previews.namespace.values and the ApplicationSet valuesObject. Draft-07 so that older Helm 3 releases can read it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "pullRequest",
+    "podSecurity",
+    "quota",
+    "limitRange",
+    "dns"
+  ],
+  "definitions": {
+    "quantity": {
+      "description": "Kubernetes quantity, as a string or a non-negative number.",
+      "type": [
+        "string",
+        "number"
+      ],
+      "minimum": 0,
+      "pattern": "^[0-9]+(\\.[0-9]+)?(m|k|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei)?$"
+    },
+    "cpuMemory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cpu",
+        "memory"
+      ],
+      "properties": {
+        "cpu": {
+          "$ref": "#/definitions/quantity"
+        },
+        "memory": {
+          "$ref": "#/definitions/quantity"
+        }
+      }
+    }
+  },
+  "properties": {
+    "global": {
+      "description": "Accepted and ignored, so that a parent chart or Argo CD can pass global values.",
+      "type": "object"
+    },
+    "pullRequest": {
+      "description": "Pull request number. Empty: no pull-request label.",
+      "type": [
+        "string",
+        "integer"
+      ],
+      "minimum": 1,
+      "pattern": "^([0-9]+)?$"
+    },
+    "podSecurity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version"
+      ],
+      "properties": {
+        "version": {
+          "description": "Pod Security Standards version: v<major>.<minor> or latest.",
+          "type": "string",
+          "pattern": "^(latest|v1\\.[0-9]+)$"
+        }
+      }
+    },
+    "quota": {
+      "description": "ResourceQuota spec.hard. Keys are Kubernetes resource names; an empty map renders no ResourceQuota.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z0-9]([-a-z0-9./]*[a-z0-9])?$"
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/quantity"
+      }
+    },
+    "limitRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "default",
+        "defaultRequest"
+      ],
+      "properties": {
+        "default": {
+          "$ref": "#/definitions/cpuMemory"
+        },
+        "defaultRequest": {
+          "$ref": "#/definitions/cpuMemory"
+        },
+        "max": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cpu": {
+              "$ref": "#/definitions/quantity"
+            },
+            "memory": {
+              "$ref": "#/definitions/quantity"
+            }
+          }
+        }
+      }
+    },
+    "dns": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "namespace"
+      ],
+      "properties": {
+        "namespace": {
+          "description": "Namespace of the cluster DNS pods.",
+          "type": "string",
+          "minLength": 1
+        },
+        "podSelector": {
+          "description": "LabelSelector of the cluster DNS pods. Empty selects every pod in dns.namespace.",
+          "type": "object"
+        }
+      }
+    }
+  }
+}

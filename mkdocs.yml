@@ -1,0 +1,155 @@
+# yaml-language-server: $schema=https://squidfunk.github.io/mkdocs-material/schema.json
+#
+# Documentation site: MkDocs with the Material theme, built from docs/.
+#
+#   make docs-build   strict build into _out/site (the CI check)
+#   make docs-serve   live preview on http://127.0.0.1:8000
+#
+# Packages are pinned with hashes in requirements-docs.txt. The Docs workflow
+# (.github/workflows/docs.yml) builds on every pull request that touches the
+# documentation and publishes to GitHub Pages from main.
+#
+# Pages without a title in the nav take their first heading. A page that is
+# not listed in the nav is still built, but cannot be reached from the menu:
+# add every new page below.
+---
+site_name: sk-k8s-devops-bootstrap
+site_description: Kubernetes platform bootstrap with RKE2, Argo CD, Gateway API, Kyverno and an observability stack.
+site_url: https://sritharank.github.io/sk-k8s-devops-bootstrap/
+repo_url: https://github.com/SritharanK/sk-k8s-devops-bootstrap
+repo_name: SritharanK/sk-k8s-devops-bootstrap
+edit_uri: https://github.com/SritharanK/sk-k8s-devops-bootstrap/edit/main/docs/
+copyright: MIT License
+
+docs_dir: docs
+site_dir: _out/site
+strict: true
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+# Rewrites links that leave docs/ (for example ../../ansible/README.md) to the
+# repository URL, so they work on the site and pass the strict build.
+hooks:
+  - hack/mkdocs_hooks.py
+
+theme:
+  name: material
+  language: en
+  # System fonts: the site makes no request to a font CDN.
+  font: false
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - content.code.copy
+    - content.action.edit
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      check_paths: true
+  # Mermaid diagrams: fences named mermaid render as <pre class="mermaid">,
+  # which the theme draws. The format function defaults to
+  # pymdownx.superfences.fence_code_format, so no Python tag is needed and the
+  # file stays plain YAML for the YAML checks.
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+plugins:
+  - search
+
+nav:
+  - Home: README.md
+  - Getting started:
+      - getting-started/prerequisites.md
+      - getting-started/quick-start.md
+      - getting-started/production-setup.md
+  - Architecture:
+      - architecture/overview.md
+      - architecture/gitops.md
+      - architecture/ci-cd.md
+  - Operations:
+      - operations/add-an-app.md
+      - operations/promotion.md
+      - operations/observability-contract.md
+      - operations/backup-and-restore.md
+      - operations/secret-rotation.md
+      - operations/upgrade-argocd.md
+      - operations/upgrade-rke2.md
+      - operations/troubleshooting.md
+  - How-to guides:
+      - how-to/tracing.md
+      - how-to/traffic-and-scaling.md
+      - how-to/preview-environments.md
+      - how-to/promote-with-kargo.md
+      - how-to/documentation-site.md
+  - Reference:
+      - reference/configuration.md
+      - reference/helm-common-values.md
+      - reference/make-targets.md
+      - reference/support-matrix.md
+  - Security:
+      - security/controls.md
+      - security/threat-model.md
+      - security/secrets-handling.md
+      - security/supply-chain.md
+      - security/known-limitations.md
+      - security/argocd-sso.md
+  - Decision records:
+      - adr/README.md
+      - adr/0001-rke2-only.md
+      - adr/0002-argocd-app-of-apps-with-appprojects.md
+      - adr/0003-gateway-api-with-envoy-gateway.md
+      - adr/0004-kyverno-cel-policies.md
+      - adr/0005-lab-and-reference-profiles.md
+      - adr/0006-sealed-secrets-and-eso-with-openbao.md
+      - adr/0007-wrapper-charts-instead-of-vendoring.md
+      - adr/0008-keyless-image-signing.md
+      - adr/0009-github-actions-reference-ci-jenkins-optional.md
+      - adr/0010-go-sample-service.md
+      - adr/0011-promotion-by-pull-request-and-digest.md
+      - adr/0012-kargo-promotion.md
+      - ADR template: adr/template.md

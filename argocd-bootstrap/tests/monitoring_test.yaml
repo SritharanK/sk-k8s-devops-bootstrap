@@ -1,0 +1,23 @@
+suite: app scraping with the monitoring toolchain
+templates:
+  - templates/apps/applications.yaml
+release:
+  name: argocd-bootstrap
+  namespace: argocd
+tests:
+  - it: leaves the app ServiceMonitor to the chart while monitoring is off
+    asserts:
+      - notExists:
+          path: spec.sources[0].helm.valuesObject.metrics
+
+  - it: enables the app ServiceMonitor when monitoring is on
+    set:
+      toolchains.monitoring.enabled: true
+    asserts:
+      - equal:
+          path: spec.sources[0].helm.valuesObject.metrics.serviceMonitor.enabled
+          value: true
+      - equal:
+          path: spec.sources[0].helm.valuesObject.global.environment
+          value: dev
+        documentIndex: 0

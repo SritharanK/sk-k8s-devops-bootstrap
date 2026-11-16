@@ -1,0 +1,258 @@
+suite: Envoy Gateway BackendTrafficPolicy
+templates:
+  - templates/backendtrafficpolicy.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: is not rendered by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: is not rendered with only the route enabled
+    set:
+      route.enabled: true
+      route.hostnames:
+        - app.example.com
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails without the chart route
+    set:
+      trafficPolicy.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "trafficPolicy.enabled requires route.enabled"
+
+  - it: targets the HTTPRoute and renders the defaults
+    set:
+      route.enabled: true
+      route.hostnames:
+        - app.example.com
+      trafficPolicy.enabled: true
+    asserts:
+      - isKind:
+          of: BackendTrafficPolicy
+      - equal:
+          path: apiVersion
+          value: gateway.envoyproxy.io/v1alpha1
+      - equal:
+          path: metadata.name
+          value: web-helm-common-test
+      - equal:
+          path: metadata.namespace
+          value: dev
+      - notExists:
+          path: metadata.annotations
+      - equal:
+          path: spec.targetRefs
+          value:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: web-helm-common-test
+      - equal:
+          path: spec.timeout
+          value:
+            tcp:
+              connectTimeout: 5s
+            http:
+              requestTimeout: 15s
+      - equal:
+          path: spec.retry
+          value:
+            numRetries: 2
+            retryOn:
+              triggers:
+                - connect-failure
+                - refused-stream
+                - reset-before-request
+                - retriable-status-codes
+              httpStatusCodes:
+                - 503
+            perRetry:
+              timeout: 5s
+              backOff:
+                baseInterval: 100ms
+                maxInterval: 1s
+      - equal:
+          path: spec.circuitBreaker
+          value:
+            maxConnections: 1024
+            maxPendingRequests: 256
+            maxParallelRequests: 1024
+            maxParallelRetries: 10
+      - notExists:
+          path: spec.rateLimit
+      - notExists:
+          path: spec.rateLimit.type
+
+  - it: follows fullnameOverride in the name and the target ref
+    set:
+      fullnameOverride: shop
+      route.enabled: true
+      route.hostnames:
+        - app.example.com
+      trafficPolicy.enabled: true
+    asserts:
+      - equal:
+          path: metadata.name
+          value: shop
+      - equal:
+          path: spec.targetRefs[0].name
+          value: shop
+
+  - it: renders annotations as strings
+    set:
+      route.enabled: true
+      route.hostnames:
+        - app.example.com
+      trafficPolicy.enabled: true
+      trafficPolicy.annotations:
+        example.com/owner: payments
+        example.com/revision: 3
+    asserts:
+      - equal:
+          path: metadata.annotations
+          value:
+            example.com/owner: payments
+            example.com/revision: "3"
+
+  - it: omits timeout, retry and circuitBreaker when they are null
+    set:
+      route.enabled: true
+      route.hostnames:
+        - app.example.com
+      trafficPolicy.enabled: true
+      trafficPolicy.timeout: null
+      trafficPolicy.retry: null
+      trafficPolicy.circuitBreaker: null
+    asserts:
+      - notExists:
+          path: spec.timeout
+      - notExists:
+          path: spec.retry
+      - notExists:
+          path: spec.circuitBreaker
+      - equal:
+          path: spec.targetRefs[0].kind
+          value: HTTPRoute
+
+  - it: omits a single block when it is null and keeps the others
+    set:
+      route.enabled: true
+      route.hostnames:
+        - app.example.com
+      trafficPolicy.enabled: true
+      trafficPolicy.retry: null
+    asserts:
+      - notExists:
+          path: spec.retry
+      - exists:
+          path: spec.timeout
+      - exists:
+          path: spec.circuitBreaker
+
+  - it: merges block fields over the defaults and replaces lists
+    set:
+      route.enabled: true
+      route.hostnames:
+        - app.example.com
+      trafficPolicy.enabled: true
+      trafficPolicy.timeout.http.requestTimeout: 30s
+      trafficPolicy.timeout.http.connectionIdleTimeout: 1h
+      trafficPolicy.retry.numRetries: 0
+      trafficPolicy.retry.retryOn.triggers:
+        - connect-failure
+    asserts:
+      - equal:
+          path: spec.timeout
+          value:
+            tcp:
+              connectTimeout: 5s
+            http:
+              requestTimeout: 30s
+              connectionIdleTimeout: 1h
+      - equal:
+          path: spec.retry.numRetries
+          value: 0
+      - equal:
+          path: spec.retry.retryOn.triggers
+          value:
+            - connect-failure
+
+  - it: adds a local rate limit rule when enabled
+    set:
+      route.enabled: true
+      route.hostnames:
+        - app.example.com
+      trafficPolicy.enabled: true
+      trafficPolicy.rateLimit.enabled: true
+      trafficPolicy.rateLimit.requests: 50
+      trafficPolicy.rateLimit.unit: Minute
+    asserts:
+      - equal:
+          path: spec.rateLimit
+          value:
+            local:
+              rules:
+                - limit:
+                    requests: 50
+                    unit: Minute
+
+  - it: renders the default rate limit of 100 per second
+    set:
+      route.enabled: true
+      route.hostnames:
+        - app.example.com
+      trafficPolicy.enabled: true
+      trafficPolicy.rateLimit.enabled: true
+    asserts:
+      - equal:
+          path: spec.rateLimit.local.rules[0].limit
+          value:
+            requests: 100
+            unit: Second
+
+  - it: fails when the rate limit has no unit
+    set:
+      route.enabled: true
+      route.hostnames:
+        - app.example.com
+      trafficPolicy.enabled: true
+      trafficPolicy.rateLimit.enabled: true
+      trafficPolicy.rateLimit.unit: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "trafficPolicy.rateLimit.unit is required"
+
+  - it: keeps targeting the chart HTTPRoute with Rollout Gateway API traffic routing
+    set:
+      route.enabled: true
+      route.hostnames:
+        - app.example.com
+      trafficPolicy.enabled: true
+      rollout.enabled: true
+      rollout.trafficRouting.gatewayAPI.enabled: true
+    asserts:
+      - equal:
+          path: spec.targetRefs
+          value:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: web-helm-common-test
+
+  - it: is enabled per environment through environments.<env>
+    set:
+      global.environment: prod
+      global.domain: localtest.me
+      route.enabled: true
+      environments.prod.trafficPolicy.enabled: true
+      environments.prod.trafficPolicy.rateLimit.enabled: true
+    asserts:
+      - isKind:
+          of: BackendTrafficPolicy
+      - equal:
+          path: spec.rateLimit.local.rules[0].limit.unit
+          value: Second

@@ -1,0 +1,19 @@
+---
+# Container-sized thresholds. Kernel modules cannot be loaded in a container, the clock belongs to the Docker host,
+# and /proc/swaps shows the swap of the Docker host, so those checks are switched off here.
+- name: Converge
+  hosts: all
+  gather_facts: true
+  vars:
+    preflight_test_value: ok
+    preflight_placeholder_vars: [preflight_test_value]
+    preflight_min_vcpus: 1
+    preflight_min_memory_mb: 256
+    preflight_min_disk_free_gb: 1
+    preflight_required_kernel_modules: []
+    preflight_required_sysctls:
+      net.ipv4.ip_forward: 1
+    preflight_time_sync_required: false
+    preflight_swap_off_required: false
+  roles:
+    - role: preflight

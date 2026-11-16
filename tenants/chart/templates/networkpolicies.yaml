@@ -1,0 +1,71 @@
+{{- /*
+Platform network policies per environment namespace: default
+deny for ingress and egress, DNS egress, and the egress CIDRs the platform
+team approved in the tenant file. Ingress from the gateway, from monitoring
+and between pods belongs to each application, which renders its own
+NetworkPolicy through helm-common. The default deny is kept on prune and on
+Application deletion: a namespace that stays must stay isolated.
+*/ -}}
+{{- if .Values.components.namespaces }}
+{{- $cidrs := dig "allowEgressCidrs" list (.Values.network | default dict) }}
+{{- range $env := include "tenant.environments" . | fromJsonArray }}
+{{- $ns := include "tenant.namespace" (list $ $env) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.envLabels" (list $ $env) | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.envLabels" (list $ $env) | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- if $cidrs }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-cidrs
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.envLabels" (list $ $env) | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        {{- range $cidrs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

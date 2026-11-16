@@ -1,0 +1,2 @@
+# Dependencies are rebuilt from Chart.lock with `helm dependency build`.
+charts/

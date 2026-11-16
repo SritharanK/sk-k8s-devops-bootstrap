@@ -1,0 +1,23 @@
+---
+# Permissions of the Jenkins controller in the agent namespace: manage agent
+# pods, run commands in their containers (the container step uses pods/exec),
+# read their logs and events. Namespace-scoped; no cluster-wide permission,
+# no access to secrets, config maps or any other resource.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jenkins-agent-launcher
+  namespace: jenkins-agents
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "delete", "get", "list", "watch", "patch"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]

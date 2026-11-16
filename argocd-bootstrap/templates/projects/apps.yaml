@@ -1,0 +1,55 @@
+{{- /*
+One AppProject per application environment hosted by this cluster
+(docs/adr/0002-argocd-app-of-apps-with-appprojects.md): one destination
+namespace, no cluster-scoped kinds, and no quota, limit or RBAC objects,
+which the platform owns. Applications render their own NetworkPolicies.
+*/ -}}
+{{- range $env := include "argocd-bootstrap.environments" . | fromJsonArray }}
+{{- $project := include "argocd-bootstrap.appsProject" (list $ $env) }}
+{{- $windows := dig $.Values.cluster.profile $env list ($.Values.projects.apps.syncWindows | default dict) }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ $project }}
+  namespace: {{ $.Values.namespaces.argocd }}
+  labels:
+    {{- include "argocd-bootstrap.labels" $ | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Applications in the {{ $env }} environment of cluster {{ $.Values.cluster.name }}.
+  sourceRepos:
+    - {{ $.Values.git.repoURL }}
+  destinations:
+    - namespace: {{ required (printf "namespaces.%s is required" $env) (index $.Values.namespaces $env) }}
+      {{- include "argocd-bootstrap.destination" $ | nindent 6 }}
+  clusterResourceWhitelist: []
+  namespaceResourceBlacklist:
+    {{- toYaml $.Values.projects.apps.namespaceResourceBlacklist | nindent 4 }}
+  roles:
+    - name: deployers
+      description: Members of the deployers group may view and sync.
+      groups:
+        - {{ $.Values.platform.groups.deployers }}
+      policies:
+        - p, proj:{{ $project }}:deployers, applications, get, {{ $project }}/*, allow
+        - p, proj:{{ $project }}:deployers, applications, sync, {{ $project }}/*, allow
+    - name: viewers
+      description: Read-only access.
+      groups:
+        - {{ $.Values.platform.groups.viewers }}
+      policies:
+        - p, proj:{{ $project }}:viewers, applications, get, {{ $project }}/*, allow
+    - name: ci
+      description: Read-only role for CI (argocd app wait). Issue short-lived tokens with argocd proj role create-token.
+      policies:
+        - p, proj:{{ $project }}:ci, applications, get, {{ $project }}/*, allow
+  {{- with $windows }}
+  syncWindows:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

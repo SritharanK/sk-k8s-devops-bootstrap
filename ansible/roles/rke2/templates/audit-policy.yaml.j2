@@ -1,0 +1,61 @@
+{{ ansible_managed | comment }}
+# Kubernetes API server audit policy. The first matching rule decides the level of an event.
+# Reference: https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/
+# Log file: {{ rke2_data_dir }}/server/logs/audit.log
+apiVersion: audit.k8s.io/v1
+kind: Policy
+# Each request is logged once its response is known; the RequestReceived stage only adds volume.
+omitStages:
+  - RequestReceived
+rules:
+  # Health, version and metrics probes.
+  - level: None
+    nonResourceURLs:
+      - /healthz*
+      - /livez*
+      - /readyz*
+      - /version
+      - /version/*
+      - /metrics
+  # Events are high volume and already stored in the cluster.
+  - level: None
+    resources:
+      - group: ""
+        resources: ["events"]
+      - group: events.k8s.io
+        resources: ["events"]
+  # Leader election and node heartbeat leases are renewed every few seconds.
+  - level: None
+    resources:
+      - group: coordination.k8s.io
+        resources: ["leases"]
+  # Routine reads by kubelets and kube-proxy.
+  - level: None
+    userGroups: ["system:nodes"]
+    verbs: ["get", "list", "watch"]
+    resources:
+      - group: ""
+        resources: ["nodes", "nodes/status", "pods", "pods/status"]
+  - level: None
+    users: ["system:kube-proxy"]
+    verbs: ["get", "list", "watch"]
+    resources:
+      - group: ""
+        resources: ["endpoints", "services", "services/status"]
+      - group: discovery.k8s.io
+        resources: ["endpointslices"]
+  # Payloads of these resources hold secret values or bearer tokens: record who did what, never the body.
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["secrets", "configmaps", "serviceaccounts/token"]
+      - group: authentication.k8s.io
+        resources: ["tokenreviews"]
+  # Changes to RBAC objects with the full request and response.
+  - level: RequestResponse
+    verbs: ["create", "update", "patch", "delete", "deletecollection"]
+    resources:
+      - group: rbac.authorization.k8s.io
+        resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+  # Everything else.
+  - level: Metadata

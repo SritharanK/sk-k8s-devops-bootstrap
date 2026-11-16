@@ -1,0 +1,101 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/v0.2.15/.schemas/json/test-chainsaw-v1alpha1.json
+#
+# Disabling a toolchain must not delete its Namespaces. The misc toolchain
+# owns the dev, stage and prod Namespaces, which carry
+# argocd.argoproj.io/sync-options: Prune=false,Delete=false.
+# Disabling misc in clusters/lab/cluster.yaml makes the root Application prune
+# the misc Application; the Namespaces and their workloads must survive.
+#
+# Everything runs in one step because outputs (the recorded uids) are scoped
+# to a step, and finally always re-enables misc, also after a failure. The
+# first script refuses to start when a Namespace lacks Delete=false, so a
+# misconfigured cluster is not wiped. Runs last: it changes the in-cluster Git
+# repository and recreates the misc Application.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: toggle-keeps-namespaces
+spec:
+  description: >-
+    Disabling the misc toolchain removes its Application but keeps the dev, stage and prod Namespaces
+    and the dev hello-api Deployment; misc is re-enabled afterwards.
+  concurrent: false
+  catch:
+    - script:
+        content: |
+          kubectl get namespaces dev stage prod \
+            -o custom-columns='NAME:.metadata.name,UID:.metadata.uid,PHASE:.status.phase,DELETION:.metadata.deletionTimestamp' || true
+          kubectl get applications.argoproj.io -n argocd \
+            -o custom-columns='NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,OPERATION:.status.operationState.phase'
+  steps:
+    - name: disable-misc-keeps-namespaces
+      try:
+        - script:
+            content: bash ../lib/record-namespaces.sh
+            outputs:
+              - name: before
+                value: (json_parse($stdout))
+        - script:
+            timeout: 3m
+            content: |
+              "${REPO_ROOT:?REPO_ROOT is not set}/hack/e2e/git-edit.sh" clusters/lab/cluster.yaml \
+                '.toolchains.misc.enabled = false' 'test(e2e): disable misc' root
+        # Passes once Application misc no longer exists.
+        - error:
+            timeout: 5m
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Application
+              metadata:
+                name: misc
+                namespace: argocd
+        - assert:
+            timeout: 30s
+            resource:
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: dev
+                (uid == $before.dev): true
+              status:
+                phase: Active
+        - assert:
+            timeout: 30s
+            resource:
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: stage
+                (uid == $before.stage): true
+              status:
+                phase: Active
+        - assert:
+            timeout: 30s
+            resource:
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: prod
+                (uid == $before.prod): true
+              status:
+                phase: Active
+        - assert:
+            timeout: 30s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: ($before.deployment)
+                namespace: dev
+                (deletionTimestamp == null): true
+      finally:
+        # Set explicitly to true (no del()), so the restore does not depend on
+        # the default in argocd-bootstrap/values.yaml.
+        - script:
+            timeout: 3m
+            content: |
+              "${REPO_ROOT:?REPO_ROOT is not set}/hack/e2e/git-edit.sh" clusters/lab/cluster.yaml \
+                '.toolchains.misc.enabled = true' 'test(e2e): enable misc' root
+        - script:
+            timeout: 6m
+            content: bash ../lib/wait-application.sh misc

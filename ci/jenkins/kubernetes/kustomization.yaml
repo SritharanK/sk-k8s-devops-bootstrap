@@ -1,0 +1,25 @@
+---
+# Namespace for the ephemeral Jenkins agent pods (see ci/jenkins/README.md).
+#
+# Applied once by a cluster administrator, not by Jenkins and not by Argo CD:
+#   kubectl apply -k ci/jenkins/kubernetes
+#
+# The Jenkins controller gets the token of the jenkins-agent-launcher service
+# account (secret jenkins-agent-launcher-token) as the k8s-agent-token
+# credential. That account can manage pods in this namespace and nothing else.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: jenkins-agents
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - role.yaml
+  - rolebinding.yaml
+  - resourcequota.yaml
+  - limitrange.yaml
+  - networkpolicy.yaml

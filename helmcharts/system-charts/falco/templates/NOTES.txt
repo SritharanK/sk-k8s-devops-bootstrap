@@ -1,0 +1,6 @@
+Falco runs as DaemonSet {{ .Release.Name }} in namespace {{ .Release.Namespace }} with the modern eBPF probe.
+
+Alerts are written to stdout as JSON:
+  kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/name=falco -c falco --tail=20
+
+Rules come from the Falco image (falco-rules 5.2.0 in Falco 0.45.2); falcoctl is disabled.

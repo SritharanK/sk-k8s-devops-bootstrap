@@ -1,0 +1,79 @@
+{{- /*
+Audit of application NetworkPolicies. Applications render their own
+NetworkPolicies in the environment namespaces. This policy reports, in every
+environment and without blocking, a policy that admits ingress from all
+namespaces (or from any source) to every pod of the namespace.
+
+"Every pod": an empty spec.podSelector, with Ingress in effect.
+"All namespaces": a rule without peers, a peer with an empty
+namespaceSelector (with or without a podSelector), or an ipBlock of 0.0.0.0/0
+or ::/0.
+*/ -}}
+{{- if .Values.networkPolicyAudit.enabled }}
+{{- $namespaces := list }}
+{{- range $env, $cfg := .Values.environments }}
+{{- if and $cfg (ne (toString (dig "enabled" true $cfg)) "false") }}
+{{- $namespaces = append $namespaces (required (printf "environments.%s.namespace is required" $env) $cfg.namespace) }}
+{{- end }}
+{{- end }}
+{{- if $namespaces }}
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: restrict-networkpolicy-broad-ingress-audit
+  labels:
+    {{- include "kyverno-policies.labels" . | nindent 4 }}
+  annotations:
+    {{- include "kyverno-policies.syncAnnotations" . | nindent 4 }}
+    policies.kyverno.io/title: "Report broad NetworkPolicy ingress"
+    policies.kyverno.io/category: "Network"
+    policies.kyverno.io/severity: "medium"
+    policies.kyverno.io/subject: "NetworkPolicy"
+    policies.kyverno.io/description: >-
+      Reports application NetworkPolicies that admit ingress from all
+      namespaces or from any source to every pod of the namespace. Audit only,
+      in every environment.
+spec:
+  validationActions: [Audit, Warn]
+  failurePolicy: Ignore
+  evaluation:
+    admission:
+      enabled: true
+    background:
+      enabled: true
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values:
+            {{- toYaml $namespaces | nindent 12 }}
+    resourceRules:
+      - apiGroups: [networking.k8s.io]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [networkpolicies]
+  variables:
+    - name: ingressOnAllPods
+      expression: >-
+        size(object.spec.podSelector.?matchLabels.orValue({})) == 0 &&
+        size(object.spec.podSelector.?matchExpressions.orValue([])) == 0 &&
+        (!has(object.spec.policyTypes) || 'Ingress' in object.spec.policyTypes)
+    - name: broadRules
+      expression: >-
+        object.spec.?ingress.orValue([]).filter(r,
+        size(r.?from.orValue([])) == 0 ||
+        r.from.exists(p,
+        (has(p.namespaceSelector) &&
+        size(p.namespaceSelector.?matchLabels.orValue({})) == 0 &&
+        size(p.namespaceSelector.?matchExpressions.orValue([])) == 0) ||
+        p.?ipBlock.?cidr.orValue('') in ['0.0.0.0/0', '::/0']))
+  validations:
+    - expression: "!variables.ingressOnAllPods || size(variables.broadRules) == 0"
+      message: >-
+        This NetworkPolicy admits ingress from all namespaces to every pod in
+        the namespace. Select the target pods with spec.podSelector and name
+        the source namespaces in the rule.
+{{- end }}
+{{- end }}

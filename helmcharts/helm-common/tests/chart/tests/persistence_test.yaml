@@ -1,0 +1,166 @@
+suite: persistence
+templates:
+  - templates/pvc.yaml
+  - templates/deployment.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: renders no claim by default
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/pvc.yaml
+
+  - it: renders a claim and mounts it
+    set:
+      persistence.enabled: true
+    asserts:
+      - isKind:
+          of: PersistentVolumeClaim
+        template: templates/pvc.yaml
+      - equal:
+          path: metadata.name
+          value: web-helm-common-test
+        template: templates/pvc.yaml
+      - equal:
+          path: metadata.namespace
+          value: dev
+        template: templates/pvc.yaml
+      - equal:
+          path: spec.accessModes
+          value:
+            - ReadWriteOnce
+        template: templates/pvc.yaml
+      - equal:
+          path: spec.resources.requests.storage
+          value: 1Gi
+        template: templates/pvc.yaml
+      - notExists:
+          path: spec.storageClassName
+        template: templates/pvc.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: data
+            persistentVolumeClaim:
+              claimName: web-helm-common-test
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: data
+            mountPath: /data
+        template: templates/deployment.yaml
+
+  - it: renders an empty storageClassName for "-"
+    set:
+      persistence.enabled: true
+      persistence.storageClassName: "-"
+    asserts:
+      - equal:
+          path: spec.storageClassName
+          value: ""
+        template: templates/pvc.yaml
+
+  - it: renders a named storage class
+    set:
+      persistence.enabled: true
+      persistence.storageClassName: fast-ssd
+    asserts:
+      - equal:
+          path: spec.storageClassName
+          value: fast-ssd
+        template: templates/pvc.yaml
+
+  - it: fails for ReadWriteOnce with replicaCount 2
+    set:
+      persistence.enabled: true
+      replicaCount: 2
+    asserts:
+      - failedTemplate:
+          errorPattern: "persistence.accessMode ReadWriteOnce allows a single node or pod, but replicaCount is 2"
+        template: templates/deployment.yaml
+
+  - it: fails for ReadWriteOncePod with autoscaling above one replica
+    set:
+      persistence.enabled: true
+      persistence.accessMode: ReadWriteOncePod
+      autoscaling.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "autoscaling.maxReplicas is 5"
+        template: templates/deployment.yaml
+
+  - it: fails for ReadWriteOnce with a Rollout
+    set:
+      persistence.enabled: true
+      rollout.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "rollout.enabled is true"
+        template: templates/deployment.yaml
+
+  - it: allows ReadWriteMany with several replicas
+    set:
+      persistence.enabled: true
+      persistence.accessMode: ReadWriteMany
+      replicaCount: 2
+    asserts:
+      - equal:
+          path: spec.accessModes
+          value:
+            - ReadWriteMany
+        template: templates/pvc.yaml
+
+  - it: uses an existing claim and renders no PVC
+    set:
+      persistence.enabled: true
+      persistence.existingClaim: shared-data
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/pvc.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: data
+            persistentVolumeClaim:
+              claimName: shared-data
+        template: templates/deployment.yaml
+
+  - it: still applies the single-replica guard to an existing ReadWriteOnce claim
+    set:
+      persistence.enabled: true
+      persistence.existingClaim: shared-data
+      replicaCount: 3
+    asserts:
+      - failedTemplate:
+          errorPattern: "replicaCount is 3"
+        template: templates/deployment.yaml
+
+  - it: fails for ReadWriteOnce with KEDA above one replica
+    set:
+      persistence.enabled: true
+      keda.enabled: true
+      keda.prometheus.query: up
+    asserts:
+      - failedTemplate:
+          errorPattern: "keda.maxReplicaCount is 5"
+        template: templates/deployment.yaml
+
+  - it: allows ReadWriteOnce with KEDA capped at one replica, whatever replicaCount says
+    set:
+      persistence.enabled: true
+      replicaCount: 3
+      keda.enabled: true
+      keda.prometheus.query: up
+      keda.maxReplicaCount: 1
+      keda.minReplicaCount: 1
+    asserts:
+      - isKind:
+          of: PersistentVolumeClaim
+        template: templates/pvc.yaml
+      - notExists:
+          path: spec.replicas
+        template: templates/deployment.yaml

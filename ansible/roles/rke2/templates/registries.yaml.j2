@@ -1,0 +1,3 @@
+{{ ansible_managed | comment }}
+# Containerd registry mirrors and credentials. Reference: https://docs.rke2.io/install/private_registry
+{{ rke2_registries | to_nice_yaml(indent=2) }}

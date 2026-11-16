@@ -1,0 +1,94 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/DavidAnson/markdownlint-cli2/v0.24.0/schema/markdownlint-cli2-config-schema.json
+#
+# markdownlint-cli2 configuration.
+#
+# Run:  make lint-markdown   (markdownlint-cli2, globs below)
+# Fix:  markdownlint-cli2 --fix   (applies the fixable rules in place)
+# Docs: https://github.com/DavidAnson/markdownlint-cli2#configuration
+#       https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+config:
+  # Every rule is on unless listed below with a reason.
+  default: true
+
+  # Prose is written one paragraph or one sentence per line, and tables, URLs
+  # and command examples cannot be wrapped. Line length is left to review.
+  MD013: false
+
+  # Fix one style per construct instead of the per-file "consistent" default,
+  # so a new file cannot introduce a second style.
+  MD003:
+    style: atx
+  MD004:
+    style: dash
+  MD035:
+    style: "---"
+  MD046:
+    style: fenced
+  MD048:
+    style: backtick
+  MD049:
+    style: underscore
+  MD050:
+    style: asterisk
+
+  # Changelogs and runbooks repeat headings such as "Added" or "Rollback"
+  # under different parents. Only identical sibling headings are an error.
+  MD024:
+    siblings_only: true
+
+  # Every document starts with a top-level heading (default). The pull request
+  # template is the exception and is handled in `overrides` below.
+  MD041:
+    level: 1
+
+  # Raw HTML is not allowed except collapsible sections, which GitHub renders
+  # and Markdown has no syntax for, and line breaks inside table cells.
+  MD033:
+    allowed_elements:
+      - details
+      - summary
+    table_allowed_elements:
+      - br
+
+  # Table pipe alignment is cosmetic: every style renders the same. The
+  # default `any` style rejects the most common GitHub form (`|---|---|` under
+  # a padded header), which is also what helm-docs generates for chart
+  # READMEs, so enforcing it only produces churn in generated files.
+  MD060: false
+
+# Lint every Markdown file in the repository. Patterns are applied in order:
+# hidden directories (editor, tool and cache state, extra worktrees) are
+# dropped, then .github/ is added back for the pull request template.
+# The pre-commit hook passes --no-globs and lints only the staged files.
+globs:
+  - "**/*.md"
+  - "!**/.*/**"
+  - ".github/**/*.md"
+
+# Skip everything listed in .gitignore (generated renders and dependency
+# archives), plus the explicit paths below.
+gitignore: true
+
+ignores:
+  # Generated renders.
+  - "_out/**"
+  # Helm dependency archives and anything unpacked from them.
+  - "**/charts/**"
+  # Upstream charts vendored byte for byte under vendor/<chart>/. The README
+  # in vendor/ itself is ours and stays linted.
+  - "helmcharts/**/vendor/*/**"
+  # Collections installed by ansible-galaxy.
+  - "ansible/collections/ansible_collections/**"
+  - "**/node_modules/**"
+
+overrides:
+  # GitHub shows the pull request title as the page heading, so the template
+  # starts at level 2.
+  - filter:
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+      - ".github/PULL_REQUEST_TEMPLATE/*.md"
+    combine: merge
+    config:
+      MD041:
+        level: 2

@@ -1,0 +1,8 @@
+# Chart values for this test: the default identity of this repository
+# (build-image.yml on main) applied to an image signed by another workflow.
+---
+imageVerification:
+  enabled: true
+  environments: [prod]
+  registries:
+    - ghcr.io/kyverno/test-images/cosign*

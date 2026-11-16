@@ -1,0 +1,42 @@
+# Reference profile: 3-node RKE2 HA cluster. Scans every namespace except kube-system.
+# Operator and Trivy server stay at one replica: scanning is background work, an
+# outage only delays reports, and no PodDisruptionBudget blocks node drains.
+# CPU limits are omitted on purpose to avoid throttling.
+trivy-operator:
+  targetNamespaces: ""
+  excludeNamespaces: "kube-system"
+
+  operator:
+    replicas: 1
+    scanJobsConcurrentLimit: 3
+
+  # Operator container.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+  trivy:
+    # Server cache on a PVC from the default StorageClass, so a server restart
+    # does not download the database again.
+    storageClassEnabled: true
+    storageClassName: ""
+    storageSize: 5Gi
+    # Scan job containers.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: null
+        memory: 1Gi
+    server:
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: null
+          memory: 2Gi

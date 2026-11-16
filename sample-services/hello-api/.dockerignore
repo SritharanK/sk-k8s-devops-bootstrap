@@ -1,0 +1,8 @@
+# Allowlist: only the Go module files and sources reach the build context.
+# Test files are included for the test stage; the runtime image receives
+# only the compiled binary.
+*
+!go.mod
+!go.sum
+!*.go
+!internal

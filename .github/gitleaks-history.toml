@@ -1,0 +1,15 @@
+# Gitleaks configuration for the weekly full-history scan.
+#
+# Extends the repository configuration and disables the environment-data
+# rules: those rules gate new changes (pre-commit, push and pull request
+# scans), while history written before they existed is covered by the
+# credential rules only. Findings accepted after review are listed by
+# fingerprint in .gitleaksignore. Run from the repository root:
+#   gitleaks git --config .github/gitleaks-history.toml
+
+title = "sk-k8s-devops-bootstrap history"
+minVersion = "v8.25.0"
+
+[extend]
+path = ".gitleaks.toml"
+disabledRules = ["hardcoded-ipv4", "hardcoded-domain"]

@@ -1,0 +1,20 @@
+---
+# A cloud image ships iproute2; the container images do not. Without it Ansible cannot report
+# ansible_facts['default_ipv4'], which the role uses to find the server addresses for the etcd rule.
+- name: Prepare
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Install iproute2 (Debian family)
+      ansible.builtin.apt:
+        name: iproute2
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Install iproute (RedHat family)
+      ansible.builtin.dnf:
+        name: iproute
+        state: present
+      when: ansible_facts['os_family'] == 'RedHat'

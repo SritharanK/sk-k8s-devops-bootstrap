@@ -1,0 +1,13 @@
+{{- /*
+Static Applications: one per app and environment hosted by this cluster.
+Rendered only when the ApplicationSet mode is off, so the two modes never
+produce the same Application twice.
+*/ -}}
+{{- if not .Values.applicationSet.enabled }}
+{{- range $i := include "argocd-bootstrap.appInstances" . | fromYamlArray }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+{{ include "argocd-bootstrap.appBody" (merge (dict "root" $) $i) }}
+{{- end }}
+{{- end }}

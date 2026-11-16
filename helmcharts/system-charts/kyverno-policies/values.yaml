@@ -1,0 +1,104 @@
+# Workload policy values (docs/adr/0004-kyverno-cel-policies.md). Keys marked "injected" are set by the
+# toolchain Application from clusters/<name>/cluster.yaml; keep their names.
+
+---
+# Application environments. `namespace` is injected; `action` is Audit or
+# Enforce. Each policy is rendered once per action that has at least one
+# namespace, named <policy>-audit or <policy>-enforce.
+environments:
+  dev:
+    enabled: true
+    namespace: dev
+    action: Audit
+  stage:
+    enabled: true
+    namespace: stage
+    action: Enforce
+  prod:
+    enabled: true
+    namespace: prod
+    action: Enforce
+
+# Image reference prefixes allowed in the application namespaces (injected:
+# "<platform.imageRegistry>/"). A trailing slash is added when missing, so
+# "ghcr.io/your-org" never matches "ghcr.io/your-org-other/...".
+allowedRegistries:
+  - ghcr.io/your-org/
+
+# Report application NetworkPolicies that admit ingress from all namespaces to
+# every pod (templates/networkpolicy-audit.yaml). Audit and Warn only, in every
+# enabled environment.
+networkPolicyAudit:
+  enabled: true
+
+# Policy names from templates/_catalogue.tpl to leave out, for example
+# [require-probes]. Prefer a PolicyException for a single workload.
+disabledPolicies: []
+
+# Signature verification. cosign keyless signatures made by the
+# build-image workflow of this repository on main, recorded in the public
+# Rekor log. Enabled per profile; the lab profile loads locally built images
+# into kind, which carry no signature.
+imageVerification:
+  enabled: false
+  # Environment keys whose namespaces are verified. The failure action of
+  # each environment applies.
+  environments: [stage, prod]
+  issuer: https://token.actions.githubusercontent.com
+  # Fallback for installs without the toolchain. The kyverno-policies toolchain
+  # replaces it with the owner and repository of git.repoURL (HTTPS or SSH
+  # github.com URL) and fails the render when it cannot.
+  # yamllint disable-line rule:line-length
+  subjectRegExp: ^https://github\.com/[^/]+/sk-k8s-devops-bootstrap/\.github/workflows/build-image\.yml@refs/heads/main$
+  # Key-based alternative to the keyless identity above, for signing with a
+  # key pair or a KMS key, for example in an air-gapped setup: the PEM public
+  # key that verifies the signature and the vulnerability attestation. When
+  # set, issuer and subjectRegExp are not used.
+  publicKey: ""
+  # Skips the transparency log check of key-based signatures. Only for tests
+  # with a local registry and no Rekor; requires publicKey, and the render
+  # fails without it. Never set it on a cluster.
+  insecureIgnoreTlog: false
+  # Image globs that must be signed (injected: "<platform.imageRegistry>/*").
+  registries:
+    - ghcr.io/your-org/*
+  ctlogURL: https://rekor.sigstore.dev
+  # Registry and transparency log calls happen inside the admission request.
+  timeoutSeconds: 30
+  # Vulnerability scan gate. build-image.yml attests the Trivy report of each
+  # digest it signs (cosign predicate type vuln, same identity as the
+  # signature), and its daily rescan job attests the deployed digests again.
+  # When enabled, the signature policy also requires that attestation, no
+  # finding of a listed severity in it, and a scan no older than maxScanAge.
+  # When several attestations verify, Kyverno uses the newest. No effect
+  # unless imageVerification.enabled is true.
+  vulnerabilities:
+    enabled: false
+    # Maximum age of the newest scan (metadata.scanFinishedOn), as a duration
+    # in h, m and s, for example 168h. The daily rescan renews it; a value
+    # below a day turns a late rescan into an outage.
+    maxScanAge: 168h
+    # Trivy severities that block admission (UNKNOWN, LOW, MEDIUM, HIGH,
+    # CRITICAL).
+    severities: [CRITICAL]
+    # true admits findings without a fixed version (no FixedVersion and a
+    # Status other than fixed). The default blocks them too: an unfixed
+    # CRITICAL in stage or prod is a decision to take explicitly.
+    ignoreUnfixed: false
+    # Risk acceptance: vulnerability IDs (VulnerabilityID in the Trivy report,
+    # for example CVE-2024-12345 or GHSA-xxxx-xxxx-xxxx) that never block.
+    # Add an ID only through a reviewed pull request that states the reason,
+    # the owner and a review date in a comment next to it, and remove it once
+    # a fixed image is deployed.
+    ignoreVulnerabilityIDs: []
+
+exceptions:
+  # cert-manager ACME HTTP-01 solver pods run in the namespace of the
+  # Certificate and do not meet the workload contract (no probes, writable
+  # root filesystem, upstream registry). The exception matches only pods that
+  # carry the solver label, are owned by a cert-manager Challenge and run the
+  # solver image.
+  acmeHttp01Solver:
+    enabled: true
+    imagePrefixes:
+      - quay.io/jetstack/cert-manager-acmesolver

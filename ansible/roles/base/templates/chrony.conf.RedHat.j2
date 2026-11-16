@@ -1,0 +1,26 @@
+{{ ansible_managed | comment }}
+# EL 9 default configuration with the distribution pool replaced by base_chrony_servers.
+{% for server in base_chrony_servers %}
+server {{ server }} iburst prefer
+{% endfor %}
+
+# Use NTP servers from DHCP.
+sourcedir /run/chrony-dhcp
+
+# Record the rate at which the system clock gains or loses time.
+driftfile /var/lib/chrony/drift
+
+# Allow the system clock to be stepped in the first three updates if its offset is larger than 1 second.
+makestep 1.0 3
+
+# Enable kernel synchronisation of the real-time clock (RTC).
+rtcsync
+
+# File containing keys for NTP authentication.
+keyfile /etc/chrony.keys
+
+# Save NTS keys and cookies.
+ntsdumpdir /var/lib/chrony
+
+# Directory for log files.
+logdir /var/log/chrony

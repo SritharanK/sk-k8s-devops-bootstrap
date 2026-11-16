@@ -1,0 +1,44 @@
+{{- /*
+argocd-rbac-cm built from platform.groups (cluster definition) and
+rbac.appProjects. The upstream chart renders this ConfigMap from a fixed string,
+so argo-cd.configs.rbac.create is false and this template owns it.
+*/ -}}
+{{- if index .Values "argo-cd" "configs" "rbac" "create" -}}
+{{- fail "set argo-cd.configs.rbac.create to false: argocd-rbac-cm is rendered by the wrapper" -}}
+{{- end -}}
+{{- $groups := .Values.platform.groups | default dict -}}
+{{- $projects := .Values.rbac.appProjects | default list -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "argocd-wrapper.labels" . | nindent 4 }}
+    app.kubernetes.io/name: argocd-rbac-cm
+    app.kubernetes.io/component: server
+data:
+  policy.default: {{ .Values.rbac.defaultRole | default "" | quote }}
+  policy.matchMode: {{ .Values.rbac.matchMode | default "glob" | quote }}
+  scopes: {{ .Values.rbac.scopes | default "[groups]" | quote }}
+  policy.csv: |
+    # role:deployer operates Applications in the app projects only.
+    {{- range $projects }}
+    p, role:deployer, applications, get, {{ . }}/*, allow
+    p, role:deployer, applications, sync, {{ . }}/*, allow
+    p, role:deployer, applications, action/*, {{ . }}/*, allow
+    p, role:deployer, logs, get, {{ . }}/*, allow
+    p, role:deployer, projects, get, {{ . }}, allow
+    {{- end }}
+    {{- with $groups.admins }}
+    g, {{ include "argocd-wrapper.subject" . }}, role:admin
+    {{- end }}
+    {{- with $groups.deployers }}
+    g, {{ include "argocd-wrapper.subject" . }}, role:deployer
+    {{- end }}
+    {{- with $groups.viewers }}
+    g, {{ include "argocd-wrapper.subject" . }}, role:readonly
+    {{- end }}
+    {{- with .Values.rbac.extraPolicy }}
+    {{- . | trim | nindent 4 }}
+    {{- end }}

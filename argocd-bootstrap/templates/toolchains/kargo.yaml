@@ -1,0 +1,174 @@
+{{- /*
+kargo: optional promotion orchestration (docs/adr/0012-kargo-promotion.md).
+Off unless toolchains.kargo.enabled is true in clusters/<cluster>/cluster.yaml
+(the reference profile enables it). Two Applications:
+
+  kargo            wave 4  controller, API and UI, webhooks
+                           (helmcharts/system-charts/kargo); values from
+                           toolchains.kargo.values
+  kargo-pipelines  wave 11 Projects, Warehouses and Stages for the apps of the
+                           inventory (helmcharts/system-charts/kargo-pipelines);
+                           values from toolchains.kargo.pipelines.values, off
+                           with toolchains.kargo.pipelines.enabled: false.
+                           After the app Applications (wave 10): a Warehouse
+                           finds Freight at once and dev auto-promotes, and the
+                           argocd-update step of that first promotion needs
+                           the Application to exist (Kargo does not retry an
+                           errored auto-promotion of the same Freight).
+
+Verification of the pipelines is on when the argo-rollouts and monitoring
+toolchains are both enabled, unless the cluster file sets
+toolchains.kargo.pipelines.values.verification.enabled. Enabling it without
+argo-rollouts fails the render: Kargo only creates AnalysisRuns, the Argo
+Rollouts controller runs them.
+*/}}
+{{- if (dig "kargo" "enabled" false .Values.toolchains) }}
+{{- $ns := dig "kargo" "kargo" .Values.namespaces }}
+{{- $groups := .Values.platform.groups }}
+{{- $values := dict
+      "kargo" (dict
+        "api" (dict
+          "host" (printf "kargo.%s" .Values.cluster.domain)
+          "oidc" (dict
+            "admins" (dict "claims" (dict "groups" (list $groups.admins)))
+            "viewers" (dict "claims" (dict "groups" (list $groups.viewers $groups.deployers)))))
+        "controller" (dict "argocd" (dict "namespace" .Values.namespaces.argocd))
+        "global" (dict
+          "sharedResources" (dict "namespace" (dig "kargoSharedResources" "kargo-shared-resources" .Values.namespaces))
+          "systemResources" (dict "namespace" (dig "kargoSystemResources" "kargo-system-resources" .Values.namespaces))))
+      "credentials" (dict
+        "git" (dict "repoURL" .Values.git.repoURL)
+        "image" (dict "repoURL" (printf "^%s/" (regexQuoteMeta (trimSuffix "/" .Values.platform.imageRegistry)))))
+      "route" (dict "parentRefs" (list (dict "name" "platform" "namespace" .Values.namespaces.gateway "sectionName" "https"))) }}
+{{- $values = mustMergeOverwrite $values (dig "kargo" "values" dict .Values.toolchains) }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . "kargo") }}
+  namespace: {{ .Values.namespaces.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/manifest-generate-paths: "."
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ include "argocd-bootstrap.platformProject" . }}
+  source:
+    repoURL: {{ .Values.git.repoURL }}
+    targetRevision: {{ .Values.git.targetRevision }}
+    path: helmcharts/system-charts/kargo
+    helm:
+      releaseName: kargo
+      valueFiles:
+        - values.yaml
+        - values-{{ .Values.cluster.profile }}.yaml
+      ignoreMissingValueFiles: true
+      valuesObject:
+        {{- toYaml $values | nindent 8 }}
+  destination:
+    {{- include "argocd-bootstrap.destination" . | nindent 4 }}
+    namespace: {{ $ns }}
+  # cert-manager writes caBundle on the webhook configurations at runtime.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jqPathExpressions:
+        - .webhooks[]?.clientConfig.caBundle
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions:
+        - .webhooks[]?.clientConfig.caBundle
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+      # Certificate and Issuer whose CRDs come from the cert-manager Application.
+      - SkipDryRunOnMissingResource=true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/enforce-version: v{{ .Values.cluster.kubernetesMinor }}
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/audit-version: v{{ .Values.cluster.kubernetesMinor }}
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- if include "argocd-bootstrap.kargoPipelines" . }}
+{{- $rollouts := dig "argo-rollouts" "enabled" false .Values.toolchains }}
+{{- $monitoring := dig "monitoring" "enabled" false .Values.toolchains }}
+{{- $userPipelines := dig "kargo" "pipelines" "values" dict .Values.toolchains }}
+{{- $verify := dig "verification" "enabled" (and $rollouts $monitoring) $userPipelines }}
+{{- if and $verify (not $rollouts) }}
+{{- fail "kargo: pipeline verification needs the argo-rollouts toolchain (it runs the AnalysisRuns that Kargo creates); enable toolchains.argo-rollouts or set toolchains.kargo.pipelines.values.verification.enabled: false" }}
+{{- end }}
+{{- $apps := list }}
+{{- $byApp := dict }}
+{{- range $i := include "argocd-bootstrap.appInstances" . | fromYamlArray }}
+{{- if not (hasKey $byApp $i.app) }}
+{{- $_ := set $byApp $i.app list }}
+{{- $apps = append $apps $i.app }}
+{{- end }}
+{{- $_ := set $byApp $i.app (append (get $byApp $i.app) (dict "name" $i.env "namespace" $i.namespace "application" $i.name)) }}
+{{- end }}
+{{- $pipelineApps := list }}
+{{- range $app := $apps }}
+{{- $pipelineApps = append $pipelineApps (dict "name" $app "stages" (get $byApp $app)) }}
+{{- end }}
+{{- $pipelines := dict
+      "git" (dict "repoURL" .Values.git.repoURL "branch" .Values.git.targetRevision)
+      "argocd" (dict "namespace" .Values.namespaces.argocd)
+      "imageRegistry" .Values.platform.imageRegistry
+      "groups" $groups
+      "podSecurityVersion" (printf "v%s" .Values.cluster.kubernetesMinor)
+      "apps" $pipelineApps
+      "verification" (dict "enabled" $verify) }}
+{{- $pipelines = mustMergeOverwrite $pipelines $userPipelines }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . "kargo-pipelines") }}
+  namespace: {{ .Values.namespaces.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+    argocd.argoproj.io/manifest-generate-paths: "."
+    # The Kargo webhooks default fields of Warehouses and Stages; a
+    # server-side diff includes them, so they do not show as drift.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ include "argocd-bootstrap.platformProject" . }}
+  source:
+    repoURL: {{ .Values.git.repoURL }}
+    targetRevision: {{ .Values.git.targetRevision }}
+    path: helmcharts/system-charts/kargo-pipelines
+    helm:
+      releaseName: kargo-pipelines
+      valuesObject:
+        {{- toYaml $pipelines | nindent 8 }}
+  destination:
+    {{- include "argocd-bootstrap.destination" . | nindent 4 }}
+    namespace: {{ $ns }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- end }}
+{{- end }}

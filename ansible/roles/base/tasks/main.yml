@@ -1,0 +1,56 @@
+---
+- name: Load OS family variables
+  ansible.builtin.include_vars:
+    file: "{{ lookup('ansible.builtin.first_found', base__os_vars_files) }}"
+  vars:
+    base__os_vars_files:
+      files:
+        - "{{ ansible_facts['os_family'] }}.yml"
+      paths:
+        - "{{ role_path }}/vars"
+  tags: [always]
+
+- name: Validate input and guard against SSH lockout
+  ansible.builtin.import_tasks: validate.yml
+  tags: [base, base_validate]
+
+- name: Install packages
+  ansible.builtin.import_tasks: packages.yml
+  tags: [base, base_packages]
+
+- name: Prepare the host as a Kubernetes node
+  ansible.builtin.import_tasks: kubernetes.yml
+  when: base_kubernetes_node
+  tags: [base, base_kernel]
+
+- name: Turn off swap
+  ansible.builtin.import_tasks: swap.yml
+  when: base_disable_swap
+  tags: [base, base_swap]
+
+- name: Apply host hardening sysctls
+  ansible.builtin.import_tasks: hardening.yml
+  tags: [base, base_hardening]
+
+- name: Configure storage clients
+  ansible.builtin.import_tasks: storage.yml
+  when: base_storage_clients
+  tags: [base, base_storage]
+
+- name: Configure time synchronisation
+  ansible.builtin.import_tasks: time.yml
+  tags: [base, base_time]
+
+- name: Configure unattended security updates
+  ansible.builtin.import_tasks: updates.yml
+  when: base_unattended_upgrades
+  tags: [base, base_updates]
+
+- name: Manage admin users
+  ansible.builtin.import_tasks: users.yml
+  tags: [base, base_users]
+
+- name: Harden the SSH daemon
+  ansible.builtin.import_tasks: ssh.yml
+  when: base_ssh_hardening
+  tags: [base, base_ssh]

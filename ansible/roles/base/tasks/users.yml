@@ -1,0 +1,59 @@
+---
+# Accounts that exist before this run; used to skip key management in check mode for users not created yet.
+- name: Read the local accounts
+  ansible.builtin.getent:
+    database: passwd
+
+- name: Create admin users with a locked password
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    shell: "{{ item.shell }}"
+    create_home: true
+    password_lock: true
+    state: present
+  loop: "{{ base__admin_users_present }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Install the authorized SSH keys of admin users
+  ansible.posix.authorized_key:
+    user: "{{ item.name }}"
+    key: "{{ item.ssh_public_keys | join('\n') }}"
+    exclusive: true
+    manage_dir: true
+    state: present
+  loop: "{{ base__admin_users_present }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: not ansible_check_mode or item.name in ansible_facts['getent_passwd']
+
+# sudo ignores files in sudoers.d whose name contains a dot, so dots in user names become underscores.
+- name: Grant passwordless sudo to admin users
+  ansible.builtin.template:
+    src: sudoers.j2
+    dest: "/etc/sudoers.d/90-{{ item.name | replace('.', '_') }}"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+  loop: "{{ base__admin_users_present | selectattr('sudo') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Remove sudo rules of admin users without sudo or marked absent
+  ansible.builtin.file:
+    path: "/etc/sudoers.d/90-{{ item.name | replace('.', '_') }}"
+    state: absent
+  loop: "{{ (base__admin_users_present | rejectattr('sudo') | list) + base__admin_users_absent }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# The home directory is kept for audit purposes.
+- name: Remove admin users marked absent
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    state: absent
+    remove: false
+  loop: "{{ base__admin_users_absent }}"
+  loop_control:
+    label: "{{ item.name }}"

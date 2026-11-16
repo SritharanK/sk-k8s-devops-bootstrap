@@ -1,0 +1,13 @@
+---
+apiVersion: v2
+name: bootstrap
+description: Root Application of one cluster, plus the hub mode ApplicationSet for remote clusters.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/SritharanK/sk-k8s-devops-bootstrap
+sources:
+  - https://github.com/SritharanK/sk-k8s-devops-bootstrap/tree/main/bootstrap
+maintainers:
+  - name: Sritharan K
+    url: https://www.skengineer.be

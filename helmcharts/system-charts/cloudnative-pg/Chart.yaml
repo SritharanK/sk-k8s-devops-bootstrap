@@ -1,0 +1,21 @@
+apiVersion: v2
+name: cloudnative-pg
+description: CloudNativePG operator and the Barman Cloud backup plugin, with an optional example PostgreSQL cluster.
+type: application
+version: 0.1.0
+appVersion: 1.30.1
+kubeVersion: ">=1.35.0-0"
+home: https://cloudnative-pg.io
+sources:
+  - https://github.com/cloudnative-pg/cloudnative-pg
+  - https://github.com/cloudnative-pg/plugin-barman-cloud
+  - https://github.com/cloudnative-pg/charts
+dependencies:
+  # Operator chart 0.29.1 ships CloudNativePG 1.30.1.
+  - name: cloudnative-pg
+    version: 0.29.1
+    repository: oci://ghcr.io/cloudnative-pg/charts
+  # Plugin chart 0.9.0 ships plugin-barman-cloud v0.16.0 (needs CloudNativePG 1.30 or newer).
+  - name: plugin-barman-cloud
+    version: 0.9.0
+    repository: oci://ghcr.io/cloudnative-pg/charts

@@ -1,0 +1,33 @@
+---
+# Packages come from packages.yml (base__storage_packages). Longhorn requires iscsi_tcp loaded before iscsid starts.
+- name: Ensure the modules-load directory exists
+  ansible.builtin.file:
+    path: /etc/modules-load.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Persist the iSCSI kernel module
+  ansible.builtin.template:
+    src: modules-load.conf.j2
+    dest: "{{ base__modules_storage_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    base__modules_load_list: "{{ base__storage_kernel_modules }}"
+
+- name: Load the iSCSI kernel module
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ base__storage_kernel_modules }}"
+  when: base_kernel_runtime_apply
+
+- name: Enable and start iscsid
+  ansible.builtin.systemd_service:
+    name: iscsid
+    enabled: true
+    state: started
+  when: not base__check_mode_pending

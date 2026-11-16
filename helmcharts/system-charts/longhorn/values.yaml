@@ -1,0 +1,77 @@
+# longhorn: values shared by every profile.
+# Upstream values are nested under the dependency name. Full list:
+# https://github.com/longhorn/longhorn/blob/v1.12.2/chart/values.yaml
+longhorn:
+  # Argo CD renders the chart with helm template, so the pre-upgrade Job would run as a
+  # PreSync hook on every sync. Longhorn documents turning it off for Argo CD. The
+  # manager still refuses unsupported upgrade paths at start (upgradeVersionCheck).
+  preUpgradeChecker:
+    jobEnabled: false
+    upgradeVersionCheck: true
+
+  persistence:
+    createStorageClass: true
+    defaultFsType: ext4
+    reclaimPolicy: Delete
+    volumeBindingMode: Immediate
+    dataEngine: v1
+
+  # Settings written to the longhorn-default-setting ConfigMap. Data-engine-specific
+  # settings take a map per engine ({v1: ..., v2: ...}); the chart renders it as the
+  # JSON string Longhorn 1.12 expects. Plain settings stay plain values.
+  defaultSettings:
+    # Keep the uninstall protection: the uninstall Job fails while this is false.
+    deletingConfirmationFlag: false
+    # Versions come from Git; no calls to the upstream upgrade responder.
+    upgradeChecker: false
+    allowCollectingLonghornUsageMetrics: false
+    # Upgrade volume engines after a manager upgrade without a manual UI step, one
+    # volume engine at a time per node (upstream default 0 means manual only).
+    concurrentAutomaticEngineUpgradePerNodeLimit: 1
+    # Requests and limits for the CSI components the manager deploys itself.
+    systemManagedCSIComponentsResourceLimits: >-
+      {"csi-attacher": {"requests": {"cpu": "10m", "memory": "32Mi"}, "limits": {"memory": "256Mi"}},
+      "csi-provisioner": {"requests": {"cpu": "10m", "memory": "32Mi"}, "limits": {"memory": "256Mi"}},
+      "csi-resizer": {"requests": {"cpu": "10m", "memory": "32Mi"}, "limits": {"memory": "256Mi"}},
+      "csi-snapshotter": {"requests": {"cpu": "10m", "memory": "32Mi"}, "limits": {"memory": "256Mi"}},
+      "longhorn-csi-plugin": {"requests": {"cpu": "20m", "memory": "64Mi"}, "limits": {"memory": "256Mi"}},
+      "node-driver-registrar": {"requests": {"cpu": "10m", "memory": "16Mi"}, "limits": {"memory": "64Mi"}},
+      "longhorn-liveness-probe": {"requests": {"cpu": "10m", "memory": "16Mi"}, "limits": {"memory": "64Mi"}}}
+
+  # The UI is not exposed. Reach it with:
+  # kubectl -n longhorn-system port-forward svc/longhorn-frontend 8080:80
+  service:
+    ui:
+      type: ClusterIP
+  ingress:
+    enabled: false
+  httproute:
+    enabled: false
+
+  # restrictInternalTraffic is on upstream and renders NetworkPolicies that close the
+  # manager port (TCP/9500, metrics and REST API) to everything outside Longhorn.
+  # Open it to the Prometheus pods of the monitoring namespace only.
+  networkPolicies:
+    restrictInternalTraffic: true
+    metricsScrapeSources:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: monitoring
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: prometheus
+
+  # Scraped by the Prometheus in the monitoring namespace (selects release: monitoring).
+  metrics:
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: monitoring
+
+# PodDisruptionBudget for the Longhorn UI, rendered by this wrapper
+# (templates/ui-poddisruptionbudget.yaml). Chart 1.12.2 documents
+# longhornUI.podDisruptionBudget but has no template that uses it. Drop this once the
+# upstream chart renders its own PodDisruptionBudget.
+uiPodDisruptionBudget:
+  enabled: false
+  minAvailable: 1

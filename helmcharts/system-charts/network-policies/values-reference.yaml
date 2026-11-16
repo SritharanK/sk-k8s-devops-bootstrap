@@ -1,0 +1,5 @@
+# Reference profile (RKE2 HA, three servers). No delta: the policies are the
+# same on every profile, and the cluster-specific namespaces are injected by
+# the Argo CD Application.
+---
+{}

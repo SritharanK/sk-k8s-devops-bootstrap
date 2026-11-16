@@ -1,0 +1,20 @@
+# local-path lab profile: single-node RKE2 lab. Keep this toolchain disabled on kind,
+# which ships its own local-path provisioner and default StorageClass.
+local-path-provisioner:
+  storageClass:
+    defaultClass: true
+
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+  helperPod:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        memory: 64Mi

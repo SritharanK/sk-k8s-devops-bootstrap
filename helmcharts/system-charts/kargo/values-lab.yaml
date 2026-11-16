@@ -1,0 +1,11 @@
+# Lab profile: kind or a single node. One replica each. No SSO: the local
+# admin account reads its password hash and token signing key from the
+# Secret kargo-api in the kargo namespace (keys ADMIN_ACCOUNT_PASSWORD_HASH,
+# ADMIN_ACCOUNT_TOKEN_SIGNING_KEY), delivered as a SealedSecret under
+# clusters/<name>/secrets/kargo/. See docs/how-to/promote-with-kargo.md.
+kargo:
+  api:
+    adminAccount:
+      enabled: true
+    secret:
+      name: kargo-api

@@ -1,0 +1,17 @@
+{{ ansible_managed | comment }}
+[commands]
+# Only updates with a security advisory.
+upgrade_type = security
+download_updates = yes
+apply_updates = yes
+reboot = {{ 'when-needed' if base_automatic_reboot else 'never' }}
+
+[emitters]
+emit_via = stdio
+
+[base]
+# Overrides dnf.conf for dnf-automatic only.
+debuglevel = 1
+{% if base_unattended_upgrades_exclude | length > 0 %}
+excludepkgs = {{ base_unattended_upgrades_exclude | join(',') }}
+{% endif %}

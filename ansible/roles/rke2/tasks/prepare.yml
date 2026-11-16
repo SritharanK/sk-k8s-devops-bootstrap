@@ -1,0 +1,52 @@
+---
+- name: Gather the state of system services
+  ansible.builtin.service_facts:
+
+- name: Record whether the RKE2 service was running before this run
+  ansible.builtin.set_fact:
+    rke2__service_was_active: >-
+      {{ (ansible_facts['services'][rke2__service_unit]['state'] | default('')) == 'running' }}
+
+- name: Keep NetworkManager away from the CNI interfaces
+  ansible.builtin.template:
+    src: rke2-canal.conf.j2
+    dest: "{{ rke2__nm_dropin }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload NetworkManager
+  # service_facts also lists units that are only referenced by others, with status not-found (Ubuntu server
+  # references NetworkManager.service without shipping it), so require an installed unit.
+  when: (ansible_facts['services']['NetworkManager.service']['status'] | default('not-found')) != 'not-found'
+
+- name: Disable nm-cloud-setup, which adds routes that break the CNI
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - nm-cloud-setup.timer
+    - nm-cloud-setup.service
+  when: (ansible_facts['services']['nm-cloud-setup.service']['status'] | default('not-found')) != 'not-found'
+
+- name: Create the etcd group required by the CIS profile
+  ansible.builtin.group:
+    name: etcd
+    system: true
+    state: present
+  when:
+    - rke2_cis_profile | bool
+    - rke2__node_type == 'server'
+
+- name: Create the etcd user required by the CIS profile
+  ansible.builtin.user:
+    name: etcd
+    group: etcd
+    comment: etcd user
+    system: true
+    shell: /sbin/nologin
+    create_home: false
+    state: present
+  when:
+    - rke2_cis_profile | bool
+    - rke2__node_type == 'server'

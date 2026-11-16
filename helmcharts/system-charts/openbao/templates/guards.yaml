@@ -1,0 +1,26 @@
+{{- /*
+Renders nothing. Fails rendering on settings this platform never allows:
+dev mode (in-memory storage, fixed root token), plain HTTP, and a listener
+that does not mount the certificate issued by templates/certificate.yaml.
+*/ -}}
+{{- $server := .Values.openbao.server -}}
+{{- if eq (toString $server.dev.enabled) "true" -}}
+{{- fail "openbao: server.dev.enabled must stay false; dev mode keeps all data in memory and uses a known root token" -}}
+{{- end -}}
+{{- if .Values.global.tlsDisable -}}
+{{- fail "openbao: global.tlsDisable must stay false; TLS is required end to end" -}}
+{{- end -}}
+{{- if not (and $server.ha.enabled $server.ha.raft.enabled) -}}
+{{- fail "openbao: server.ha.enabled and server.ha.raft.enabled must stay true (integrated Raft storage)" -}}
+{{- end -}}
+{{- $tlsMounted := false -}}
+{{- range $server.volumes -}}
+{{- if and (eq .name "tls") .secret -}}
+{{- if eq .secret.secretName $.Values.tls.secretName -}}
+{{- $tlsMounted = true -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if not $tlsMounted -}}
+{{- fail (printf "openbao: server.volumes needs a volume named tls with secret.secretName %s (tls.secretName)" .Values.tls.secretName) -}}
+{{- end -}}

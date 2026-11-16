@@ -1,0 +1,16 @@
+apiVersion: v2
+name: velero
+description: Velero with Kopia file-system backup through the node agent, scheduled namespace backups and Sealed Secrets key escrow.
+type: application
+version: 0.1.0
+appVersion: "1.18.2"
+kubeVersion: ">=1.35.0-0"
+home: https://velero.io
+sources:
+  - https://github.com/vmware-tanzu/velero
+  - https://github.com/vmware-tanzu/velero-plugin-for-aws
+  - https://github.com/vmware-tanzu/helm-charts/tree/main/charts/velero
+dependencies:
+  - name: velero
+    version: 12.2.5
+    repository: https://vmware-tanzu.github.io/helm-charts

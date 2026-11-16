@@ -1,0 +1,102 @@
+---
+# Builds or converges an RKE2 cluster. Safe to re-run: every role is idempotent, and a version change
+# in clusters/<name>/cluster.yaml rolls the upgrade through the servers one at a time, then the agents.
+#
+# Order:
+#   1. preflight host checks on every node (fatal, nothing changes before they pass)
+#   2. OS baseline and host firewall on nodes and the optional NFS server
+#   3. optional NFS server
+#   4. preflight runtime checks (swap, kernel modules, sysctls, time sync)
+#   5. first server bootstraps the cluster and the kubeconfig is fetched to ansible/data/
+#   6. remaining servers join one at a time
+#   7. agents join in batches
+#
+# Usage, from ansible/:
+#   ansible-playbook -i inventories/<profile>/hosts.yml playbooks/site.yml --vault-id <profile>@prompt
+#
+# Every play loads the cluster definition through vars_files. cluster_definition_file comes from the
+# inventory (group_vars/all/main.yml); Ansible also templates vars_files once without a host, when no
+# inventory variables exist, and the default only keeps that pass quiet. Each host resolves its own file.
+
+- name: Preflight host checks
+  hosts: k8s_cluster
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  tags: [preflight]
+  vars_files:
+    - "{{ cluster_definition_file | default(playbook_dir ~ '/../../clusters/lab/cluster.yaml') }}"
+  roles:
+    - role: preflight
+      vars:
+        preflight_runtime_checks: false
+
+- name: Operating system baseline and host firewall
+  hosts: k8s_cluster:nfs_server
+  become: true
+  gather_facts: true
+  tags: [base]
+  vars_files:
+    - "{{ cluster_definition_file | default(playbook_dir ~ '/../../clusters/lab/cluster.yaml') }}"
+  roles:
+    - role: base
+    - role: firewall
+
+- name: NFS server
+  hosts: nfs_server
+  become: true
+  gather_facts: true
+  tags: [nfs]
+  vars_files:
+    - "{{ cluster_definition_file | default(playbook_dir ~ '/../../clusters/lab/cluster.yaml') }}"
+  roles:
+    - role: nfs_server
+
+- name: Preflight runtime checks
+  hosts: k8s_cluster
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  tags: [preflight]
+  vars_files:
+    - "{{ cluster_definition_file | default(playbook_dir ~ '/../../clusters/lab/cluster.yaml') }}"
+  tasks:
+    - name: Verify swap, kernel modules, sysctls and time sync
+      ansible.builtin.import_role:
+        name: preflight
+        tasks_from: runtime
+
+- name: Bootstrap the first RKE2 server
+  hosts: rke2_servers[0]
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  tags: [rke2]
+  vars_files:
+    - "{{ cluster_definition_file | default(playbook_dir ~ '/../../clusters/lab/cluster.yaml') }}"
+  roles:
+    - role: rke2
+
+- name: Join the remaining RKE2 servers one at a time
+  hosts: rke2_servers[1:]
+  become: true
+  gather_facts: true
+  serial: 1
+  any_errors_fatal: true
+  tags: [rke2]
+  vars_files:
+    - "{{ cluster_definition_file | default(playbook_dir ~ '/../../clusters/lab/cluster.yaml') }}"
+  roles:
+    - role: rke2
+
+- name: Join RKE2 agents in batches
+  hosts: rke2_agents
+  become: true
+  gather_facts: true
+  serial: "25%"
+  max_fail_percentage: 0
+  tags: [rke2]
+  vars_files:
+    - "{{ cluster_definition_file | default(playbook_dir ~ '/../../clusters/lab/cluster.yaml') }}"
+  roles:
+    - role: rke2

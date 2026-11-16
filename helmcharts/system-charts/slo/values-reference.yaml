@@ -1,0 +1,5 @@
+# Reference profile: every SLO is installed. The rules create no pods, so there is
+# nothing to size or make highly available here; Prometheus HA is set in the
+# monitoring chart. Leave out hello-api when the sample service is not deployed:
+#   disabledRuleFiles: [hello-api]
+disabledRuleFiles: []

@@ -1,0 +1,139 @@
+# pre-commit hooks.
+#
+# Install:  mise install && pre-commit install
+# Run all:  pre-commit run --all-files
+# Docs:     https://pre-commit.com/
+#
+# Fast checks on staged files only. The same linters run in CI through
+# `make lint` and friends, so a commit that passes here passes the CI lint
+# jobs as well. Only the helm-lint and ansible-lint hooks use the network, to
+# fetch chart dependencies and Ansible collections on their first run. Heavier
+# checks (rendering every profile, kubeconform, policy tests, image scans,
+# full-history secret scans) stay in CI.
+#
+# Version policy:
+#   - Hygiene hooks come from pre-commit/pre-commit-hooks, pinned by commit
+#     SHA with the release tag in a `frozen:` comment
+#     (pre-commit autoupdate --freeze keeps that format; Renovate updates it).
+#   - Every linter is a `repo: local` hook that runs the binary from PATH,
+#     which mise provides at the version pinned in mise.toml. Local runs and
+#     CI therefore use identical versions, and no hook downloads its own copy
+#     of a tool. `language: unsupported` is the pre-commit 4.4+ name for the
+#     former `language: system`; behaviour is the same.
+
+minimum_pre_commit_version: "4.4.0"
+default_install_hook_types: [pre-commit]
+
+# Upstream files kept byte for byte (their README records the checksum) and
+# generated files (their generator has a --check mode in CI) must never be
+# rewritten by a fixer hook. The README next to vendored content is ours and
+# stays included. gitleaks still scans these paths: it reads the whole staged
+# diff, not the file list.
+exclude: |
+  (?x)^(
+    helmcharts/.+/vendor/(?!README\.md$).+|
+    helmcharts/.+/upstream/(?!README\.md$).+|
+    helmcharts/system-charts/slo/rules/.+|
+    docs/reference/support-matrix\.md
+  )$
+
+repos:
+  # ---------------------------------------------------------------------------
+  # File hygiene
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        # Two trailing spaces are a hard line break in Markdown.
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      # devcontainer.json and renovate.json are kept strict JSON (no
+      # comments), so this hook and check-jsonschema can parse them.
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+        # Kubernetes manifests may hold several documents. Helm templates are
+        # Go templates and are not valid YAML before rendering.
+        args: [--allow-multiple-documents]
+        exclude: (^|/)templates/
+
+  # ---------------------------------------------------------------------------
+  # Linters from the mise toolchain
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (staged changes)
+        description: Scan the staged diff for secrets and environment data.
+        entry: gitleaks git --pre-commit --staged --redact --no-banner
+        language: unsupported
+        pass_filenames: false
+
+      - id: shellcheck
+        name: shellcheck
+        entry: shellcheck -x
+        language: unsupported
+        types: [shell]
+
+      - id: shfmt
+        name: shfmt (check only)
+        description: Report formatting differences; run `shfmt -w -i 2 -ci` to apply them.
+        entry: shfmt -d -i 2 -ci
+        language: unsupported
+        types: [shell]
+
+      - id: yamllint
+        name: yamllint
+        entry: yamllint -s -c .yamllint.yaml
+        language: unsupported
+        types: [yaml]
+        exclude: (^|/)templates/
+
+      - id: markdownlint-cli2
+        name: markdownlint-cli2
+        # --no-globs: lint only the files pre-commit passes, not the whole
+        # repository from the `globs` list in .markdownlint-cli2.yaml.
+        entry: markdownlint-cli2 --no-globs
+        language: unsupported
+        types: [markdown]
+
+      - id: actionlint
+        name: actionlint
+        entry: actionlint
+        language: unsupported
+        files: ^\.github/workflows/.+\.ya?ml$
+
+      - id: zizmor
+        name: zizmor (offline audits)
+        entry: zizmor --offline --no-progress
+        language: unsupported
+        files: ^\.github/(workflows/.+\.ya?ml|actions/.+/action\.ya?ml)$
+
+      - id: hadolint
+        name: hadolint
+        entry: hadolint
+        language: unsupported
+        types: [dockerfile]
+
+      - id: helm-lint
+        name: helm lint (render --lint-only)
+        description: Fast lint of every chart and profile; see `make helm-lint`.
+        entry: make helm-lint
+        language: unsupported
+        files: ^(helmcharts|argocd-bootstrap|bootstrap|envs|clusters)/
+        pass_filenames: false
+
+      - id: ansible-lint
+        name: ansible-lint
+        entry: make ansible-lint
+        language: unsupported
+        files: ^ansible/
+        pass_filenames: false

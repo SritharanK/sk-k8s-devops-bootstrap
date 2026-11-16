@@ -1,0 +1,17 @@
+{{- if .Values.uiPodDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: longhorn-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: longhorn
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app: longhorn-ui
+spec:
+  minAvailable: {{ .Values.uiPodDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app: longhorn-ui
+{{- end }}

@@ -1,0 +1,50 @@
+---
+# Internal values. Not meant to be overridden.
+
+# Full package list for this host.
+base__package_list: >-
+  {{ base_packages + base__os_packages
+     + (base__storage_packages if base_storage_clients else [])
+     + (base__update_packages if base_unattended_upgrades else [])
+     + base_packages_extra }}
+
+# True in check mode when packages would have been installed. Tasks that need an installed package (service units,
+# configuration files shipped by the package) skip in that case, because the package is not really there.
+base__check_mode_pending: >-
+  {{ ansible_check_mode
+     and ((base__packages_apt | default({})) is changed or (base__packages_dnf | default({})) is changed) }}
+
+# Kernel module needed by open-iscsi (Longhorn V1 data engine).
+base__storage_kernel_modules:
+  - iscsi_tcp
+
+# Admin users with every optional field filled in.
+base__admin_user_defaults:
+  ssh_public_keys: []
+  sudo: true
+  shell: /bin/bash
+  state: present
+base__admin_users: >-
+  {{ [base__admin_user_defaults] | product(base_admin_users) | map('ansible.builtin.combine') | list }}
+base__admin_users_present: "{{ base__admin_users | selectattr('state', 'equalto', 'present') | list }}"
+base__admin_users_absent: "{{ base__admin_users | selectattr('state', 'equalto', 'absent') | list }}"
+
+# Connection plugins that log in over SSH (lockout guard).
+base__ssh_connection_types:
+  - ssh
+  - ansible.builtin.ssh
+  - paramiko
+  - paramiko_ssh
+  - ansible.builtin.paramiko_ssh
+  - smart
+
+# The main sshd_config must include the drop-in directory, otherwise the hardening file is never read.
+base__sshd_include_regex: '^\s*Include\s+(/etc/ssh/)?sshd_config\.d/\*\.conf\s*$'
+
+# Drop-in file names. 00 sorts before the drop-ins written by cloud-init and the installer (sshd uses the first value
+# it reads for most keywords).
+base__sshd_dropin: /etc/ssh/sshd_config.d/00-base-hardening.conf
+base__sysctl_kubernetes_file: /etc/sysctl.d/90-kubernetes.conf
+base__sysctl_hardening_file: /etc/sysctl.d/80-base-hardening.conf
+base__modules_kubernetes_file: /etc/modules-load.d/kubernetes.conf
+base__modules_storage_file: /etc/modules-load.d/iscsi.conf

@@ -1,0 +1,83 @@
+---
+# The rke2-common RPM owns /etc/rancher/rke2 and resets its mode on install and upgrade, so the mode is
+# enforced here, after the install step, rather than during host preparation.
+- name: Create the RKE2 configuration directory
+  ansible.builtin.file:
+    path: "{{ rke2__config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Write the RKE2 configuration
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ rke2__config_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  diff: false
+  no_log: true
+  notify: Restart rke2
+
+- name: Write the API server audit policy
+  ansible.builtin.template:
+    src: audit-policy.yaml.j2
+    dest: "{{ rke2__audit_policy_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart rke2
+  when:
+    - rke2__node_type == 'server'
+    - rke2_audit_policy_enabled | bool
+
+- name: Write the container registry configuration
+  ansible.builtin.template:
+    src: registries.yaml.j2
+    dest: "{{ rke2__registries_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  diff: false
+  no_log: true
+  notify: Restart rke2
+  when: rke2_registries | length > 0
+
+# The kubelet watches the static pod directory, so a manifest change needs no RKE2 restart.
+- name: Create the static pod directory for kube-vip
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ rke2_data_dir }}", mode: "0755"}
+    - {path: "{{ rke2__pod_manifests_dir }}", mode: "0700"}
+  loop_control:
+    label: "{{ item.path }}"
+  when:
+    - rke2_kube_vip_enabled | bool
+    - rke2__node_type == 'server'
+
+- name: Write the kube-vip static pod manifest
+  ansible.builtin.template:
+    src: kube-vip.yaml.j2
+    dest: "{{ rke2__pod_manifests_dir }}/kube-vip.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - rke2_kube_vip_enabled | bool
+    - rke2__node_type == 'server'
+
+# The role owns this manifest. Leaving it behind would keep the VIP running next to whatever replaced it,
+# so disabling kube-vip removes the static pod; the kubelet then stops it without an RKE2 restart.
+- name: Remove the kube-vip static pod manifest when kube-vip is disabled
+  ansible.builtin.file:
+    path: "{{ rke2__pod_manifests_dir }}/kube-vip.yaml"
+    state: absent
+  when:
+    - not rke2_kube_vip_enabled | bool
+    - rke2__node_type == 'server'

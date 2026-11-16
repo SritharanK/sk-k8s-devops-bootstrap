@@ -1,0 +1,179 @@
+# Common values for the argo-rollouts wrapper chart.
+# Profile deltas: values-lab.yaml and values-reference.yaml.
+# Upstream chart values are nested under `argo-rollouts`:
+# https://github.com/argoproj/argo-helm/blob/argo-rollouts-2.43.12/charts/argo-rollouts/values.yaml
+
+# The success-rate ClusterAnalysisTemplate (templates/cluster-analysis-template.yaml).
+# Rollouts reference it with `templates: [{templateName: success-rate, clusterScope: true}]`.
+analysis:
+  # Render the ClusterAnalysisTemplate.
+  enabled: true
+  # Prometheus that the analysis queries. Provided by the monitoring toolchain.
+  prometheusAddress: http://monitoring-prometheus.monitoring.svc:9090
+
+argo-rollouts:
+  # CRDs are rendered from the chart templates. Argo CD applies them with server-side apply
+  # and never prunes or deletes them (Prune=false,Delete=false below).
+  installCRDs: true
+  keepCRDs: true
+  crdAnnotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+
+  clusterInstall: true
+  # argo-rollouts-aggregate-to-{admin,edit,view}: lets namespace admins and editors manage Rollouts.
+  createClusterAggregateRoles: true
+
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    seccompProfile:
+      type: RuntimeDefault
+
+  controller:
+    # Overridden per profile. More than one replica turns on --leader-elect.
+    replicas: 1
+
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          release: monitoring
+
+    # Gateway API traffic router plugin.
+    # The controller copies the file from this location into its plugin-bin directory at start
+    # and runs it from there. Argo Rollouts does not verify a sha256 for file:// locations:
+    # the init container below does that before the controller starts.
+    trafficRouterPlugins:
+      - name: argoproj-labs/gatewayAPI
+        location: file:///plugins/gatewayapi
+
+    # Downloads the plugin binary that matches the node architecture (amd64 or arm64),
+    # verifies it against the pinned sha256 and fails the pod if it does not match.
+    initContainers:
+      - name: fetch-gatewayapi-plugin
+        image: curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
+        imagePullPolicy: IfNotPresent
+        env:
+          # Plugin release and the sha256 of both release assets. Bump all three together:
+          # 1. pick the release at https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases
+          #    and check its compatibility notes against the Argo Rollouts version in Chart.yaml;
+          # 2. download gatewayapi-plugin-linux-amd64 and gatewayapi-plugin-linux-arm64 from that release;
+          # 3. run `sha256sum gatewayapi-plugin-linux-*` and compare with the digests GitHub shows on the release page;
+          # 4. set PLUGIN_VERSION and both checksums here, then sync the lab cluster first.
+          - name: PLUGIN_VERSION
+            value: v0.17.0
+          - name: PLUGIN_SHA256_AMD64
+            value: 1904ca787d33107c140521899d61fff030ee75d99908bd175fca5a4647759061
+          - name: PLUGIN_SHA256_ARM64
+            value: 5221279f7bf2c9b2c0ff6ed7ff12718ecce1d4892f1ff5e5224bb723cfd0fd92
+          # Point this at an internal mirror in an air-gapped cluster. The mirror must serve
+          # <base>/<version>/gatewayapi-plugin-linux-<arch> over HTTPS.
+          - name: PLUGIN_BASE_URL
+            value: https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download
+        command:
+          - /bin/sh
+          - -ec
+        args:
+          - |
+            machine="$(uname -m)"
+            case "${machine}" in
+              x86_64 | amd64) arch=amd64; want="${PLUGIN_SHA256_AMD64}" ;;
+              aarch64 | arm64) arch=arm64; want="${PLUGIN_SHA256_ARM64}" ;;
+              *) echo "unsupported architecture: ${machine}" >&2; exit 1 ;;
+            esac
+            url="${PLUGIN_BASE_URL}/${PLUGIN_VERSION}/gatewayapi-plugin-linux-${arch}"
+            part=/plugins/.gatewayapi.part
+            echo "downloading ${url}"
+            curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 300 \
+              --retry 5 --retry-delay 3 --retry-all-errors -o "${part}" "${url}"
+            got="$(sha256sum "${part}")"
+            got="${got%% *}"
+            if [ "${got}" != "${want}" ]; then
+              echo "sha256 mismatch for ${url}: expected ${want}, got ${got}" >&2
+              exit 1
+            fi
+            chmod 0555 "${part}"
+            mv -f "${part}" /plugins/gatewayapi
+            echo "verified gatewayAPI plugin ${PLUGIN_VERSION} linux-${arch} sha256 ${got}"
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 64Mi
+        securityContext:
+          runAsNonRoot: true
+          # Numeric form of the image user (curl_user), so the kubelet can check runAsNonRoot.
+          runAsUser: 100
+          runAsGroup: 101
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+          - name: gatewayapi-plugin
+            mountPath: /plugins
+
+    volumes:
+      - name: gatewayapi-plugin
+        emptyDir:
+          sizeLimit: 256Mi
+
+    volumeMounts:
+      - name: gatewayapi-plugin
+        mountPath: /plugins
+        readOnly: true
+
+  # Provider RBAC: only Gateway API is used on this platform. The built-in gatewayAPI rule is
+  # off because it lacks `patch` and grants ConfigMap create/update that plugin v0.17.0 no
+  # longer needs. The rule below follows the plugin installation docs; the plugin runs inside
+  # the controller pod with the controller ServiceAccount. Services `get` is already part of
+  # the controller ClusterRole.
+  providerRBAC:
+    enabled: true
+    providers:
+      istio: false
+      smi: false
+      ambassador: false
+      awsLoadBalancerController: false
+      awsAppMesh: false
+      traefik: false
+      apisix: false
+      contour: false
+      glooPlatform: false
+      gatewayAPI: false
+    additionalRules:
+      # Gateway API traffic router plugin (argoproj-labs/gatewayAPI).
+      - apiGroups:
+          - gateway.networking.k8s.io
+        resources:
+          - httproutes
+          - grpcroutes
+          - tcproutes
+          - tlsroutes
+        verbs:
+          - get
+          - list
+          - watch
+          - update
+          - patch
+
+  # The dashboard has no authentication of its own. Use the kubectl plugin or the Argo CD UI.
+  dashboard:
+    enabled: false
+
+  notifications:
+    secret:
+      create: false

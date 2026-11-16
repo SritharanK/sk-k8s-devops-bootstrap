@@ -1,0 +1,22 @@
+# Values for the bootstrap chart. hack/bootstrap-gitops.sh passes
+# clusters/<name>/cluster.yaml after this file, plus git overrides
+# (REPO_URL, TARGET_REVISION) as --set-string.
+---
+git:
+  repoURL: https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap.git
+  targetRevision: main
+
+cluster:
+  name: lab
+
+namespaces:
+  argocd: argocd
+
+# Hub mode: this Argo CD also manages remote clusters. Every remote
+# cluster is registered with `argocd cluster add <context> --name <name>
+# --label cluster-definition=<dir>`, where <dir> is its directory under
+# clusters/ and its cluster.yaml sets cluster.destination.name: <name>.
+hub:
+  enabled: false
+  # Label on the Argo CD cluster Secret that names the cluster definition.
+  clusterDefinitionLabel: cluster-definition

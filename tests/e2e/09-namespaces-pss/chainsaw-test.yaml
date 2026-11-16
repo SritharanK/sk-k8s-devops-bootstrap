@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/v0.2.15/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: namespaces-pss
+spec:
+  description: The dev, stage and prod Namespaces enforce a Pod Security level with a pinned version and are protected from Argo CD pruning and deletion.
+  concurrent: false
+  steps:
+    - name: print-namespace-labels
+      try:
+        - script:
+            content: |
+              kubectl get namespaces dev stage prod -o json |
+                jq -r '.items[] | "\(.metadata.name)",
+                  (.metadata.labels // {} | to_entries[] | select(.key | startswith("pod-security.kubernetes.io/")) | "  label \(.key)=\(.value)"),
+                  "  annotation argocd.argoproj.io/sync-options=\(.metadata.annotations["argocd.argoproj.io/sync-options"] // "<none>")"'
+    - name: pod-security-and-sync-options
+      try:
+        - assert:
+            timeout: 30s
+            file: namespaces.yaml

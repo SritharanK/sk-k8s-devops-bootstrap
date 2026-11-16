@@ -1,0 +1,18 @@
+---
+apiVersion: v2
+name: kyverno
+description: Kyverno policy engine, a thin wrapper with platform profiles.
+type: application
+# Wrapper version. The upstream release is the dependency below; the rendered
+# image tags are the source of truth for the support matrix.
+version: 2.0.0
+appVersion: "v1.20.0"
+kubeVersion: ">=1.35.0-0"
+home: https://kyverno.io/
+sources:
+  - https://github.com/kyverno/kyverno
+  - https://github.com/kyverno/kyverno/tree/main/charts/kyverno
+dependencies:
+  - name: kyverno
+    version: "3.10.0"
+    repository: "oci://ghcr.io/kyverno/charts"

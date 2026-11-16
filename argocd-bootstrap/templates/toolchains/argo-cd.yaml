@@ -1,0 +1,93 @@
+{{- /*
+Argo CD manages itself. hack/argocd-install.sh performs the first
+install with the same chart, release name (argocd) and values files, so this
+Application adopts the running installation without a rollout.
+
+Deviations from the toolchain convention (docs/architecture/gitops.md), on purpose:
+- No resources finalizer. Deleting this Application must never cascade into
+  deleting Argo CD itself; the CRDs are kept in any case (Prune=false).
+- releaseName is argocd, not the Application name. Deployment selectors carry
+  the release name and are immutable, and argocd is the release name of
+  existing installations.
+- Sync wave 3, together with the platform Gateway: the HTTPRoute of the UI
+  reports Progressing until the Gateway has programmed it, so an earlier wave
+  would block the root app.
+
+Name, project and destination come from the hub-mode helpers in _helpers.tpl.
+The Application is not rendered for a remote cluster of a hub
+(argocd-bootstrap.isRemote): Argo CD runs only in the cluster that hosts the
+root app, so it never deploys itself into a remote cluster.
+*/ -}}
+{{- if and (dig "argo-cd" "enabled" false (.Values.toolchains | default dict)) (not (include "argocd-bootstrap.isRemote" .)) }}
+{{- $argocdNs := .Values.namespaces.argocd | default "argocd" }}
+{{- $gatewayNs := .Values.namespaces.gateway | default "envoy-gateway-system" }}
+{{- $platform := .Values.platform | default dict }}
+{{- /* Values from the cluster definition. toolchains.argo-cd.values
+       from the cluster file is merged on top; lists in it replace these. */}}
+{{- $computed := dict
+      "global" (dict "domain" (printf "argocd.%s" (required "cluster.domain is required" .Values.cluster.domain)))
+      "route" (dict "parentRefs" (list (dict "group" "gateway.networking.k8s.io" "kind" "Gateway" "name" "platform" "namespace" $gatewayNs "sectionName" "https"))) }}
+{{- with $platform.groups }}
+{{- $_ := set $computed "platform" (dict "groups" .) }}
+{{- end }}
+{{- $clusterValues := dig "argo-cd" "values" (dict) (.Values.toolchains | default dict) }}
+{{- $valuesObject := mustMergeOverwrite $computed (deepCopy $clusterValues) }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . "argo-cd") }}
+  namespace: {{ $argocdNs }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/manifest-generate-paths: "."
+spec:
+  project: {{ include "argocd-bootstrap.platformProject" . }}
+  source:
+    repoURL: {{ required "git.repoURL is required" .Values.git.repoURL }}
+    targetRevision: {{ required "git.targetRevision is required" .Values.git.targetRevision }}
+    path: helmcharts/system-charts/argo-cd
+    helm:
+      releaseName: argocd
+      valueFiles:
+        - values.yaml
+        - values-{{ required "cluster.profile is required" .Values.cluster.profile }}.yaml
+      ignoreMissingValueFiles: true
+      # The redis-ha subchart ships Helm test pods; they are not part of the release.
+      skipTests: true
+      valuesObject:
+        {{- toYaml $valuesObject | nindent 8 }}
+  destination:
+    {{- include "argocd-bootstrap.destination" . | nindent 4 }}
+    namespace: {{ $argocdNs }}
+  # argocd-server writes these keys into argocd-secret at runtime: the server
+  # signature key and, in the lab profile, the generated admin password hash.
+  ignoreDifferences:
+    - kind: Secret
+      name: argocd-secret
+      namespace: {{ $argocdNs }}
+      jqPathExpressions:
+        - '.data["server.secretkey"]'
+        - '.data["admin.password"]'
+        - '.data["admin.passwordMtime"]'
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # Required: the ApplicationSet CRD exceeds the client-side apply annotation limit.
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/enforce-version: v{{ .Values.cluster.kubernetesMinor | default "1.36" }}
+        pod-security.kubernetes.io/warn: restricted
+        pod-security.kubernetes.io/warn-version: v{{ .Values.cluster.kubernetesMinor | default "1.36" }}
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

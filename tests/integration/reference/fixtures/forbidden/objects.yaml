@@ -1,0 +1,20 @@
+# Objects an application project must reject: a cluster-scoped
+# kind and a quota, both owned by the platform. run.sh points a test
+# Application in project apps-dev here and expects Argo CD to refuse them.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: integration-reference-forbidden
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get]
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: integration-reference-forbidden
+spec:
+  hard:
+    pods: "1"

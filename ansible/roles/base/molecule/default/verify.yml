@@ -1,0 +1,225 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    base_verify_admin_user: opsadmin
+    base_verify_admin_key: >-
+      ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEg+HO1mjORGnh3d9q24RINyOq/CZBW+cGzY2QE0inHn molecule-test
+    base_verify_chrony_service: "{{ 'chrony' if ansible_facts['os_family'] == 'Debian' else 'chronyd' }}"
+  tasks:
+    - name: Read the kernel module and sysctl files
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/modules-load.d/kubernetes.conf
+        - /etc/sysctl.d/90-kubernetes.conf
+        - /etc/sysctl.d/80-base-hardening.conf
+      register: base_verify_kernel_files
+
+    - name: Assert the content of the kernel module and sysctl files
+      vars:
+        base_verify_modules: "{{ (base_verify_kernel_files.results[0].content | b64decode).splitlines() }}"
+        base_verify_k8s_sysctls: "{{ (base_verify_kernel_files.results[1].content | b64decode).splitlines() }}"
+        base_verify_hardening: "{{ (base_verify_kernel_files.results[2].content | b64decode).splitlines() }}"
+      ansible.builtin.assert:
+        that:
+          - "'overlay' in base_verify_modules"
+          - "'br_netfilter' in base_verify_modules"
+          - "'net.ipv4.ip_forward=1' in base_verify_k8s_sysctls"
+          - "'net.bridge.bridge-nf-call-iptables=1' in base_verify_k8s_sysctls"
+          - "'net.bridge.bridge-nf-call-ip6tables=1' in base_verify_k8s_sysctls"
+          - "'fs.inotify.max_user_watches=524288' in base_verify_k8s_sysctls"
+          - "'net.ipv4.tcp_syncookies=1' in base_verify_hardening"
+          - "'kernel.dmesg_restrict=1' in base_verify_hardening"
+          - "'kernel.kptr_restrict=1' in base_verify_hardening"
+          - base_verify_hardening | select('search', 'rp_filter') | list | length == 0
+        quiet: true
+
+    # The Rocky Linux container image has no /etc/fstab; the role skips the file in that case.
+    - name: Check for /etc/fstab
+      ansible.builtin.stat:
+        path: /etc/fstab
+      register: base_verify_fstab_stat
+
+    - name: Read /etc/fstab
+      ansible.builtin.slurp:
+        src: /etc/fstab
+      register: base_verify_fstab
+      when: base_verify_fstab_stat.stat.exists
+
+    - name: Assert that /etc/fstab has no active swap entry
+      ansible.builtin.assert:
+        that:
+          - >-
+            (base_verify_fstab.content | b64decode).splitlines()
+            | reject('match', '^[ \t]*#') | select('search', '[ \t]swap([ \t]|$)') | list | length == 0
+        quiet: true
+      when: base_verify_fstab_stat.stat.exists
+
+    - name: Read the SSH hardening drop-in
+      ansible.builtin.stat:
+        path: /etc/ssh/sshd_config.d/00-base-hardening.conf
+      register: base_verify_sshd_dropin
+
+    - name: Assert that the SSH hardening drop-in exists
+      ansible.builtin.assert:
+        that:
+          - base_verify_sshd_dropin.stat.exists
+          - base_verify_sshd_dropin.stat.mode == '0600'
+        quiet: true
+
+    - name: Run the sshd configuration test
+      ansible.builtin.command:
+        cmd: /usr/sbin/sshd -t
+      register: base_verify_sshd_test
+      changed_when: false
+      failed_when: base_verify_sshd_test.rc != 0
+
+    - name: Read the effective sshd configuration
+      ansible.builtin.command:
+        cmd: /usr/sbin/sshd -T
+      register: base_verify_sshd_effective
+      changed_when: false
+      failed_when: base_verify_sshd_effective.rc != 0
+
+    - name: Assert that the hardened sshd values are effective
+      ansible.builtin.assert:
+        that:
+          - "'permitrootlogin no' in base_verify_sshd_effective.stdout_lines"
+          - "'passwordauthentication no' in base_verify_sshd_effective.stdout_lines"
+          - "'kbdinteractiveauthentication no' in base_verify_sshd_effective.stdout_lines"
+          - "'pubkeyauthentication yes' in base_verify_sshd_effective.stdout_lines"
+          - "'x11forwarding no' in base_verify_sshd_effective.stdout_lines"
+          - "'allowtcpforwarding no' in base_verify_sshd_effective.stdout_lines"
+          - "'maxauthtries 3' in base_verify_sshd_effective.stdout_lines"
+        quiet: true
+
+    - name: Read the chrony unit state
+      ansible.builtin.systemd_service:
+        name: "{{ base_verify_chrony_service }}"
+      register: base_verify_chrony_unit
+
+    - name: Assert that chrony is enabled
+      ansible.builtin.assert:
+        that:
+          - base_verify_chrony_unit.status.UnitFileState == 'enabled'
+        quiet: true
+
+    - name: Read the admin user password entry
+      ansible.builtin.getent:
+        database: shadow
+        key: "{{ base_verify_admin_user }}"
+
+    - name: Assert that the admin user exists with a locked password
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['getent_shadow'][base_verify_admin_user][0] is match('!')
+        quiet: true
+
+    - name: Read the admin user authorized_keys file
+      ansible.builtin.slurp:
+        src: "/home/{{ base_verify_admin_user }}/.ssh/authorized_keys"
+      register: base_verify_authorized_keys
+
+    - name: Assert that the admin user key is installed
+      ansible.builtin.assert:
+        that:
+          - base_verify_admin_key in (base_verify_authorized_keys.content | b64decode)
+        quiet: true
+
+    - name: Read the admin user sudoers drop-in
+      ansible.builtin.stat:
+        path: "/etc/sudoers.d/90-{{ base_verify_admin_user }}"
+      register: base_verify_sudoers
+
+    - name: Assert the sudoers drop-in permissions
+      ansible.builtin.assert:
+        that:
+          - base_verify_sudoers.stat.exists
+          - base_verify_sudoers.stat.mode == '0440'
+        quiet: true
+
+    - name: Check the sudoers drop-in syntax
+      ansible.builtin.command:
+        cmd: "/usr/sbin/visudo -cf /etc/sudoers.d/90-{{ base_verify_admin_user }}"
+      register: base_verify_visudo
+      changed_when: false
+      failed_when: base_verify_visudo.rc != 0
+
+    - name: Read the unattended-upgrades configuration (Debian family)
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/apt/apt.conf.d/20auto-upgrades
+        - /etc/apt/apt.conf.d/52unattended-upgrades-base
+      register: base_verify_apt_files
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Assert the unattended-upgrades configuration (Debian family)
+      vars:
+        base_verify_auto: "{{ base_verify_apt_files.results[0].content | b64decode }}"
+        base_verify_uu: "{{ base_verify_apt_files.results[1].content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'APT::Periodic::Unattended-Upgrade \"1\";' in base_verify_auto"
+          - "'#clear Unattended-Upgrade::Origins-Pattern;' in base_verify_uu"
+          - "'-security' in base_verify_uu"
+          - "'\"rke2-.*$\";' in base_verify_uu"
+          - "'Unattended-Upgrade::Automatic-Reboot \"false\";' in base_verify_uu"
+        quiet: true
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Read the effective apt configuration (Debian family)
+      ansible.builtin.command:
+        cmd: apt-config dump
+      register: base_verify_apt_config
+      changed_when: false
+      failed_when: base_verify_apt_config.rc != 0
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Assert that only security origins remain (Debian family)
+      vars:
+        base_verify_patterns: >-
+          {{ base_verify_apt_config.stdout_lines | select('match', 'Unattended-Upgrade::Origins-Pattern:: ') | list }}
+        base_verify_allowed: >-
+          {{ base_verify_apt_config.stdout_lines | select('match', 'Unattended-Upgrade::Allowed-Origins:: ') | list }}
+      ansible.builtin.assert:
+        that:
+          - base_verify_patterns | length > 0
+          - base_verify_patterns | reject('search', '-security') | list | length == 0
+          - base_verify_allowed | length == 0
+        quiet: true
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Read the dnf-automatic configuration (RedHat family)
+      ansible.builtin.slurp:
+        src: /etc/dnf/automatic.conf
+      register: base_verify_dnf_automatic
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Assert the dnf-automatic configuration (RedHat family)
+      vars:
+        base_verify_dnf_lines: "{{ (base_verify_dnf_automatic.content | b64decode).splitlines() }}"
+      ansible.builtin.assert:
+        that:
+          - "'upgrade_type = security' in base_verify_dnf_lines"
+          - "'apply_updates = yes' in base_verify_dnf_lines"
+          - "'reboot = never' in base_verify_dnf_lines"
+          - "'excludepkgs = rke2-*' in base_verify_dnf_lines"
+        quiet: true
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Read the dnf-automatic timer state (RedHat family)
+      ansible.builtin.systemd_service:
+        name: dnf-automatic.timer
+      register: base_verify_dnf_timer
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Assert that the dnf-automatic timer is enabled (RedHat family)
+      ansible.builtin.assert:
+        that:
+          - base_verify_dnf_timer.status.UnitFileState == 'enabled'
+        quiet: true
+      when: ansible_facts['os_family'] == 'RedHat'

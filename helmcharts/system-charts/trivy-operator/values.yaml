@@ -1,0 +1,54 @@
+# Common values for both profiles. Upstream values are nested under `trivy-operator`.
+# Upstream reference: https://github.com/aquasecurity/trivy-operator/blob/v0.36.1/deploy/helm/values.yaml
+trivy-operator:
+  # Images: operator mirror.gcr.io/aquasec/trivy-operator:0.36.1 (chart appVersion),
+  # scanner and server mirror.gcr.io/aquasec/trivy:0.76.1, node collector
+  # ghcr.io/aquasecurity/node-collector:0.3.1. All pinned by the upstream chart.
+
+  operator:
+    # ClientServer mode with the Trivy server StatefulSet of this chart. The server
+    # downloads the vulnerability database once and keeps it current; in Standalone
+    # mode every scan job pod would download the full database again.
+    builtInTrivyServer: true
+    # scanJobsConcurrentLimit is set per profile.
+
+  # Requires the monitoring toolchain: its Prometheus selects `release: monitoring`.
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: monitoring
+
+  # Operator pod. The image runs as UID 10000; upstream already sets the container
+  # fields (no privilege escalation, drop ALL, read-only root).
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+
+  trivyOperator:
+    # Scan job containers: upstream fields plus RuntimeDefault seccomp.
+    scanJobPodTemplateContainerSecurityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      privileged: false
+      readOnlyRootFilesystem: true
+      seccompProfile:
+        type: RuntimeDefault
+
+  trivy:
+    # Report only vulnerabilities that have a fixed version: actionable findings.
+    ignoreUnfixed: true
+    # PVC for the server cache is set per profile (storageClassEnabled).
+    server:
+      replicas: 1
+      securityContext:
+        privileged: false
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault

@@ -1,0 +1,22 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: signed-by-another-workflow
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      # yamllint disable-line rule:line-length
+      image: ghcr.io/kyverno/test-images/cosign@sha256:a76ae9c1c1e08ab65bd0ac0c3ec63626734c3d57787e8a3a0992fbdc45ae622f
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: outside-verified-registries
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      # yamllint disable-line rule:line-length
+      image: docker.io/library/busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000

@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/v0.2.15/.schemas/json/test-chainsaw-v1alpha1.json
+#
+# Changes the cluster: dev keeps the committed image tag after the test.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: values-commit-rollout
+spec:
+  description: A hello-api image tag committed to the dev values rolls out within four minutes after a normal Argo CD refresh, without a hard refresh.
+  concurrent: false
+  catch:
+    - script:
+        content: |
+          kubectl get deployments.apps,replicasets.apps,pods -n dev -o wide
+          cols='NAME:.metadata.name,DEST:.spec.destination.namespace,REVISION:.status.sync.revision'
+          cols="${cols},SYNC:.status.sync.status,HEALTH:.status.health.status,OPERATION:.status.operationState.phase"
+          kubectl get applications.argoproj.io -n argocd \
+            -o custom-columns="${cols}"
+  steps:
+    - name: commit-and-roll-out
+      try:
+        - script:
+            # values-commit.sh plus up to 4 minutes of waiting.
+            timeout: 7m
+            content: bash ../lib/values-commit-rollout.sh

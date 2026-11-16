@@ -1,0 +1,78 @@
+{{- /*
+  monitoring: kube-prometheus-stack with Grafana, Alertmanager and platform alert rules.
+  Privileged namespace: node-exporter uses hostNetwork, hostPID and hostPath.
+  Optional operations component, off unless toolchains.monitoring.enabled is true in
+  clusters/<cluster>/cluster.yaml. toolchains.monitoring.values is passed as helm.valuesObject.
+  Sync wave 4 per the toolchain convention.
+*/}}
+{{- if (dig "monitoring" "enabled" false .Values.toolchains) }}
+{{- $clusterValues := dict
+      "route" (dict "hostnames" (list (printf "grafana.%s" .Values.cluster.domain)))
+      "kube-prometheus-stack" (dict
+        "prometheus" (dict "prometheusSpec" (dict "externalLabels" (dict "cluster" .Values.cluster.name)))
+        "grafana" (dict "grafana.ini" (dict "server" (dict "root_url" (printf "https://grafana.%s" .Values.cluster.domain))))) }}
+{{- $values := mustMergeOverwrite $clusterValues (deepCopy (dig "monitoring" "values" (dict) .Values.toolchains)) }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . "monitoring") }}
+  namespace: {{ .Values.namespaces.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/manifest-generate-paths: "."
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ include "argocd-bootstrap.platformProject" . }}
+  source:
+    repoURL: {{ .Values.git.repoURL }}
+    targetRevision: {{ .Values.git.targetRevision }}
+    path: helmcharts/system-charts/monitoring
+    helm:
+      releaseName: monitoring
+      valueFiles:
+        - values.yaml
+        - values-{{ .Values.cluster.profile }}.yaml
+      ignoreMissingValueFiles: true
+      # Per-cluster values: Grafana hostname, Prometheus external label, then
+      # toolchains.monitoring.values from the cluster definition on top.
+      {{- with $values }}
+      valuesObject:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  destination:
+    {{- include "argocd-bootstrap.destination" . | nindent 4 }}
+    namespace: {{ dig "monitoring" "monitoring" .Values.namespaces }}
+  # The cert-manager CA injector writes caBundle on its webhook configurations at runtime.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jqPathExpressions:
+        - .webhooks[]?.clientConfig.caBundle
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions:
+        - .webhooks[]?.clientConfig.caBundle
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+      # HTTPRoute and ExternalSecret CRDs come from other Applications.
+      - SkipDryRunOnMissingResource=true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: privileged
+        pod-security.kubernetes.io/enforce-version: v{{ .Values.cluster.kubernetesMinor }}
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/audit-version: v{{ .Values.cluster.kubernetesMinor }}
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

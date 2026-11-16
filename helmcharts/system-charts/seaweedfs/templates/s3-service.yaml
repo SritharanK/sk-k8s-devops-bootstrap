@@ -1,0 +1,33 @@
+{{- /*
+  Platform S3 address: http://<release>-s3.<namespace>.svc:<port>.
+  The upstream chart names its S3 Service seaweedfs-s3 only for the split
+  topology; in all-in-one mode S3 is served by seaweedfs-all-in-one. This
+  Service selects the all-in-one pod and exposes only the S3 port. Its component
+  label differs from the all-in-one Service, so the upstream ServiceMonitor does
+  not select it twice.
+*/}}
+{{- if and .Values.s3Service.enabled .Values.seaweedfs.allInOne.enabled .Values.seaweedfs.allInOne.s3.enabled }}
+{{- $name := .Values.seaweedfs.nameOverride | default "seaweedfs" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ printf "%s-s3" .Release.Name | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: s3
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: seaweedfs-all-in-one
+  ports:
+    - name: swfs-s3
+      port: {{ .Values.s3Service.port }}
+      targetPort: swfs-s3
+      protocol: TCP
+{{- end }}

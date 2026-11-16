@@ -1,0 +1,28 @@
+---
+galaxy_info:
+  author: Sritharan K
+  description: >-
+    Installs a hardened Jenkins LTS controller configured as code, for the
+    optional on-premises CI adapter: pinned package and plugins, loopback
+    listener behind a TLS reverse proxy, file-based secrets, Kubernetes agents.
+  license: MIT
+  min_ansible_version: "2.17"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+    - name: Debian
+      versions:
+        - trixie
+    - name: EL
+      versions:
+        - "9"
+  galaxy_tags:
+    - jenkins
+    - ci
+    - jcasc
+    - kubernetes
+    - security
+    - hardening
+
+dependencies: []

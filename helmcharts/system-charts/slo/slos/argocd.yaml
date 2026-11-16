@@ -1,0 +1,41 @@
+# SLO for Argo CD sync operations across all applications.
+# Run ../generate.sh after every change and commit the regenerated rules/argocd.yaml.
+#
+# A sync counts as failed when it ends in phase Error or Failed. Dry-run syncs are
+# excluded (Argo CD sets dry_run="true" on them). The error side falls back to 0
+# because the Error and Failed series only exist after the first failure. The "> 0"
+# on the total side drops windows without syncs, so they produce no sample instead
+# of NaN. Sync volume is low, so read the README before tuning the alerts.
+version: "prometheus/v1"
+service: "argocd"
+labels:
+  owner: platform
+slos:
+  - name: "sync-success"
+    objective: 99
+    description: "99% of Argo CD sync operations finish without phase Error or Failed, over 30 days."
+    sli:
+      events:
+        error_query: |
+          (
+            sum(rate(argocd_app_sync_total{phase=~"Error|Failed", dry_run!="true"}[{{.window}}]))
+            or on() vector(0)
+          )
+        total_query: |
+          sum(rate(argocd_app_sync_total{dry_run!="true"}[{{.window}}])) > 0
+    alerting:
+      name: ArgoCDSyncSuccessBudgetBurn
+      labels:
+        category: availability
+      annotations:
+        runbook_url: https://github.com/SritharanK/sk-k8s-devops-bootstrap/blob/main/docs/operations/troubleshooting.md
+      page_alert:
+        labels:
+          severity: critical
+        annotations:
+          summary: "Argo CD sync operations are failing fast enough to exhaust the 30-day error budget early."
+      ticket_alert:
+        labels:
+          severity: warning
+        annotations:
+          summary: "Argo CD sync operations are failing steadily and eating into the 30-day error budget."

@@ -1,0 +1,9 @@
+---
+# Internal values of the nfs_server role. Not meant to be set from the inventory.
+nfs_server__service: nfs-server.service
+nfs_server__exports_dir: /etc/exports.d
+nfs_server__exports_path: /etc/exports.d/kubernetes.exports
+nfs_server__conf_dir: /etc/nfs.conf.d
+nfs_server__conf_path: /etc/nfs.conf.d/50-nfs-server.conf
+# Clients that would export to every host.
+nfs_server__forbidden_clients: ["*", 0.0.0.0/0, "::/0"]

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: local-path
+description: Rancher local-path-provisioner as the default StorageClass for single-node RKE2 lab clusters.
+type: application
+version: 0.1.0
+appVersion: v0.0.37
+kubeVersion: ">=1.35.0-0"
+home: https://github.com/rancher/local-path-provisioner
+sources:
+  - https://github.com/rancher/local-path-provisioner
+  - https://github.com/rancher/local-path-provisioner/tree/v0.0.37/deploy/chart/local-path-provisioner
+dependencies:
+  # Upstream publishes no Helm repository. The chart directory is vendored from the
+  # v0.0.37 release tag, see vendor/README.md.
+  - name: local-path-provisioner
+    version: 0.0.37
+    repository: file://vendor/local-path-provisioner

@@ -1,0 +1,206 @@
+suite: Argo Rollouts workloadRef
+templates:
+  - templates/rollout.yaml
+  - templates/deployment.yaml
+  - templates/service.yaml
+  - templates/hpa.yaml
+  - templates/httproute.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: is not rendered by default
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/rollout.yaml
+      - equal:
+          path: spec.replicas
+          value: 1
+        template: templates/deployment.yaml
+
+  - it: references the Deployment and owns the replica count
+    set:
+      rollout.enabled: true
+      replicaCount: 3
+    asserts:
+      - isKind:
+          of: Rollout
+        template: templates/rollout.yaml
+      - equal:
+          path: apiVersion
+          value: argoproj.io/v1alpha1
+        template: templates/rollout.yaml
+      - equal:
+          path: metadata.namespace
+          value: dev
+        template: templates/rollout.yaml
+      - equal:
+          path: spec.workloadRef
+          value:
+            apiVersion: apps/v1
+            kind: Deployment
+            name: web-helm-common-test
+            scaleDown: onsuccess
+        template: templates/rollout.yaml
+      - equal:
+          path: spec.replicas
+          value: 3
+        template: templates/rollout.yaml
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: helm-common-test
+            app.kubernetes.io/instance: web
+        template: templates/rollout.yaml
+      - equal:
+          path: spec.replicas
+          value: 0
+        template: templates/deployment.yaml
+
+  - it: runs background analysis with the cluster-scoped success-rate template
+    set:
+      rollout.enabled: true
+    asserts:
+      - equal:
+          path: spec.strategy.canary.analysis
+          value:
+            templates:
+              - templateName: success-rate
+                clusterScope: true
+            startingStep: 1
+        template: templates/rollout.yaml
+      - equal:
+          path: spec.strategy.canary.steps[0].setWeight
+          value: 20
+        template: templates/rollout.yaml
+      - notExists:
+          path: spec.strategy.canary.trafficRouting
+        template: templates/rollout.yaml
+      - hasDocuments:
+          count: 1
+        template: templates/service.yaml
+
+  - it: omits analysis when disabled
+    set:
+      rollout.enabled: true
+      rollout.analysis.enabled: false
+    asserts:
+      - notExists:
+          path: spec.strategy.canary.analysis
+        template: templates/rollout.yaml
+
+  - it: renders analysis args when set
+    set:
+      rollout.enabled: true
+      rollout.analysis.args:
+        - name: service-name
+          value: web-helm-common-test
+    asserts:
+      - equal:
+          path: spec.strategy.canary.analysis.args
+          value:
+            - name: service-name
+              value: web-helm-common-test
+        template: templates/rollout.yaml
+
+  - it: configures the Gateway API plugin and renders the canary Service
+    set:
+      rollout.enabled: true
+      rollout.trafficRouting.gatewayAPI.enabled: true
+      route.enabled: true
+      route.hostnames:
+        - hello-api.dev.localtest.me
+    asserts:
+      - equal:
+          path: spec.strategy.canary.canaryService
+          value: web-helm-common-test-canary
+        template: templates/rollout.yaml
+      - equal:
+          path: spec.strategy.canary.stableService
+          value: web-helm-common-test
+        template: templates/rollout.yaml
+      - equal:
+          path: spec.strategy.canary.trafficRouting.plugins["argoproj-labs/gatewayAPI"]
+          value:
+            httpRoute: web-helm-common-test
+            namespace: dev
+        template: templates/rollout.yaml
+      - hasDocuments:
+          count: 2
+        template: templates/service.yaml
+      - equal:
+          path: metadata.name
+          value: web-helm-common-test-canary
+        template: templates/service.yaml
+        documentIndex: 1
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: canary
+        template: templates/service.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.selector
+          value:
+            app.kubernetes.io/name: helm-common-test
+            app.kubernetes.io/instance: web
+        template: templates/service.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.ports
+          value:
+            - name: http
+              port: 80
+              targetPort: http
+              protocol: TCP
+        template: templates/service.yaml
+        documentIndex: 1
+
+  - it: uses an explicit HTTPRoute name without a chart route
+    set:
+      rollout.enabled: true
+      rollout.trafficRouting.gatewayAPI.enabled: true
+      rollout.trafficRouting.gatewayAPI.httpRoute: shared-route
+    asserts:
+      - equal:
+          path: spec.strategy.canary.trafficRouting.plugins["argoproj-labs/gatewayAPI"].httpRoute
+          value: shared-route
+        template: templates/rollout.yaml
+
+  - it: fails with Gateway API routing but no HTTPRoute
+    set:
+      rollout.enabled: true
+      rollout.trafficRouting.gatewayAPI.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "set route.enabled or rollout.trafficRouting.gatewayAPI.httpRoute"
+        template: templates/rollout.yaml
+
+  - it: lets the HPA target the Rollout and sets replicas on neither workload
+    set:
+      rollout.enabled: true
+      autoscaling.enabled: true
+    asserts:
+      - equal:
+          path: spec.scaleTargetRef
+          value:
+            apiVersion: argoproj.io/v1alpha1
+            kind: Rollout
+            name: web-helm-common-test
+        template: templates/hpa.yaml
+      - notExists:
+          path: spec.replicas
+        template: templates/rollout.yaml
+      - notExists:
+          path: spec.replicas
+        template: templates/deployment.yaml
+
+  - it: passes the scaleDown mode through
+    set:
+      rollout.enabled: true
+      rollout.workloadRef.scaleDown: progressively
+    asserts:
+      - equal:
+          path: spec.workloadRef.scaleDown
+          value: progressively
+        template: templates/rollout.yaml

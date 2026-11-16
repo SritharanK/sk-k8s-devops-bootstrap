@@ -1,0 +1,60 @@
+---
+# Network access of the agent pods.
+#
+# Ingress: none. Agents open every connection themselves (WebSocket to the
+# controller); the controller reaches containers through the Kubernetes API
+# (pods/exec), not through the pod network.
+#
+# Egress:
+# - DNS to kube-system on UDP and TCP 53. With NodeLocal DNSCache, add an
+#   ipBlock rule for its link-local address.
+# - TCP 443 to addresses outside the cluster's pod and service ranges: the
+#   container registry, the Git host and its API, the Trivy vulnerability
+#   database (mirror.gcr.io, ghcr.io), the Jenkins URL and, when enabled, the
+#   Argo CD API and the Sigstore public services.
+#
+# Trade-off: hostnames cannot be expressed in a NetworkPolicy and the
+# endpoints of hosted registries and Git services change, so the rule allows
+# HTTPS to any external address instead of a fixed list. Build steps can
+# therefore reach any HTTPS endpoint on the internet (the Dockerfile itself
+# needs package mirrors anyway). The rule blocks the pod and service ranges,
+# so agents cannot reach other workloads or the Kubernetes API from inside
+# the cluster. Narrow the CIDR to your egress proxy or to known address
+# ranges where the network allows it, and add rules for services that do not
+# listen on 443 (for example a registry on port 5000).
+#
+# The excepted ranges are the cluster_cidr and service_cidr defaults from
+# config/defaults.yaml.example (RKE2). Change them to match your cluster.
+# Services exposed through an ingress controller of this same cluster are
+# reached through its pods, which are inside the pod range: allow that
+# ingress controller explicitly if Jenkins, the registry or Argo CD are
+# served from this cluster. IPv6 egress is not allowed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jenkins-agents
+  namespace: jenkins-agents
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.42.0.0/16
+              - 10.43.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443

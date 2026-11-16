@@ -1,0 +1,128 @@
+{{- if .Values.exampleCluster.enabled }}
+{{- $ex := .Values.exampleCluster }}
+{{- $plugin := "barman-cloud.cloudnative-pg.io" }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $ex.namespace }}
+  labels:
+    {{- include "cnpg-wrapper.labels" . | nindent 4 }}
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ImageCatalog
+metadata:
+  name: {{ $ex.imageCatalog.name }}
+  namespace: {{ $ex.namespace }}
+  labels:
+    {{- include "cnpg-wrapper.labels" . | nindent 4 }}
+  annotations:
+    {{- include "cnpg-wrapper.exampleAnnotations" . | nindent 4 }}
+spec:
+  images:
+    - major: {{ $ex.imageCatalog.major }}
+      image: {{ $ex.imageCatalog.image }}
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: {{ $ex.objectStore.name }}
+  namespace: {{ $ex.namespace }}
+  labels:
+    {{- include "cnpg-wrapper.labels" . | nindent 4 }}
+  annotations:
+    {{- include "cnpg-wrapper.exampleAnnotations" . | nindent 4 }}
+spec:
+  retentionPolicy: {{ $ex.objectStore.retentionPolicy | quote }}
+  configuration:
+    destinationPath: {{ $ex.objectStore.destinationPath }}
+    endpointURL: {{ $ex.objectStore.endpointURL }}
+    {{- with $ex.objectStore.s3AddressingStyle }}
+    s3AddressingStyle: {{ . }}
+    {{- end }}
+    s3Credentials:
+      accessKeyId:
+        name: {{ $ex.objectStore.credentialsSecret }}
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: {{ $ex.objectStore.credentialsSecret }}
+        key: ACCESS_SECRET_KEY
+    wal:
+      compression: {{ $ex.objectStore.walCompression }}
+  instanceSidecarConfiguration:
+    resources:
+      {{- toYaml $ex.objectStore.sidecarResources | nindent 6 }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $ex.name }}
+  namespace: {{ $ex.namespace }}
+  labels:
+    {{- include "cnpg-wrapper.labels" . | nindent 4 }}
+  annotations:
+    {{- include "cnpg-wrapper.exampleAnnotations" . | nindent 4 }}
+spec:
+  instances: {{ $ex.instances }}
+  imageCatalogRef:
+    apiGroup: postgresql.cnpg.io
+    kind: ImageCatalog
+    name: {{ $ex.imageCatalog.name }}
+    major: {{ $ex.imageCatalog.major }}
+  bootstrap:
+    initdb:
+      database: {{ $ex.database }}
+      owner: {{ $ex.owner }}
+  storage:
+    size: {{ $ex.storage.size }}
+    {{- with $ex.storage.storageClass }}
+    storageClass: {{ . }}
+    {{- end }}
+  resources:
+    {{- toYaml $ex.resources | nindent 4 }}
+  plugins:
+    - name: {{ $plugin }}
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: {{ $ex.objectStore.name }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ $ex.name }}-daily
+  namespace: {{ $ex.namespace }}
+  labels:
+    {{- include "cnpg-wrapper.labels" . | nindent 4 }}
+  annotations:
+    {{- include "cnpg-wrapper.exampleAnnotations" . | nindent 4 }}
+spec:
+  schedule: {{ $ex.scheduledBackup.schedule | quote }}
+  immediate: {{ $ex.scheduledBackup.immediate }}
+  backupOwnerReference: self
+  cluster:
+    name: {{ $ex.name }}
+  method: plugin
+  pluginConfiguration:
+    name: {{ $plugin }}
+{{- if $ex.podMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $ex.name }}
+  namespace: {{ $ex.namespace }}
+  labels:
+    {{- include "cnpg-wrapper.labels" . | nindent 4 }}
+    release: monitoring
+  annotations:
+    {{- include "cnpg-wrapper.exampleAnnotations" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/cluster: {{ $ex.name }}
+  podMetricsEndpoints:
+    - port: metrics
+{{- end }}
+{{- end }}

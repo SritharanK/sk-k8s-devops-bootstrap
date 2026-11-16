@@ -1,0 +1,26 @@
+{{- /*
+Environment namespaces with Pod Security Admission labels. Argo CD never prunes
+or deletes them, so removing an environment or deleting the Application never
+deletes a namespace together with its workloads.
+*/}}
+{{- range $env, $ns := .Values.environments }}
+{{- $levels := required (include "misc.missingEnv" (list "podSecurity.levels" $env)) (index $.Values.podSecurity.levels $env) }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ required (printf "environments.%s must name a namespace" $env) $ns }}
+  labels:
+    {{- include "misc.labels" $ | nindent 4 }}
+    environment: {{ $env }}
+    {{- range $mode := list "enforce" "audit" "warn" }}
+    {{- $level := required (printf "podSecurity.levels.%s.%s is not set" $env $mode) (index $levels $mode) }}
+    {{- if not (has $level (list "privileged" "baseline" "restricted")) }}
+    {{- fail (printf "podSecurity.levels.%s.%s is %q: use privileged, baseline or restricted" $env $mode $level) }}
+    {{- end }}
+    pod-security.kubernetes.io/{{ $mode }}: {{ $level }}
+    pod-security.kubernetes.io/{{ $mode }}-version: {{ required "podSecurity.version is required" $.Values.podSecurity.version | quote }}
+    {{- end }}
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+{{- end }}

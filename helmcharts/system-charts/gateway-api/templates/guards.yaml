@@ -1,0 +1,11 @@
+{{- /*
+Renders nothing. Fails the render when a value change would remove CRDs from
+the output or switch to the experimental channel.
+*/ -}}
+{{- $crds := index .Values "gateway-crds-helm" "crds" -}}
+{{- if not (and $crds.gatewayAPI.enabled $crds.envoyGateway.enabled) -}}
+{{- fail "gateway-api: crds.gatewayAPI.enabled and crds.envoyGateway.enabled must stay true; removing CRDs from the render deletes every Gateway and route" -}}
+{{- end -}}
+{{- if ne $crds.gatewayAPI.channel "standard" -}}
+{{- fail "gateway-api: only the standard channel is supported (the safe-upgrades policy rejects experimental CRDs on a standard install)" -}}
+{{- end -}}

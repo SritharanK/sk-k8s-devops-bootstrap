@@ -1,0 +1,54 @@
+# local-path: values shared by every profile.
+# Upstream values are nested under the dependency name. Full list:
+# vendor/local-path-provisioner/values.yaml (tag v0.0.37).
+local-path-provisioner:
+  # Fixed names. kind ships the same provisioner as namespace local-path-storage,
+  # StorageClass standard and provisioner rancher.io/local-path; none of the names
+  # below overlap with those.
+  fullnameOverride: local-path-provisioner
+
+  image:
+    repository: docker.io/rancher/local-path-provisioner
+    tag: v0.0.37
+    pullPolicy: IfNotPresent
+
+  # Helper pods create and remove the volume directories on the node. Upstream
+  # defaults to the floating latest tag; pinned to the release behind the busybox "stable" tag.
+  helperImage:
+    repository: docker.io/library/busybox
+    tag: "1.36.1"
+
+  storageClass:
+    create: true
+    name: local-path
+    provisionerName: cluster.local/local-path-provisioner
+    # Set per profile: true in lab, false in reference.
+    defaultClass: false
+    defaultVolumeType: hostPath
+    reclaimPolicy: Delete
+    volumeBindingMode: WaitForFirstConsumer
+
+  # Volume data lives next to the RKE2 data directory (/var/lib/rancher/rke2) on the
+  # same filesystem, but outside it, so rke2-uninstall.sh does not remove it.
+  nodePathMap:
+    - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
+      paths:
+        - /var/lib/rancher/local-path-provisioner
+
+  # The provisioner is a static binary in a scratch image; it only talks to the API
+  # server and reads its ConfigMap, so it runs restricted-compliant. The helper pods it
+  # creates need hostPath and root, which is why the namespace is privileged.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault

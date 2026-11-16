@@ -1,0 +1,79 @@
+# Common values for both profiles. Upstream values are nested under `opencost`
+# (the dependency name); the upstream chart itself has a second `opencost` level.
+# Upstream reference: https://github.com/opencost/opencost-helm-chart/blob/opencost-2.5.34/charts/opencost/values.yaml
+opencost:
+  # Restricted Pod Security. Both images run as UID 1001 (numeric USER in the image).
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+
+  opencost:
+    exporter:
+      # Image tags are pinned upstream by version and digest (1.121.4@sha256:...).
+      # Read-only root works because every file the exporter writes goes to
+      # CONFIG_PATH, which the chart mounts as an emptyDir while custom pricing is on.
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+
+    ui:
+      # On, but not exposed: no Ingress or HTTPRoute. Reach it with
+      # kubectl -n opencost port-forward svc/opencost 9090:9090
+      enabled: true
+      # The UI entrypoint rewrites files under /var/www and nginx writes to /tmp,
+      # so the root filesystem stays writable for this container.
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: false
+
+    # The MCP endpoint (port 8081) is not used by the platform.
+    mcp:
+      enabled: false
+
+    # In-cluster Prometheus of the monitoring toolchain; no bundled Prometheus.
+    # Renders http://monitoring-prometheus.monitoring.svc.cluster.local:9090
+    prometheus:
+      internal:
+        enabled: true
+        serviceName: monitoring-prometheus
+        namespaceName: monitoring
+        port: 9090
+        scheme: http
+      external:
+        enabled: false
+
+    # Requires the monitoring toolchain: its Prometheus selects `release: monitoring`.
+    # OpenCost reads its own price metrics back from Prometheus, so this scrape is mandatory.
+    metrics:
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          release: monitoring
+
+    # On-premises pricing. Hourly prices: CPU per vCPU-hour, RAM per GiB-hour,
+    # GPU per GPU-hour, storage per GiB-hour, egress per GiB.
+    # THE RATES BELOW ARE ILLUSTRATIVE PLACEHOLDERS, NOT REAL COSTS.
+    # Replace them with your own rates before using any OpenCost number.
+    customPricing:
+      enabled: true
+      createConfigmap: true
+      configmapName: custom-pricing-model
+      provider: custom
+      costModel:
+        description: "CHANGE_ME: illustrative placeholder rates, replace before use"
+        CPU: 0.01
+        spotCPU: 0.01
+        RAM: 0.001
+        spotRAM: 0.001
+        GPU: 0
+        storage: 0.0001
+        zoneNetworkEgress: 0
+        regionNetworkEgress: 0
+        internetNetworkEgress: 0

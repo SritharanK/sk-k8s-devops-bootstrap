@@ -1,0 +1,9 @@
+---
+# Collections used by the roles in this repository. Install with:
+#   ansible-galaxy collection install -r collections/requirements.yml
+# Versions are exact; Renovate proposes updates.
+collections:
+  - name: ansible.posix
+    version: 2.2.2
+  - name: community.general
+    version: 14.0.1

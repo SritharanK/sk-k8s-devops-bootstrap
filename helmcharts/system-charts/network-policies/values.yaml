@@ -1,0 +1,141 @@
+# NetworkPolicies for application and platform namespaces.
+#
+# Keys marked "injected" are set by the Argo CD Application
+# (argocd-bootstrap/templates/toolchains/network-policies.yaml) from
+# clusters/<name>/cluster.yaml through helm valuesObject. The defaults below
+# only serve local renders. Helm merges maps, so an injected map adds to these
+# defaults; set a default key to null to remove it.
+
+---
+# Injected. Environment key to application namespace. Every namespace gets
+# default-deny (ingress and egress) and allow-dns only. Ingress from the
+# gateway and from Prometheus, and any egress, come from the per-app policies
+# of the application chart.
+environments:
+  dev: dev
+  stage: stage
+  prod: prod
+
+# Cluster DNS. CoreDNS pods carry k8s-app=kube-dns on both distributions:
+# kubeadm manifests used by kind (kubernetes v1.34.0,
+# cmd/kubeadm/app/phases/addons/dns/manifests.go) and the rke2-coredns chart
+# 1.50.201. Port 53 is matched on the pod, after the Service DNAT.
+dns:
+  namespace: kube-system
+  podSelector:
+    matchLabels:
+      k8s-app: kube-dns
+
+# Envoy Gateway namespace (injected). Source of the Argo CD server rule in
+# platformNamespaces.argocd.
+gateway:
+  namespace: envoy-gateway-system
+
+# Prometheus from kube-prometheus-stack, admitted in the platform namespaces.
+# namespace is injected. The operator labels Prometheus pods
+# app.kubernetes.io/name=prometheus (verified against prometheus-operator
+# v0.95.2, kube-prometheus-stack 93.3.0).
+monitoring:
+  namespace: monitoring
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+
+# Platform namespaces: default-deny for ingress only. Egress stays open
+# because controllers reach the API server (host network endpoints), image
+# registries and ACME servers; see README.md.
+#
+# Per entry:
+#   enabled              injected; false renders nothing for the namespace
+#   namespace            injected
+#   allowSameNamespace   ingress from every pod in the same namespace
+#   allowFromMonitoring  ingress from monitoring.podSelector
+#   extraIngress         one NetworkPolicy per item:
+#     name         NetworkPolicy name, unique within the namespace
+#     podSelector  pods the policy applies to
+#     ports        optional list of NetworkPolicyPort; omitted means all ports
+#     from         optional list of NetworkPolicyPeer; omitted means any
+#                  source. Admission webhooks need any source because the API
+#                  server connects from the host network. Rendered through
+#                  tpl, so it may reference other values.
+platformNamespaces:
+  argocd:
+    enabled: true
+    namespace: argocd
+    allowSameNamespace: true
+    allowFromMonitoring: true
+    extraIngress:
+      # argo-cd chart 10.18.0 (Argo CD v3.6.1): argocd-server pods carry
+      # app.kubernetes.io/name=argocd-server and listen on 8080 for both the
+      # http and https Service ports.
+      - name: allow-gateway-to-server
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: argocd-server
+        ports:
+          - protocol: TCP
+            port: 8080
+        from:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: "{{ .Values.gateway.namespace }}"
+  certManager:
+    enabled: true
+    namespace: cert-manager
+    allowSameNamespace: true
+    allowFromMonitoring: true
+    extraIngress:
+      # cert-manager chart v1.21.3: webhook pods carry
+      # app.kubernetes.io/name=webhook and app.kubernetes.io/component=webhook
+      # and serve the admission webhook on 10250 (--secure-port).
+      - name: allow-webhook
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: webhook
+            app.kubernetes.io/component: webhook
+        ports:
+          - protocol: TCP
+            port: 10250
+  kyverno:
+    enabled: true
+    namespace: kyverno
+    allowSameNamespace: true
+    allowFromMonitoring: true
+    extraIngress:
+      # kyverno chart 3.10.0: every controller serves https on 9443.
+      # app.kubernetes.io/part-of is the chart fullname, which is "kyverno"
+      # for the release name kyverno.
+      - name: allow-webhooks
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/part-of: kyverno
+        ports:
+          - protocol: TCP
+            port: 9443
+  gateway:
+    enabled: true
+    namespace: envoy-gateway-system
+    # The proxies (xDS on 18000, Wasm modules on 18002) and the rate limit
+    # service (18001) reach the controller inside this namespace; keep true.
+    allowSameNamespace: true
+    allowFromMonitoring: true
+    extraIngress:
+      # Envoy Gateway v1.10.0 labels every proxy pod with these three labels
+      # (internal/infrastructure/kubernetes/proxy/resource.go, EnvoyAppLabel).
+      # Proxies are the cluster edge: any source, any port.
+      - name: allow-proxy-traffic
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: envoy
+            app.kubernetes.io/component: proxy
+            app.kubernetes.io/managed-by: envoy-gateway
+      # gateway-helm chart 1.10.0: controller pods carry
+      # control-plane=envoy-gateway and serve the topology injector mutating
+      # webhook (pods/binding) on 9443.
+      - name: allow-controller-webhook
+        podSelector:
+          matchLabels:
+            control-plane: envoy-gateway
+        ports:
+          - protocol: TCP
+            port: 9443

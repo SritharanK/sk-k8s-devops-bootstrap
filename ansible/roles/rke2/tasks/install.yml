@@ -1,0 +1,115 @@
+---
+- name: Look for an installed rke2 binary
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: false
+  loop: "{{ rke2__binary_candidates }}"
+  register: rke2__binary_stat
+
+- name: Read the installed RKE2 version
+  ansible.builtin.command:
+    argv:
+      - "{{ rke2__binary_path }}"
+      - --version
+  vars:
+    rke2__binary_path: "{{ rke2__binary_stat.results | selectattr('stat.exists') | map(attribute='item') | first }}"
+  register: rke2__version_output
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: rke2__binary_stat.results | selectattr('stat.exists') | list | length > 0
+
+- name: Compare the installed version with the target
+  ansible.builtin.set_fact:
+    rke2__installed_version: >-
+      {{ (rke2__version_output.stdout | default('') | regex_search('rke2 version (v[^ ]+)', '\1') or [''])
+         | first }}
+
+- name: Refuse a downgrade unless it is allowed
+  ansible.builtin.assert:
+    that:
+      - >-
+        rke2_allow_downgrade | bool
+        or not (rke2__installed_cmp is version(rke2__version_cmp, '>'))
+    fail_msg: >-
+      {{ inventory_hostname }} runs {{ rke2__installed_version }}, which is newer than the target
+      {{ rke2_version }}. Set rke2_allow_downgrade: true to downgrade.
+    quiet: true
+  vars:
+    rke2__installed_cmp: "{{ rke2__installed_version | regex_replace('^v', '') | regex_replace('\\+rke2r', '.') }}"
+  when: rke2__installed_version | length > 0
+
+# The Kubernetes version skew policy does not support skipping a minor version, and nothing in RKE2 stops it.
+- name: Refuse an upgrade that skips a minor version
+  ansible.builtin.assert:
+    that:
+      - (rke2__version_minor | int) <= (rke2__installed_minor | int) + 1
+    fail_msg: >-
+      {{ inventory_hostname }} runs {{ rke2__installed_version }} and the target {{ rke2_version }} skips at
+      least one minor version. Upgrade through every minor in turn.
+    quiet: true
+  vars:
+    rke2__installed_minor: "{{ rke2__installed_version | regex_replace('^v1\\.([0-9]+)\\..*$', '\\1') | int }}"
+  when: rke2__installed_version | length > 0
+
+- name: Install or upgrade RKE2 {{ rke2_version }}
+  when: rke2__installed_version != rke2_version
+  block:
+    - name: Download the install script pinned to the release tag
+      ansible.builtin.get_url:
+        url: "{{ rke2__install_script_url }}"
+        dest: "{{ rke2__installer_path }}"
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Run the install script
+      ansible.builtin.command:
+        argv:
+          - "{{ rke2__installer_path }}"
+      environment: "{{ rke2__install_env }}"
+      vars:
+        rke2__install_env: >-
+          {{ {'INSTALL_RKE2_VERSION': rke2_version,
+              'INSTALL_RKE2_TYPE': rke2__node_type,
+              'INSTALL_RKE2_CHANNEL': rke2_channel}
+             | combine({'INSTALL_RKE2_METHOD': rke2_install_method} if rke2_install_method | length > 0 else {}) }}
+      register: rke2__install_result
+      changed_when: true
+      failed_when: rke2__install_result.rc != 0
+      notify: Restart rke2
+
+# The CIS sysctl file ships with RKE2, so it can only be copied after the install. It holds four kernel
+# parameters (vm.panic_on_oom, vm.overcommit_memory, kernel.panic, kernel.panic_on_oops) that RKE2
+# checks at every start under the CIS profile. The handler applies only this file with sysctl -p and never
+# restarts systemd-sysctl, which the hardening guide warns against on a running cluster.
+- name: Look for the CIS sysctl file shipped with RKE2
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: false
+  loop: "{{ rke2__cis_sysctl_candidates }}"
+  register: rke2__cis_sysctl_stat
+  when: rke2_cis_profile | bool
+
+- name: Assert that the CIS sysctl file was found
+  ansible.builtin.assert:
+    that:
+      - rke2__cis_sysctl_stat.results | selectattr('stat.exists') | list | length > 0
+    fail_msg: "rke2-cis-sysctl.conf not found in {{ rke2__cis_sysctl_candidates | join(', ') }}."
+    quiet: true
+  when:
+    - rke2_cis_profile | bool
+    - not ansible_check_mode
+
+- name: Install the CIS kernel parameters
+  ansible.builtin.copy:
+    src: "{{ rke2__cis_sysctl_stat.results | selectattr('stat.exists') | map(attribute='item') | first }}"
+    dest: "{{ rke2__cis_sysctl_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply CIS kernel parameters
+  when:
+    - rke2_cis_profile | bool
+    - rke2__cis_sysctl_stat.results | selectattr('stat.exists') | list | length > 0

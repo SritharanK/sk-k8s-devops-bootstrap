@@ -1,0 +1,74 @@
+---
+# Pinned plugins, installed offline from Jenkins with the plugin installation
+# manager. The manager runs only when the plugin list differs from the last
+# list it applied successfully, or when no plugin is installed. A failed run
+# is therefore retried on the next run instead of being skipped.
+
+- name: Download the plugin installation manager
+  ansible.builtin.get_url:
+    url: "https://github.com/jenkinsci/plugin-installation-manager-tool/releases/download/\
+      {{ install_jenkins_plugin_manager_version }}/jenkins-plugin-manager-{{ install_jenkins_plugin_manager_version }}.jar"
+    dest: "{{ install_jenkins_config_dir }}/jenkins-plugin-manager-{{ install_jenkins_plugin_manager_version }}.jar"
+    checksum: "sha256:{{ install_jenkins_plugin_manager_sha256 }}"
+    owner: root
+    group: "{{ install_jenkins_group }}"
+    mode: "0640"
+
+- name: Copy the pinned plugin list
+  ansible.builtin.copy:
+    src: "{{ install_jenkins_plugins_file }}"
+    dest: "{{ install_jenkins_config_dir }}/plugins.txt"
+    owner: root
+    group: "{{ install_jenkins_group }}"
+    mode: "0640"
+
+- name: Read the checksums of the pinned and the last applied plugin list
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    checksum_algorithm: sha256
+  loop:
+    - "{{ install_jenkins_config_dir }}/plugins.txt"
+    - "{{ install_jenkins_config_dir }}/plugins.applied.txt"
+  register: __jenkins_plugin_lists
+
+- name: Find the installed plugin archives
+  ansible.builtin.find:
+    paths: "{{ install_jenkins_home }}/plugins"
+    patterns: "*.jpi"
+  register: __jenkins_installed_plugins
+
+- name: Install the pinned plugins
+  ansible.builtin.command:
+    argv:
+      - java
+      - -jar
+      - "{{ install_jenkins_config_dir }}/jenkins-plugin-manager-{{ install_jenkins_plugin_manager_version }}.jar"
+      - --war
+      - "{{ install_jenkins_war_path }}"
+      - --plugin-download-directory
+      - "{{ install_jenkins_home }}/plugins"
+      - --plugin-file
+      - "{{ install_jenkins_config_dir }}/plugins.txt"
+      - --latest
+      - "false"
+      - --verbose
+  become: true
+  become_user: "{{ install_jenkins_user }}"
+  when: >-
+    __jenkins_installed_plugins.matched == 0
+    or not __jenkins_applied.stat.exists
+    or __jenkins_applied.stat.checksum != __jenkins_pinned.stat.checksum
+  vars:
+    __jenkins_pinned: "{{ __jenkins_plugin_lists.results[0] }}"
+    __jenkins_applied: "{{ __jenkins_plugin_lists.results[1] }}"
+  changed_when: true
+  notify: Restart Jenkins
+
+- name: Record the plugin list as applied
+  ansible.builtin.copy:
+    src: "{{ install_jenkins_config_dir }}/plugins.txt"
+    dest: "{{ install_jenkins_config_dir }}/plugins.applied.txt"
+    remote_src: true
+    owner: root
+    group: "{{ install_jenkins_group }}"
+    mode: "0640"

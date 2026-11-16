@@ -1,0 +1,35 @@
+---
+# Lab inventory: one RKE2 server, optionally one agent.
+# Copy to hosts.yml in this directory (gitignored) and replace every CHANGE_ME.
+# The addresses below come from documentation and private ranges; use your own.
+all:
+  vars:
+    # Non-root user with key-based login and passwordless sudo (see roles/base, base_admin_users).
+    ansible_user: CHANGE_ME
+    # Private network of the nodes; source for kubelet, CNI, supervisor and etcd ports.
+    firewall_node_cidrs: [CHANGE_ME]
+    # Networks allowed to reach SSH, for example your admin network 192.0.2.0/24.
+    firewall_ssh_cidrs: [CHANGE_ME]
+    # Extra sources allowed to reach the Kubernetes API on 6443, besides the node network.
+    firewall_api_cidrs: []
+    # Address written into the fetched kubeconfig. Empty means the first server's ansible_host.
+    rke2_api_endpoint: ""
+  children:
+    k8s_cluster:
+      children:
+        rke2_servers:
+          hosts:
+            lab-server-1:
+              ansible_host: 192.0.2.10
+              rke2_node_ip: 10.0.0.10
+        rke2_agents:
+          hosts:
+            lab-agent-1:
+              ansible_host: 192.0.2.11
+              rke2_node_ip: 10.0.0.11
+    # Optional: add a host here (for example lab-server-1) to export NFS to the node network.
+    nfs_server:
+      hosts: {}
+    # Optional: Jenkins hosts, configured by playbooks/jenkins_setup.yml.
+    jenkins:
+      hosts: {}

@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=../schema.json
+#
+# Cluster definition for the lab profile: kind (make demo) or a single RKE2
+# node.
+# Non-secret. Read by Ansible (vars_files) and by the root Argo CD Application
+# (extra Helm values file after argocd-bootstrap/values.yaml).
+# Validate with: make validate-config
+---
+cluster:
+  name: lab
+  profile: lab
+  domain: localtest.me  # *.localtest.me resolves to 127.0.0.1
+  kubernetesMinor: "1.36"
+  environments: [dev, stage, prod]
+
+git:
+  repoURL: https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap.git
+  targetRevision: main
+
+rke2:  # used only when the lab runs on a single RKE2 node; ignored on kind
+  version: v1.36.6+rke2r1
+  channel: stable
+  cni: canal
+  podCidr: 10.42.0.0/16
+  serviceCidr: 10.43.0.0/16
+  registrationAddress: ""
+  cisProfile: false
+  etcdSnapshots:
+    schedule: "0 */6 * * *"
+    retention: 10
+    s3: {enabled: false, endpoint: "", bucket: "", folder: "", region: ""}
+
+namespaces:
+  argocd: argocd
+  dev: dev
+  stage: stage
+  prod: prod
+  gateway: envoy-gateway-system
+  certManager: cert-manager
+  kyverno: kyverno
+  monitoring: monitoring
+
+platform:
+  certManagerEmail: platform@example.com
+  issuer: selfsigned  # CA-backed; certificate for <domain>, *.<domain> and *.<env>.<domain>
+  imageRegistry: ghcr.io/your-org  # lowercase: image references allow no capitals
+  groups:
+    admins: platform-admins
+    deployers: deployers
+    viewers: viewers
+
+# Per-profile toolchain switches. Defaults live in
+# argocd-bootstrap/values.yaml; set only the deltas for this cluster here.
+# Kargo promotion (docs/how-to/promote-with-kargo.md) stays off in the lab:
+# promote.yml is the default path. To try it, set kargo: {enabled: true} and
+# seal the Secrets kargo-api and kargo-git first.
+toolchains: {}

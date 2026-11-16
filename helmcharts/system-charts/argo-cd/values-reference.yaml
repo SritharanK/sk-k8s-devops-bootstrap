@@ -1,0 +1,155 @@
+# Reference profile: single RKE2 HA cluster with three or more nodes.
+# Redundant API server, repo server and ApplicationSet controller, Redis HA
+# with authentication behind HAProxy, SSO only.
+
+global:
+  # Replaced from clusters/<name>/cluster.yaml by the self-managing Application.
+  domain: argocd.example.com
+  logging:
+    format: json
+  affinity:
+    podAntiAffinity: hard
+
+argo-cd:
+  configs:
+    cm:
+      admin.enabled: false
+      # OIDC login (docs/security/argocd-sso.md). Replace every CHANGE_ME. The client secret is
+      # read from the Secret argocd-oidc, key clientSecret, which must carry
+      # the label app.kubernetes.io/part-of: argocd. In this profile it is
+      # delivered by External Secrets Operator; never commit it.
+      # Redirect URI to register at the identity provider:
+      #   https://<global.domain>/auth/callback
+      oidc.config: |
+        name: SSO
+        issuer: https://CHANGE_ME.example.com
+        clientID: CHANGE_ME
+        clientSecret: $argocd-oidc:clientSecret
+        requestedScopes:
+          - openid
+          - profile
+          - email
+          - groups
+        requestedIDTokenClaims:
+          groups:
+            essential: true
+
+  controller:
+    # Sharding stays off. One controller replica handles a single cluster of
+    # this size; raise replicas only with controller.sharding settings.
+    replicas: 1
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "4"
+        memory: 4Gi
+
+  server:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+  repoServer:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+
+  applicationSet:
+    replicas: 2
+
+  notifications:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+
+  # Redis HA replaces the single Redis Deployment. Three Redis and Sentinel
+  # pods and three HAProxy pods on separate nodes (hard anti-affinity).
+  redis-ha:
+    enabled: true
+    auth: true
+    existingSecret: argocd-redis
+    podDisruptionBudget:
+      maxUnavailable: 1
+    redis:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+    sentinel:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          cpu: 250m
+          memory: 128Mi
+    splitBrainDetection:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+    init:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+    # Redis servers accept traffic from their peers and from HAProxy only.
+    networkPolicy:
+      enabled: true
+    haproxy:
+      podDisruptionBudget:
+        maxUnavailable: 1
+      # Init container that renders the HAProxy configuration.
+      init:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            memory: 64Mi
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      # HAProxy accepts Redis traffic from the Argo CD components that use it.
+      networkPolicy:
+        enabled: true
+        ingressRules:
+          - selectors:
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: argocd-server
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: argocd-repo-server
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: argocd-application-controller

@@ -1,0 +1,6 @@
+OpenCost is installed in namespace {{ .Release.Namespace }}. The UI is not exposed outside the cluster.
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/opencost 9090:9090   # UI:  http://localhost:9090
+  kubectl -n {{ .Release.Namespace }} port-forward svc/opencost 9003:9003   # API: http://localhost:9003/allocation/compute?window=1d
+
+The custom pricing rates in values.yaml are illustrative placeholders. Replace them before using any cost figure.

@@ -1,0 +1,8 @@
+{{- /*
+Renders nothing. Disabling crds.enabled would drop the CRDs from the render
+and let Argo CD prune them, which deletes every Certificate and Issuer.
+*/ -}}
+{{- $crds := index .Values "cert-manager" "crds" -}}
+{{- if not (and $crds.enabled $crds.keep) -}}
+{{- fail "cert-manager: crds.enabled and crds.keep must stay true" -}}
+{{- end -}}

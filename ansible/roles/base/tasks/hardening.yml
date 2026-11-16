@@ -1,0 +1,20 @@
+---
+- name: Ensure the sysctl configuration directory exists
+  ansible.builtin.file:
+    path: /etc/sysctl.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Set the host hardening sysctls
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value | string }}"
+    sysctl_file: "{{ base__sysctl_hardening_file }}"
+    reload: "{{ base_kernel_runtime_apply }}"
+    sysctl_set: "{{ base_kernel_runtime_apply }}"
+    state: present
+  loop: "{{ base_hardening_sysctls | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"

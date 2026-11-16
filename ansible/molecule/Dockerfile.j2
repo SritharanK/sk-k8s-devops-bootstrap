@@ -1,0 +1,21 @@
+# Test image for Molecule scenarios: a distribution base image plus systemd and Python,
+# so roles can manage services the same way they do on a virtual machine.
+FROM {{ item.image }}
+
+ENV container=docker
+
+RUN if command -v apt-get >/dev/null 2>&1; then \
+      apt-get update \
+      && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+         ca-certificates python3 python3-apt sudo systemd systemd-sysv \
+      && apt-get clean \
+      && rm -rf /var/lib/apt/lists/*; \
+    elif command -v dnf >/dev/null 2>&1; then \
+      dnf -y install python3 sudo systemd \
+      && dnf clean all; \
+    fi
+
+RUN systemctl mask systemd-firstboot.service getty.target console-getty.service
+
+STOPSIGNAL SIGRTMIN+3
+CMD ["/lib/systemd/systemd"]

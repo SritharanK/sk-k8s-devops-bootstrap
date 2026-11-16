@@ -1,0 +1,23 @@
+---
+# Debian 12, Debian 13 and Ubuntu 24.04.
+# kmod and procps provide modprobe and sysctl, which the role uses; minimal container images lack them.
+base__os_packages:
+  - chrony
+  - curl
+  - kmod
+  - procps
+base__storage_packages:
+  - nfs-common
+  - open-iscsi
+base__update_packages:
+  - unattended-upgrades
+
+base__ssh_service: ssh
+# sshd -t fails on Debian and Ubuntu when the privilege separation directory is missing (it lives on /run).
+base__ssh_privsep_dir: /run/sshd
+
+base__chrony_service: chrony
+base__chrony_config: /etc/chrony/chrony.conf
+# chrony.conf of Debian 12, Debian 13 and Ubuntu 24.04 contains "sourcedir /etc/chrony/sources.d".
+base__chrony_sources_dir: /etc/chrony/sources.d
+base__chrony_sourcedir_regex: '^\s*sourcedir\s+/etc/chrony/sources\.d/?\s*$'

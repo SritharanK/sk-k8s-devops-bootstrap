@@ -1,0 +1,45 @@
+{{- /*
+One PrometheusRule per file in rules/. The files are unedited Sloth output
+(see generate.sh); their rule groups are copied into the spec as they are.
+*/}}
+{{- $files := .Files.Glob "rules/*.yaml" }}
+{{- $names := list }}
+{{- range $path, $_ := $files }}
+{{- $names = append $names (base $path | trimSuffix ".yaml") }}
+{{- end }}
+{{- range .Values.disabledRuleFiles }}
+{{- if not (has . $names) }}
+{{- fail (printf "disabledRuleFiles: %q does not match a file in rules/ (available: %s)" . (join ", " $names)) }}
+{{- end }}
+{{- end }}
+{{- range $path, $_ := $files }}
+{{- $name := base $path | trimSuffix ".yaml" }}
+{{- if not (has $name $.Values.disabledRuleFiles) }}
+{{- $content := $.Files.Get $path | fromYaml }}
+{{- if hasKey $content "Error" }}
+{{- fail (printf "%s is not valid YAML: %s" $path $content.Error) }}
+{{- end }}
+{{- if not $content.groups }}
+{{- fail (printf "%s has no rule groups" $path) }}
+{{- end }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ printf "%s-%s" $.Release.Name $name | trunc 63 | trimSuffix "-" }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $.Chart.Name }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/component: {{ $name }}
+    app.kubernetes.io/part-of: platform
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+    helm.sh/chart: {{ printf "%s-%s" $.Chart.Name $.Chart.Version }}
+    {{- with $.Values.ruleSelectorLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    {{- toYaml $content.groups | nindent 4 }}
+{{- end }}
+{{- end }}

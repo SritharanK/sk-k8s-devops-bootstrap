@@ -1,0 +1,220 @@
+# Base values for hello-api. Environment files in envs/<env>/hello-api/values.yaml
+# are applied on top and carry only the deltas: image tag and digest, route
+# hostnames, replica count and sizing. Every key is documented in
+# helmcharts/helm-common/README.md.
+
+image:
+  # -- Registry prefix. Replaced by global.imageRegistry when the Application passes it.
+  registry: ghcr.io/your-org
+  # -- Image name, as built from sample-services/hello-api.
+  repository: hello-api
+  # -- Image tag. Empty uses the chart appVersion. Promotion sets tag and digest in the environment files.
+  tag: ""
+  # -- Image digest. When set, the image is pulled by digest.
+  digest: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+
+# -- Replica count for dev. Stage and prod are set under `environments`.
+replicaCount: 1
+
+serviceAccount:
+  # -- Create a dedicated ServiceAccount.
+  create: true
+  # -- The service does not call the Kubernetes API, so no token is mounted.
+  automount: false
+
+# -- Pod security context required by the workload policies. Matches the distroless nonroot user.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container security context required by the workload policies.
+securityContext:
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container ports. The service listens on 8080.
+containerPorts:
+  - name: http
+    containerPort: 8080
+    protocol: TCP
+
+# -- Service settings. SHUTDOWN_DELAY plus SHUTDOWN_TIMEOUT stays below terminationGracePeriodSeconds; GOMEMLIMIT follows the memory limit.
+env:
+  - name: LOG_LEVEL
+    value: info
+  - name: SHUTDOWN_DELAY
+    value: 5s
+  - name: SHUTDOWN_TIMEOUT
+    value: 20s
+  # The Go runtime follows the CPU limit but not the memory limit.
+  - name: GOMEMLIMIT
+    valueFrom:
+      resourceFieldRef:
+        resource: limits.memory
+
+# -- Writable /tmp for the read-only root filesystem.
+tmpVolume:
+  enabled: true
+  mountPath: /tmp
+  sizeLimit: 16Mi
+
+# -- Liveness probe on the process health endpoint.
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 10
+  timeoutSeconds: 2
+  failureThreshold: 3
+
+# -- Readiness probe; turns unready as soon as shutdown starts.
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 2
+
+# -- Requests and limits; the workload policies require both for CPU and memory.
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 250m
+    memory: 96Mi
+
+# -- Grace period; covers SHUTDOWN_DELAY (5s) and SHUTDOWN_TIMEOUT (20s).
+terminationGracePeriodSeconds: 30
+
+topologySpread:
+  # -- Prefer spreading replicas across nodes.
+  enabled: true
+  topologyKey: kubernetes.io/hostname
+  maxSkew: 1
+  whenUnsatisfiable: ScheduleAnyway
+
+podDisruptionBudget:
+  # -- Rendered only when at least two replicas run.
+  enabled: true
+  maxUnavailable: 1
+
+service:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+
+route:
+  # -- Expose the service through the platform Gateway.
+  enabled: true
+  # -- Empty derives hello-api.<global.environment>.<global.domain>, which Argo CD passes per cluster and environment.
+  hostnames: []
+  parentRefs:
+    - name: platform
+      namespace: envoy-gateway-system
+      sectionName: https
+
+trafficPolicy:
+  # -- Envoy Gateway BackendTrafficPolicy on the route, with the helm-common defaults: connect and request
+  # timeouts, retries only for requests that never reached the service (plus 503), and a circuit breaker.
+  # Envoy Gateway is a core component, so this adds no runtime component.
+  enabled: true
+  rateLimit:
+    # -- Local rate limit per Envoy replica (429 above the limit). Off.
+    enabled: false
+
+networkPolicy:
+  # -- Render the app NetworkPolicy. It allows the Gateway data plane to reach port
+  # http because the route is enabled, and Prometheus once the ServiceMonitor is enabled. Egress
+  # stays with the platform default-deny and DNS policies.
+  enabled: true
+  # -- Namespace of the Gateway data plane.
+  gatewayNamespace: envoy-gateway-system
+  # -- Namespace of Prometheus.
+  monitoringNamespace: monitoring
+
+metrics:
+  serviceMonitor:
+    # -- Enable where the Prometheus Operator CRDs are installed.
+    enabled: false
+    # -- Must match the Prometheus serviceMonitorSelector.
+    labels:
+      release: monitoring
+    # -- Service port and path that serve the metrics.
+    port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+
+otel:
+  # -- Export traces over OTLP to Tempo. Requires the `tracing` toolchain. Enable it here, or per environment
+  # with `environments.<env>.otel.enabled: true`; the environment files under envs/ hold only image.tag and
+  # image.digest. Adds the `OTEL_*` variables after env and allows egress to the tracing namespace on 4318.
+  enabled: false
+  # -- OTLP over HTTP to Tempo in the tracing namespace.
+  endpoint: http://tempo.tracing.svc:4318
+
+keda:
+  # -- Scale on the request rate with a KEDA ScaledObject. Requires the `keda` toolchain and the ServiceMonitor
+  # (metrics.serviceMonitor.enabled), so that Prometheus has the metric. An alternative to `autoscaling`: prod
+  # enables autoscaling under environments.prod, so enabling keda for prod also needs
+  # `environments.prod.autoscaling.enabled: false`.
+  enabled: false
+  prometheus:
+    # -- Requests per second to the service, without the probe and metrics endpoints. Rendered through tpl.
+    # @default -- Rate of `http_requests_total` over 2m for this release, without `/healthz`, `/readyz` and `/metrics`
+    query: >-
+      sum(rate(http_requests_total{namespace="{{ .Release.Namespace }}",
+      service="{{ include "common.names.fullname" . }}",
+      handler!~"/healthz|/readyz|/metrics"}[2m]))
+    # -- Target requests per second per replica.
+    threshold: "20"
+
+rollout:
+  # -- Enable where the Argo Rollouts controller and the Gateway API plugin are installed.
+  enabled: false
+  analysis:
+    enabled: true
+    templateName: success-rate
+  trafficRouting:
+    gatewayAPI:
+      enabled: true
+
+# -- Per-environment deltas, applied when global.environment matches. They take
+# precedence over the values above and over the environment files, which hold
+# only image.tag and image.digest.
+environments:
+  stage:
+    replicaCount: 2
+  prod:
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 75
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+    resources:
+      requests:
+        cpu: 50m
+        memory: 48Mi
+      limits:
+        cpu: 500m
+        memory: 128Mi

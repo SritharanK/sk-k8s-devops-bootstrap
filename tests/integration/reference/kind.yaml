@@ -1,0 +1,17 @@
+# Three-node kind cluster for tests/integration/reference/run.sh, the local
+# stand-in for the three-server RKE2 reference cluster. run.sh removes the
+# control-plane taint so all three nodes schedule workloads, as RKE2 servers
+# do; Argo CD redis-ha and the OpenBao Raft voters use hard anti-affinity and
+# need three nodes. kindnet stays the CNI (it enforces NetworkPolicy). The
+# node image is the kind v0.33.0 image for Kubernetes 1.36, pinned by digest.
+---
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: it-reference
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+  - role: worker
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+  - role: worker
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed

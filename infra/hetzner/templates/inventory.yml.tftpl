@@ -1,0 +1,32 @@
+---
+# Rendered by `tofu output -raw ansible_inventory`. Do not edit by hand; re-render after changes.
+all:
+  vars:
+    ansible_user: ${jsonencode(admin_username)}
+    firewall_node_cidrs: [${join(", ", [for v in node_cidrs : jsonencode(v)])}]
+    firewall_ssh_cidrs: [${join(", ", [for v in ssh_cidrs : jsonencode(v)])}]
+    firewall_api_cidrs: [${join(", ", [for v in api_cidrs : jsonencode(v)])}]
+    infra_registration_address: ${jsonencode(registration_address)}
+    rke2_api_endpoint: ${jsonencode(api_endpoint)}
+    rke2_tls_san_extra: [${join(", ", [for v in tls_san_extra : jsonencode(v)])}]
+  children:
+    k8s_cluster:
+      children:
+        rke2_servers:
+          hosts:
+%{ for node in servers ~}
+            ${node.name}:
+              ansible_host: ${jsonencode(node.public_ipv4)}
+              rke2_node_ip: ${jsonencode(node.private_ip)}
+%{ endfor ~}
+        rke2_agents:
+%{ if length(agents) == 0 ~}
+          hosts: {}
+%{ else ~}
+          hosts:
+%{ for node in agents ~}
+            ${node.name}:
+              ansible_host: ${jsonencode(node.public_ipv4)}
+              rke2_node_ip: ${jsonencode(node.private_ip)}
+%{ endfor ~}
+%{ endif ~}

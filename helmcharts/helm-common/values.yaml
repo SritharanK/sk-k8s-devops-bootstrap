@@ -1,0 +1,437 @@
+# Defaults for the helm-common library chart.
+#
+# A consuming chart declares helm-common as a dependency (without an alias)
+# and sets these keys at the top level of its own values. The library merges
+# the consumer values over these defaults: maps merge key by key, lists
+# replace, false and 0 are kept, and null in a value file passed at install
+# time removes a default (see the README for the exact null rules).
+
+# -- Overrides the chart name used in names and the app.kubernetes.io/name label.
+nameOverride: ""
+# -- Overrides the full resource name. Truncated to 63 characters.
+fullnameOverride: ""
+# -- Labels added to every rendered object.
+commonLabels: {}
+
+# -- Per-environment overrides, keyed by environment name (for example dev, stage, prod).
+# Each value is a partial values tree. The entry named by `global.environment` is merged
+# over the consumer values with the same rules (maps merge, lists replace, false and 0 kept,
+# null removes). Never rendered into an object.
+environments: {}
+# prod:
+#   replicaCount: 3
+
+image:
+  # -- Registry and path prefix, for example ghcr.io/your-org. global.imageRegistry takes precedence.
+  # Not applied when image.repository already starts with a registry host.
+  registry: ""
+  # -- (string) Image name (with a registry prefix) or full lowercase path, for example ghcr.io/your-org/hello-api. Required.
+  repository: ""
+  # -- Image tag. Defaults to the chart appVersion. `latest` is rejected.
+  tag: ""
+  # -- Image digest (sha256:...). When set, the image renders as repository@digest and the tag is not used.
+  digest: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets, as a list of names.
+imagePullSecrets: []
+
+# -- Replica count. Not rendered when autoscaling or keda is enabled. Set to 0 on the Deployment when the Rollout is enabled.
+replicaCount: 1
+# -- Number of old ReplicaSets to retain.
+revisionHistoryLimit: 3
+# -- Deployment strategy. Empty uses the Kubernetes default (RollingUpdate 25% / 25%).
+strategy: {}
+
+serviceAccount:
+  # -- Create a ServiceAccount for the workload.
+  create: true
+  # -- ServiceAccount name. Defaults to the full name when create is true, else `default`.
+  name: ""
+  # -- Annotations on the ServiceAccount, for example for workload identity.
+  annotations: {}
+  # -- Mount the API token. Applies to the ServiceAccount and the pod spec.
+  automount: false
+
+# -- Annotations on the pod template.
+podAnnotations: {}
+# -- Extra labels on the pod template. Selector labels cannot be overridden.
+podLabels: {}
+
+# -- Pod-level security context. Rendered as given: every field can be overridden, or removed with null from a value file.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container-level security context. Rendered as given: every field can be overridden, or removed with null from a value file.
+securityContext:
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container command. Empty uses the image entrypoint.
+command: []
+# -- Container arguments.
+args: []
+
+# -- Container ports. The first port is the default target of the Service.
+containerPorts:
+  - name: http
+    containerPort: 8080
+    protocol: TCP
+
+# -- Environment variables as a list of EnvVar objects. Use valueFrom.secretKeyRef for single secret keys.
+env: []
+# -- Environment sources as a list of EnvFromSource objects, for example secretRef or configMapRef.
+envFrom: []
+
+# -- ConfigMaps rendered by the chart, keyed by short name. Each renders as `<fullname>-<key>`.
+# Fields: data (map, required), mountPath (mount read-only at this path), asEnv (add to envFrom).
+configMaps: {}
+# app-settings:
+#   data:
+#     LOG_LEVEL: info
+#   asEnv: true
+
+# -- Existing Secrets to mount, keyed by volume name. The chart never renders Secrets; create them with
+# Sealed Secrets or External Secrets. Fields: secretName (required), mountPath (required), items, optional.
+secretMounts: {}
+# db:
+#   secretName: hello-api-db
+#   mountPath: /var/run/secrets/db
+
+# Writable emptyDir for the read-only root filesystem.
+tmpVolume:
+  # -- Mount an emptyDir for temporary files.
+  enabled: true
+  # -- Mount path of the emptyDir.
+  mountPath: /tmp
+  # -- Size limit of the emptyDir.
+  sizeLimit: 64Mi
+  # -- Storage medium. Empty uses node storage; Memory uses tmpfs and counts against the memory limit.
+  medium: ""
+
+# -- Extra volumes on the pod.
+extraVolumes: []
+# -- Extra volume mounts on the container.
+extraVolumeMounts: []
+
+persistence:
+  # -- Render and mount a PersistentVolumeClaim.
+  enabled: false
+  # -- Mount path of the volume.
+  mountPath: /data
+  # -- Access mode. ReadWriteOnce and ReadWriteOncePod are rejected when more than one replica can run.
+  accessMode: ReadWriteOnce
+  # -- Requested size.
+  size: 1Gi
+  # -- StorageClass. Empty uses the cluster default. "-" renders an empty storageClassName.
+  storageClassName: ""
+  # -- Use an existing claim instead of rendering one.
+  existingClaim: ""
+  # -- Annotations on the claim.
+  annotations: {}
+
+# -- Liveness probe. Setting another handler (tcpSocket, grpc or exec) replaces the default httpGet; other keys merge.
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 10
+  timeoutSeconds: 2
+  failureThreshold: 3
+# -- Readiness probe. Same handler rule as the liveness probe.
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 3
+# -- Startup probe. Not rendered when empty.
+startupProbe: {}
+
+# -- Resource requests and limits. The platform policy requires both for CPU and memory.
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 128Mi
+
+# -- Container lifecycle hooks.
+lifecycle: {}
+# -- Pod termination grace period in seconds.
+terminationGracePeriodSeconds: 30
+# -- Priority class name.
+priorityClassName: ""
+# -- Node selector.
+nodeSelector: {}
+# -- Tolerations.
+tolerations: []
+# -- Affinity.
+affinity: {}
+
+topologySpread:
+  # -- Spread replicas across nodes with a constraint that uses the selector labels.
+  enabled: false
+  # -- Topology key.
+  topologyKey: kubernetes.io/hostname
+  # -- Maximum skew.
+  maxSkew: 1
+  # -- DoNotSchedule or ScheduleAnyway.
+  whenUnsatisfiable: ScheduleAnyway
+
+service:
+  # -- Render the Service.
+  enabled: true
+  # -- Service type.
+  type: ClusterIP
+  # -- Annotations on the Service.
+  annotations: {}
+  # -- Service ports. The first port is used by the route and the ServiceMonitor.
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+
+# Gateway API HTTPRoute.
+route:
+  # -- Render an HTTPRoute. Needs route.hostnames, or global.environment and global.domain.
+  enabled: false
+  # -- Annotations on the HTTPRoute.
+  annotations: {}
+  # -- Hostnames, for example hello-api.dev.localtest.me. When empty, one hostname
+  # `<fullname>.<global.environment>.<global.domain>` is rendered; the render fails
+  # if either global value is missing. Explicit hostnames always win.
+  hostnames: []
+  # -- Parent Gateways.
+  parentRefs:
+    - name: platform
+      namespace: envoy-gateway-system
+      sectionName: https
+  # -- Request matches of the single rule.
+  matches:
+    - path:
+        type: PathPrefix
+        value: /
+  # -- Rule timeouts (request, backendRequest). Not rendered when empty. trafficPolicy.timeout.http.requestTimeout
+  # sets a request timeout on the same route; set one of the two, not both.
+  timeouts: {}
+
+# Envoy Gateway BackendTrafficPolicy (gateway.envoyproxy.io/v1alpha1) attached to the HTTPRoute of this chart.
+# Field names follow the Envoy Gateway v1.10 CRD.
+trafficPolicy:
+  # -- Render a BackendTrafficPolicy that targets the HTTPRoute. Requires route.enabled.
+  enabled: false
+  # -- Annotations on the BackendTrafficPolicy.
+  annotations: {}
+  # -- Backend timeouts: tcp.connectTimeout, http.requestTimeout, http.connectionIdleTimeout and
+  # http.maxConnectionDuration (durations such as 500ms, 15s, 1h). Rendered as given; null in a value file omits
+  # the block. route.timeouts also sets a request timeout on the same route; set one of the two, not both.
+  timeout:
+    tcp:
+      connectTimeout: 5s
+    http:
+      requestTimeout: 15s
+  # -- Retry policy (numRetries, retryOn, perRetry), rendered as given; null in a value file omits it, and
+  # numRetries 0 turns retries off. The default is deliberately conservative because Envoy cannot tell whether
+  # a request is idempotent: the three connection triggers fire only when the request never reached the
+  # application, and 503 is retried on the convention that a service answering 503 did not process the
+  # request. Add 5xx, reset or gateway-error only when every operation on the route is idempotent, or a POST
+  # may be applied twice.
+  retry:
+    numRetries: 2
+    retryOn:
+      triggers:
+        - connect-failure
+        - refused-stream
+        - reset-before-request
+        - retriable-status-codes
+      httpStatusCodes:
+        - 503
+    perRetry:
+      timeout: 5s
+      backOff:
+        baseInterval: 100ms
+        maxInterval: 1s
+  # -- Circuit breaker thresholds, rendered as given; null in a value file omits them. They apply per Envoy replica,
+  # not per Service; requests above a threshold fail fast with 503 instead of queueing.
+  circuitBreaker:
+    maxConnections: 1024
+    maxPendingRequests: 256
+    maxParallelRequests: 1024
+    maxParallelRetries: 10
+  rateLimit:
+    # -- Add one local rate limit rule for every request to the route. Each Envoy replica counts on its own
+    # and answers 429 above the limit, so the effective limit grows with the number of Envoy replicas.
+    enabled: false
+    # -- Requests allowed per unit and per Envoy replica.
+    requests: 100
+    # -- Rate limit unit: Second, Minute, Hour, Day, Week, Month or Year.
+    unit: Second
+
+autoscaling:
+  # -- Render a HorizontalPodAutoscaler. The replica count is then omitted.
+  enabled: false
+  # -- Minimum replicas.
+  minReplicas: 2
+  # -- Maximum replicas.
+  maxReplicas: 5
+  # -- Target average CPU utilisation in percent. Null disables the CPU metric.
+  targetCPUUtilizationPercentage: 75
+  # -- (int) Target average memory utilisation in percent. Null disables the memory metric.
+  targetMemoryUtilizationPercentage: null
+  # -- Full metrics list. When set, it replaces the two utilisation targets.
+  metrics: []
+  # -- Scaling behavior (autoscaling/v2).
+  behavior: {}
+
+# KEDA ScaledObject (keda.sh/v1alpha1), an alternative to the HorizontalPodAutoscaler above.
+keda:
+  # -- Render a ScaledObject for the Deployment, or for the Rollout when rollout.enabled. KEDA creates and owns
+  # the HPA, so autoscaling.enabled must be false. The replica count is then omitted.
+  enabled: false
+  # -- Minimum replicas while a trigger is active.
+  minReplicaCount: 1
+  # -- Maximum replicas.
+  maxReplicaCount: 5
+  # -- Seconds between two checks of the triggers.
+  pollingInterval: 30
+  # -- Seconds after the last active trigger before scaling down to idleReplicaCount (or to 0 with minReplicaCount 0).
+  cooldownPeriod: 300
+  # -- (int) Seconds after the ScaledObject is created before the first scale down to idle. Null omits it.
+  initialCooldownPeriod: null
+  # -- (int) Replicas while no trigger is active. Set 0 for scale to zero; it must be lower than minReplicaCount,
+  # so minReplicaCount must then be at least 1. Null omits it.
+  idleReplicaCount: null
+  # -- Replicas to run when the scaler fails, for example `{failureThreshold: 3, replicas: 2}`. Empty omits it.
+  fallback: {}
+  # -- Scaling behavior of the HPA that KEDA creates (advanced.horizontalPodAutoscalerConfig.behavior). Empty omits it.
+  behavior: {}
+  # Default trigger, used when keda.triggers is empty.
+  prometheus:
+    # -- Prometheus query endpoint.
+    serverAddress: http://monitoring-prometheus.monitoring.svc:9090
+    # -- PromQL query that returns a single value. Rendered through tpl, so it may use
+    # `{{ .Release.Namespace }}` and `{{ include "common.names.fullname" . }}`. Required when keda.triggers is empty.
+    query: ""
+    # -- Target value per replica (metricType AverageValue), as a string.
+    threshold: "10"
+    # -- Query value above which the workload scales up from idleReplicaCount, as a string. Empty omits it.
+    activationThreshold: ""
+    # -- TriggerAuthentication reference (`name`, `kind`). Empty omits it.
+    authenticationRef: {}
+  # -- Full trigger list (type, metadata, metricType, authenticationRef, name). When set, it replaces the
+  # Prometheus trigger. Values in metadata are rendered as strings.
+  triggers: []
+
+podDisruptionBudget:
+  # -- Render a PodDisruptionBudget. Only rendered when the minimum replica count is above 1.
+  enabled: true
+  # -- (int or string) Maximum unavailable pods (number or percentage). Do not set together with minAvailable.
+  maxUnavailable: 1
+  # -- (int or string) Minimum available pods (number or percentage). Do not set together with maxUnavailable.
+  minAvailable: null
+
+# Allow rules for the workload pods. They add to the platform default-deny and DNS policies.
+networkPolicy:
+  # -- Render a NetworkPolicy with the allow rules of the workload. Nothing is rendered when there is no rule.
+  enabled: true
+  # -- Namespace of the Gateway. Allowed to reach the first Service targetPort when route.enabled is true.
+  gatewayNamespace: envoy-gateway-system
+  # -- Namespace of Prometheus. Allowed to reach the metrics port when metrics.serviceMonitor.enabled is true.
+  monitoringNamespace: monitoring
+  # -- Extra ingress rules (NetworkPolicyIngressRule list), appended after the generated rules.
+  extraIngress: []
+  # -- Egress rules (NetworkPolicyEgressRule list). When set, Egress is added to policyTypes.
+  egress: []
+
+# Prometheus Operator ServiceMonitor.
+metrics:
+  serviceMonitor:
+    # -- Render a ServiceMonitor for the primary Service.
+    enabled: false
+    # -- Labels on the ServiceMonitor; must match the Prometheus serviceMonitorSelector.
+    labels:
+      release: monitoring
+    # -- Service port name to scrape.
+    port: http
+    # -- Metrics path.
+    path: /metrics
+    # -- Scrape interval.
+    interval: 30s
+    # -- Scrape timeout.
+    scrapeTimeout: 10s
+
+# OpenTelemetry SDK settings for the application container. Traces only: metrics come from Prometheus scraping.
+otel:
+  # -- Add the `OTEL_*` environment variables after env: downward API variables for the pod, namespace and node,
+  # the exporter, sampler and propagator settings, and OTEL_RESOURCE_ATTRIBUTES. A variable whose name is
+  # already in env is not added.
+  enabled: false
+  # -- (string) OTLP endpoint (OTEL_EXPORTER_OTLP_ENDPOINT). Required when otel.enabled is true. With protocol
+  # grpc, use port 4317 here and in otel.networkPolicy.port.
+  endpoint: http://tempo.tracing.svc:4318
+  # -- OTLP protocol (OTEL_EXPORTER_OTLP_PROTOCOL): http/protobuf, http/json or grpc.
+  protocol: http/protobuf
+  # -- Service name (OTEL_SERVICE_NAME). Empty uses the full name.
+  serviceName: ""
+  # -- Trace sampler (OTEL_TRACES_SAMPLER).
+  sampler: parentbased_traceidratio
+  # -- Sampler argument (OTEL_TRACES_SAMPLER_ARG), as a string. "1.0" keeps every new trace.
+  samplerArg: "1.0"
+  # -- Context propagators (OTEL_PROPAGATORS).
+  propagators: tracecontext,baggage
+  # -- Extra resource attributes, appended to OTEL_RESOURCE_ATTRIBUTES sorted by key. A key here replaces the
+  # generated attribute with the same key. Keys and values must not contain "," or "=".
+  resourceAttributes: {}
+  networkPolicy:
+    # -- Namespace of the collector. When set and networkPolicy.enabled is true, the app NetworkPolicy allows
+    # egress to it. Empty adds no rule.
+    namespace: tracing
+    # -- Collector port (TCP) allowed by the egress rule.
+    port: 4318
+
+# Argo Rollouts Rollout with workloadRef to the Deployment.
+rollout:
+  # -- Render a Rollout that references the Deployment. The Deployment is then rendered with 0 replicas.
+  enabled: false
+  workloadRef:
+    # -- How the Rollouts controller scales the referenced Deployment: never, onsuccess or progressively.
+    scaleDown: onsuccess
+  # -- Canary steps.
+  steps:
+    - setWeight: 20
+    - pause:
+        duration: 1m
+    - setWeight: 50
+    - pause:
+        duration: 1m
+  analysis:
+    # -- Run background analysis during the canary.
+    enabled: true
+    # -- ClusterAnalysisTemplate name.
+    templateName: success-rate
+    # -- Step index at which the analysis starts.
+    startingStep: 1
+    # -- Analysis arguments (name and value).
+    args: []
+  trafficRouting:
+    gatewayAPI:
+      # -- Shift traffic through the HTTPRoute with the Gateway API plugin. Renders a canary Service.
+      enabled: false
+      # -- HTTPRoute name. Defaults to the route rendered by this chart.
+      httpRoute: ""

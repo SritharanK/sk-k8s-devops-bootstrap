@@ -1,0 +1,11 @@
+---
+# Optional NFS server. Exports are limited to the node network; never export to any host.
+nfs_server_exports:
+  - path: /srv/nfs/kubernetes
+    clients: "{{ firewall_node_cidrs }}"
+
+firewall_extra_rules:
+  - port: 2049
+    proto: tcp
+    sources: "{{ firewall_node_cidrs }}"
+    comment: NFSv4 from cluster nodes

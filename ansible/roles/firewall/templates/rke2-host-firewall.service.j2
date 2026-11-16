@@ -1,0 +1,26 @@
+{{ ansible_managed | comment }}
+# Loads the inet rke2_host table from {{ firewall__rules_path }}.
+# The distribution nftables.service is not used: its default configuration starts with "flush ruleset", which would
+# remove the rules of the CNI and kube-proxy.
+
+[Unit]
+Description=RKE2 host input firewall (nftables table inet rke2_host)
+Documentation=man:nft(8) https://docs.rke2.io/install/requirements
+Wants=network-pre.target
+Before=network-pre.target shutdown.target
+Conflicts=shutdown.target
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+StandardInput=null
+ProtectSystem=full
+ProtectHome=true
+ExecStart={{ firewall__nft_path }} -f {{ firewall__rules_path }}
+ExecReload={{ firewall__nft_path }} -f {{ firewall__rules_path }}
+# The leading "-" keeps a stop from failing when the table was already removed by hand.
+ExecStop=-{{ firewall__nft_path }} delete table inet rke2_host
+
+[Install]
+WantedBy=sysinit.target

@@ -1,0 +1,80 @@
+{{- /*
+  RKE2 upgrade Plans, as in https://docs.rke2.io/upgrades/automated, with a pinned version
+  instead of a release channel. The server Plan upgrades control-plane nodes; the agent Plan
+  upgrades all other nodes and waits for the server Plan in its prepare step (logic in the
+  rancher/rke2-upgrade image). Plans must live in the controller namespace.
+*/}}
+{{- if .Values.plans.enabled }}
+{{- $version := toString (default "" .Values.plans.version) | trim }}
+{{- if or (eq $version "") (contains "CHANGE_ME" $version) }}
+{{- fail "plans.enabled is true but plans.version is empty or CHANGE_ME. Set plans.version to the target RKE2 release, for example v1.36.6+rke2r1." }}
+{{- end }}
+{{- if not (regexMatch "^v[0-9]+\\.[0-9]+\\.[0-9]+\\+rke2r[0-9]+$" $version) }}
+{{- fail (printf "plans.version %q is not an RKE2 release such as v1.36.6+rke2r1." $version) }}
+{{- end }}
+{{- $sa := include "suc.serviceAccountName" . }}
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: rke2-server
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "suc.labels" . | nindent 4 }}
+spec:
+  concurrency: {{ .Values.plans.server.concurrency }}
+  cordon: {{ .Values.plans.server.cordon }}
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: In
+        values:
+          - "true"
+  serviceAccountName: {{ $sa }}
+  {{- with .Values.plans.server.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  upgrade:
+    image: {{ .Values.plans.image }}
+  version: {{ $version | quote }}
+  {{- with .Values.plans.window }}
+  window:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: rke2-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "suc.labels" . | nindent 4 }}
+spec:
+  concurrency: {{ .Values.plans.agent.concurrency }}
+  cordon: {{ .Values.plans.agent.cordon }}
+  {{- with .Values.plans.agent.drain }}
+  drain:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: DoesNotExist
+  prepare:
+    args:
+      - prepare
+      - rke2-server
+    image: {{ .Values.plans.image }}
+  serviceAccountName: {{ $sa }}
+  {{- with .Values.plans.agent.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  upgrade:
+    image: {{ .Values.plans.image }}
+  version: {{ $version | quote }}
+  {{- with .Values.plans.window }}
+  window:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

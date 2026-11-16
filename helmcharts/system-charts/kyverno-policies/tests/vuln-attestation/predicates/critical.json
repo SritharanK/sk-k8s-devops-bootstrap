@@ -1,0 +1,60 @@
+{
+  "invocation": {
+    "parameters": null,
+    "uri": "",
+    "event_id": "",
+    "builder.id": ""
+  },
+  "scanner": {
+    "uri": "pkg:github/aquasecurity/trivy@0.76.2",
+    "version": "0.76.2",
+    "db": {
+      "uri": "",
+      "version": ""
+    },
+    "result": {
+      "SchemaVersion": 2,
+      "Trivy": {
+        "Version": "0.76.2"
+      },
+      "ArtifactName": "ghcr.io/your-org/hello-api@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "ArtifactType": "container_image",
+      "Results": [
+        {
+          "Target": "ghcr.io/your-org/hello-api (debian 13.2)",
+          "Class": "os-pkgs",
+          "Type": "debian",
+          "Vulnerabilities": [
+            {
+              "VulnerabilityID": "CVE-2099-0001",
+              "PkgName": "libexample",
+              "InstalledVersion": "1.2.3-1",
+              "FixedVersion": "1.2.3-2",
+              "Status": "fixed",
+              "Severity": "CRITICAL"
+            },
+            {
+              "VulnerabilityID": "CVE-2099-0003",
+              "PkgName": "libother",
+              "InstalledVersion": "4.5.6-1",
+              "Status": "affected",
+              "Severity": "CRITICAL"
+            },
+            {
+              "VulnerabilityID": "CVE-2099-0101",
+              "PkgName": "libexample",
+              "InstalledVersion": "1.2.3-1",
+              "FixedVersion": "1.2.3-2",
+              "Status": "fixed",
+              "Severity": "HIGH"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "metadata": {
+    "scanStartedOn": "1970-01-01T00:00:00Z",
+    "scanFinishedOn": "1970-01-01T00:00:00Z"
+  }
+}

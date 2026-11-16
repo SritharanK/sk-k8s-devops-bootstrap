@@ -1,0 +1,20 @@
+{{- /*
+The preview namespace itself, named after the release namespace (Argo CD
+passes the destination namespace pr-<number>). Pod Security restricted for
+enforce, audit and warn. No Prune=false or Delete=false on any object of this
+chart: deleting the Application deletes the namespace and everything in it,
+which is how a preview is cleaned up.
+*/ -}}
+{{- $version := required "podSecurity.version is required" .Values.podSecurity.version }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  labels:
+    {{- include "preview-namespace.labels" . | nindent 4 }}
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: {{ $version }}
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: {{ $version }}
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: {{ $version }}

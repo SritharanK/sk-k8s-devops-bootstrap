@@ -1,0 +1,136 @@
+{{- /*
+Alerts for core platform components. One PrometheusRule per group, each toggled by
+platformRules.<group>.enabled. Alert templates are wrapped in Helm raw strings so
+Prometheus, not Helm, expands them.
+cert-manager exposes the Certificate namespace as "namespace"; when the scrape does not
+honour labels it arrives as "exported_namespace", so the annotations accept both.
+*/}}
+{{- if .Values.platformRules.argocd.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-platform-argocd
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.ruleLabels" . | nindent 4 }}
+spec:
+  groups:
+    - name: platform.argocd
+      rules:
+        - alert: ArgoCdApplicationOutOfSync
+          expr: argocd_app_info{sync_status="OutOfSync"} > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `Argo CD application {{ $labels.name }} is out of sync` | quote }}
+            description: {{ `Application {{ $labels.name }} in project {{ $labels.project }} has been OutOfSync for more than 30 minutes. Check the diff in Argo CD; a manual change in the cluster or a failing auto-sync is the usual cause.` | quote }}
+        - alert: ArgoCdApplicationUnhealthy
+          expr: argocd_app_info{health_status=~"Degraded|Missing"} > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `Argo CD application {{ $labels.name }} is {{ $labels.health_status }}` | quote }}
+            description: {{ `Application {{ $labels.name }} in project {{ $labels.project }} has reported health {{ $labels.health_status }} for more than 15 minutes.` | quote }}
+        - alert: ArgoCdApplicationSyncFailed
+          expr: increase(argocd_app_sync_total{phase=~"Error|Failed"}[15m]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `Argo CD sync of {{ $labels.name }} failed` | quote }}
+            description: {{ `A sync of application {{ $labels.name }} in project {{ $labels.project }} ended in phase {{ $labels.phase }} in the last 15 minutes.` | quote }}
+{{- end }}
+{{- if .Values.platformRules.certManager.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-platform-cert-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.ruleLabels" . | nindent 4 }}
+spec:
+  groups:
+    - name: platform.cert-manager
+      rules:
+        # The warning covers 7 to 14 days left; below 7 days only the critical alert fires.
+        - alert: CertManagerCertificateExpiringSoon
+          expr: |-
+            certmanager_certificate_expiration_timestamp_seconds - time() < 14 * 24 * 3600
+            and
+            certmanager_certificate_expiration_timestamp_seconds - time() >= 7 * 24 * 3600
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `Certificate {{ with $labels.exported_namespace }}{{ . }}{{ else }}{{ $labels.namespace }}{{ end }}/{{ $labels.name }} expires in less than 14 days` | quote }}
+            description: {{ `Certificate {{ $labels.name }} expires in {{ $value | humanizeDuration }}. cert-manager normally renews 30 days before expiry; check the Certificate and CertificateRequest status.` | quote }}
+        - alert: CertManagerCertificateExpiryCritical
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 7 * 24 * 3600
+          for: 1h
+          labels:
+            severity: critical
+          annotations:
+            summary: {{ `Certificate {{ with $labels.exported_namespace }}{{ . }}{{ else }}{{ $labels.namespace }}{{ end }}/{{ $labels.name }} expires in less than 7 days` | quote }}
+            description: {{ `Certificate {{ $labels.name }} expires in {{ $value | humanizeDuration }} and has not been renewed. Check the issuer and the CertificateRequest status.` | quote }}
+        - alert: CertManagerCertificateNotReady
+          expr: certmanager_certificate_ready_status{condition="False"} == 1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `Certificate {{ with $labels.exported_namespace }}{{ . }}{{ else }}{{ $labels.namespace }}{{ end }}/{{ $labels.name }} is not ready` | quote }}
+            description: {{ `Certificate {{ $labels.name }} has had Ready=False for more than 15 minutes. Check kubectl describe certificate and the cert-manager logs.` | quote }}
+{{- end }}
+{{- if .Values.platformRules.kyverno.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-platform-kyverno
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.ruleLabels" . | nindent 4 }}
+spec:
+  groups:
+    - name: platform.kyverno
+      rules:
+        - alert: KyvernoAdmissionLatencyHigh
+          expr: histogram_quantile(0.99, sum by (le) (rate(kyverno_admission_review_duration_seconds_bucket[5m]))) > 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Kyverno admission review p99 latency is above 1s
+            description: {{ `The 99th percentile of Kyverno admission review duration has been {{ $value | humanizeDuration }} for more than 10 minutes. Slow admission delays every API write and can hit the webhook timeout.` | quote }}
+{{- end }}
+{{- if .Values.platformRules.velero.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-platform-velero
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.ruleLabels" . | nindent 4 }}
+spec:
+  groups:
+    - name: platform.velero
+      rules:
+        - alert: VeleroBackupFailed
+          expr: increase(velero_backup_failure_total[1h]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ `Velero backup failed for schedule {{ $labels.schedule }}` | quote }}
+            description: {{ `At least one Velero backup of schedule {{ $labels.schedule }} failed in the last hour. Check velero backup describe and the Velero logs.` | quote }}
+        - alert: VeleroNoRecentBackup
+          expr: time() - velero_backup_last_successful_timestamp{schedule!=""} > 90000
+          labels:
+            severity: critical
+          annotations:
+            summary: {{ `No successful Velero backup for schedule {{ $labels.schedule }} in 25 hours` | quote }}
+            description: {{ `The last successful backup of schedule {{ $labels.schedule }} finished {{ $value | humanizeDuration }} ago. A daily schedule has missed at least one run.` | quote }}
+{{- end }}

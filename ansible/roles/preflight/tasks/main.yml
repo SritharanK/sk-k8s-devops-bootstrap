@@ -1,0 +1,12 @@
+---
+- name: Run the host checks
+  ansible.builtin.import_tasks: host.yml
+  tags: [preflight, preflight_host]
+
+- name: Run the runtime checks
+  ansible.builtin.include_tasks:
+    file: runtime.yml
+    apply:
+      tags: [preflight, preflight_runtime]
+  when: preflight_runtime_checks | bool
+  tags: [preflight, preflight_runtime]

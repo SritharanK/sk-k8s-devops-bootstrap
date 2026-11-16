@@ -1,0 +1,49 @@
+{% set __java_opts = [
+  '-Djava.awt.headless=true',
+  '-Djenkins.install.runSetupWizard=false',
+  '-Dcom.cloudbees.plugins.credentials.UseItemPermission=true',
+  '-Xms' ~ install_jenkins_java_heap_min,
+  '-Xmx' ~ install_jenkins_java_heap_max,
+] + install_jenkins_java_opts_extra %}
+# Managed by the install_jenkins Ansible role. Local changes are overwritten.
+# Overrides the vendor unit without editing it; see `systemctl cat jenkins`.
+
+[Service]
+# Listener on loopback only. TLS terminates at the reverse proxy.
+Environment="JENKINS_LISTEN_ADDRESS={{ install_jenkins_http_listen_address }}"
+Environment="JENKINS_PORT={{ install_jenkins_http_port }}"
+Environment="JENKINS_HOME={{ install_jenkins_home }}"
+WorkingDirectory={{ install_jenkins_home }}
+
+# The setup wizard is skipped: configuration as code defines security.
+Environment="JAVA_OPTS={{ __java_opts | join(' ') | replace('%', '%%') }}"
+
+# Configuration as code reads every YAML file in this directory and resolves
+# ${name} references from one file per secret in the SECRETS directory.
+Environment="CASC_JENKINS_CONFIG={{ install_jenkins_casc_dir }}"
+Environment="SECRETS={{ install_jenkins_casc_secrets_dir }}"
+
+# The first start with a full plugin set can exceed the systemd default.
+TimeoutStartSec={{ install_jenkins_startup_timeout }}
+
+# Hardening. Jenkins runs as an unprivileged user and needs no capabilities.
+# MemoryDenyWriteExecute is deliberately not set: the JVM JIT compiler needs
+# memory that is both writable and executable.
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0027
+# The "-" prefix ignores a path that does not exist on this distribution.
+ReadWritePaths={{ install_jenkins_home }} -/var/cache/jenkins -/var/log/jenkins

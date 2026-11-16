@@ -1,0 +1,16 @@
+Argo CD {{ .Chart.AppVersion }} is installed in namespace {{ .Release.Namespace }} (release {{ .Release.Name }}).
+
+UI and API:
+{{- if .Values.route.enabled }}
+  https://{{ .Values.global.domain }} through the Gateway route.
+  CLI: argocd login {{ .Values.global.domain }} --grpc-web --sso
+{{- else }}
+  The Gateway route is disabled. Port-forward the server:
+    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "argocd-wrapper.fullname" . }}-server 8080:80
+  then open http://localhost:8080
+{{- end }}
+{{- if eq (toString (index .Values "argo-cd" "configs" "cm" "admin.enabled")) "true" }}
+
+Local admin is enabled. The initial password is stored in the Secret
+argocd-initial-admin-secret (key password). Change it after the first login.
+{{- end }}

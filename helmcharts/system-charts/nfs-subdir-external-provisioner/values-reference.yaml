@@ -1,0 +1,9 @@
+# No value delta for the reference profile.
+#
+# The NFS export behind nfs.path must be restricted to
+# the node CIDR, read-write only for the cluster nodes, with root_squash
+# where possible. The export is provisioned by the Ansible nfs_server role,
+# not by this chart. Example /etc/exports line (CHANGE_ME is the node CIDR):
+#   /srv/nfs CHANGE_ME(rw,sync,no_subtree_check,root_squash)
+# With root_squash the export root must be writable by the squashed user
+# (nobody, or the anonuid set on the export).

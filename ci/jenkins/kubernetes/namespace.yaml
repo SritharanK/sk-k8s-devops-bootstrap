@@ -1,0 +1,30 @@
+---
+# Pod Security for the agent namespace.
+#
+# enforce: privileged. Rootless BuildKit needs seccompProfile Unconfined and
+# appArmorProfile Unconfined on its container (rootlesskit and runc call
+# unshare, mount and pivot_root inside a user namespace). The baseline and
+# restricted levels both reject those two settings, so no stricter level can
+# be enforced while image builds run in this namespace. BuildKit still runs
+# as uid 1000 and never as a privileged container.
+#
+# warn and audit: restricted. Every pod is checked against the restricted
+# level; violations are returned to the Jenkins controller as API warnings
+# and written to the audit log, but not rejected. Expected violations come
+# only from the buildkit container of the build pod. Any warning about
+# another container is a regression in ci/jenkins/pod-templates/.
+#
+# The versions are pinned so that a cluster upgrade does not change the
+# checks silently. Raise them deliberately after reviewing the Pod Security
+# changes of the new release.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jenkins-agents
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: v1.36
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.36
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.36

@@ -1,0 +1,72 @@
+{{- /*
+Environment namespaces, quotas, RBAC, ClusterIssuers and PriorityClasses
+(wave 2, after cert-manager in wave 0). Environments not hosted by this
+cluster are set to null, which removes the chart default.
+*/ -}}
+{{- $name := "misc" }}
+{{- if (dig "misc" "enabled" false .Values.toolchains) }}
+{{- $hosted := include "argocd-bootstrap.environments" . | fromJsonArray }}
+{{- $envs := dict }}
+{{- range $env := list "dev" "stage" "prod" }}
+{{- if has $env $hosted }}
+{{- $_ := set $envs $env (required (printf "namespaces.%s is required" $env) (index $.Values.namespaces $env)) }}
+{{- else }}
+{{- $_ := set $envs $env nil }}
+{{- end }}
+{{- end }}
+{{- /* ACME issuers only when the cluster uses one: Let's Encrypt registers an
+account on creation and rejects placeholder contact addresses. */}}
+{{- $acmeIssuer := ne (.Values.platform.issuer | default "selfsigned") "selfsigned" }}
+{{- $issuers := dict
+      "letsencryptStaging" (dict "enabled" $acmeIssuer)
+      "letsencrypt" (dict "enabled" $acmeIssuer)
+      "acme" (dict
+        "solver" (dig "acme" "solver" "http01" .Values.platform)
+        "dns01" (deepCopy (dig "acme" "dns01" dict .Values.platform))
+        "server" (dig "acme" "server" "" .Values.platform)
+        "caBundle" (dig "acme" "caBundle" "" .Values.platform)) }}
+{{- $values := dict
+      "environments" $envs
+      "issuers" $issuers
+      "podSecurity" (dict "version" (printf "v%s" .Values.cluster.kubernetesMinor))
+      "groups" (deepCopy .Values.platform.groups)
+      "certManager" (dict "namespace" .Values.namespaces.certManager "email" .Values.platform.certManagerEmail)
+      "gateway" (dict "name" "platform" "namespace" .Values.namespaces.gateway "sectionName" "http") }}
+{{- $values = mustMergeOverwrite $values (dig $name "values" dict .Values.toolchains) }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "argocd-bootstrap.name" (list . $name) }}
+  namespace: {{ .Values.namespaces.argocd }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/manifest-generate-paths: "."
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: {{ include "argocd-bootstrap.platformProject" . }}
+  source:
+    repoURL: {{ .Values.git.repoURL }}
+    targetRevision: {{ .Values.git.targetRevision }}
+    path: helmcharts/system-charts/{{ $name }}
+    helm:
+      releaseName: {{ $name }}
+      valueFiles: [values.yaml, values-{{ .Values.cluster.profile }}.yaml]
+      ignoreMissingValueFiles: true
+      valuesObject:
+        {{- toYaml $values | nindent 8 }}
+  # Every namespaced object sets its namespace. The destination is the
+  # cert-manager namespace of the root CA Certificate, which the cert-manager
+  # Application creates.
+  destination:
+    {{- include "argocd-bootstrap.destination" . | nindent 4 }}
+    namespace: {{ .Values.namespaces.certManager }}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=false, ServerSideApply=true]
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

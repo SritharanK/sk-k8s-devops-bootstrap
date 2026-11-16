@@ -1,0 +1,19 @@
+# Lab profile: kind or a single node. One replica, small requests.
+# CPU limits are omitted on purpose to avoid throttling.
+opencost:
+  opencost:
+    exporter:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 20m
+          memory: 128Mi
+        limits:
+          memory: 512Mi
+    ui:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 128Mi

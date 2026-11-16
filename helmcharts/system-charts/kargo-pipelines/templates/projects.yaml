@@ -1,0 +1,84 @@
+{{- /*
+One Kargo Project per app. The namespace is created here and adopted by the
+Project (label kargo.akuity.io/project), so Argo CD creates the namespace,
+the Project and the objects inside it in one sync. Kargo adds its default
+roles (kargo-admin, kargo-promoter, kargo-viewer) to the namespace.
+*/ -}}
+{{- range $app := .Values.apps }}
+{{- $project := include "kargo-pipelines.project" (list $ $app.name) }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $project }}
+  labels:
+    {{- include "kargo-pipelines.labels" $ | nindent 4 }}
+    kargo.akuity.io/project: "true"
+    # AnalysisRuns of the prometheus provider start no pods here; a job
+    # metric would have to meet this level.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: {{ $.Values.podSecurityVersion | quote }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Project
+metadata:
+  name: {{ $project }}
+  labels:
+    {{- include "kargo-pipelines.labels" $ | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: ProjectConfig
+metadata:
+  # Must equal the Project name.
+  name: {{ $project }}
+  namespace: {{ $project }}
+  labels:
+    {{- include "kargo-pipelines.labels" $ | nindent 4 }}
+  annotations:
+    {{- include "kargo-pipelines.annotations" "1" | nindent 4 }}
+spec:
+  promotionPolicies:
+    {{- range $stage := $app.stages }}
+    {{- $cfg := include "kargo-pipelines.stage" (list $ $stage.name) | fromYaml }}
+    - stageSelector:
+        name: {{ $stage.name }}
+      autoPromotionEnabled: {{ $cfg.autoPromote }}
+    {{- end }}
+---
+# deployers may promote in this Project. Kargo maps a user to the
+# ServiceAccounts whose claims annotation matches the ID token.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deployers
+  namespace: {{ $project }}
+  labels:
+    {{- include "kargo-pipelines.labels" $ | nindent 4 }}
+  annotations:
+    {{- include "kargo-pipelines.annotations" "1" | nindent 4 }}
+    rbac.kargo.akuity.io/claims: {{ dict "groups" (list $.Values.groups.deployers) | toJson | quote }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployers-kargo-promoter
+  namespace: {{ $project }}
+  labels:
+    {{- include "kargo-pipelines.labels" $ | nindent 4 }}
+  annotations:
+    {{- include "kargo-pipelines.annotations" "1" | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  # Created by Kargo in every Project namespace.
+  name: kargo-promoter
+subjects:
+  - kind: ServiceAccount
+    name: deployers
+    namespace: {{ $project }}
+{{- end }}

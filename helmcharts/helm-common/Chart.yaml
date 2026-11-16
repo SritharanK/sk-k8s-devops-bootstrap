@@ -1,0 +1,15 @@
+apiVersion: v2
+name: helm-common
+description: Library chart that renders HTTP workloads with secure defaults for the platform policies.
+type: library
+version: 2.1.0
+keywords:
+  - library
+  - deployment
+  - gateway-api
+  - argo-rollouts
+home: https://github.com/SritharanK/sk-k8s-devops-bootstrap
+sources:
+  - https://github.com/SritharanK/sk-k8s-devops-bootstrap/tree/main/helmcharts/helm-common
+maintainers:
+  - name: Sritharan K

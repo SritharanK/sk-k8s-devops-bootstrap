@@ -1,0 +1,11 @@
+configMaps:
+  app-settings:
+    data:
+      LOG_LEVEL: info
+      WORKERS: 4
+    asEnv: true
+  files:
+    data:
+      app.conf: |
+        listen 8080
+    mountPath: /etc/app

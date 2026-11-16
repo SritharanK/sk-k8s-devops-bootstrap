@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/v0.2.15/.schemas/json/configuration-chainsaw-v1alpha2.json
+#
+# Chainsaw configuration of the lab e2e suite (Chainsaw v0.2.15).
+#
+# Run through hack/e2e/run.sh:
+#   chainsaw test --config tests/e2e/.chainsaw.yaml --test-dir tests/e2e \
+#     --report-path "${E2E_REPORT_DIR}"
+# Chainsaw does not expand environment variables in this file, so the report
+# directory comes from --report-path (flags override the values below). The
+# directory must exist; the report is <path>/chainsaw-report.xml.
+apiVersion: chainsaw.kyverno.io/v1alpha2
+kind: Configuration
+metadata:
+  name: lab-e2e
+spec:
+  timeouts:
+    # Apply retries until it succeeds or the timeout ends; admission webhooks
+    # answer in well under a second.
+    apply: 30s
+    # Assert and error poll until the condition holds; Argo CD and Kyverno
+    # converge within minutes.
+    assert: 5m
+    error: 5m
+    delete: 2m
+    cleanup: 2m
+    # Default for script operations; long scripts set their own timeout.
+    exec: 2m
+  execution:
+    # Tests share one cluster and some change it (10, 11): one at a time, in
+    # directory order. Each test also sets concurrent: false, because Chainsaw
+    # runs tests in parallel by default.
+    parallel: 1
+    failFast: false
+    # Test pods only sleep; do not wait 30s for SIGTERM on cleanup.
+    forceTerminationGracePeriod: 5s
+  cleanup:
+    skipDelete: false
+  namespace:
+    # Every test gets an ephemeral namespace, deleted at the end of the test.
+    # Pods created there must meet the restricted Pod Security Standard.
+    fastDelete: false
+    template:
+      metadata:
+        labels:
+          app.kubernetes.io/part-of: lab-e2e
+          pod-security.kubernetes.io/enforce: restricted
+  discovery:
+    testFile: chainsaw-test
+  report:
+    format: JUNIT-TEST
+    name: chainsaw-report

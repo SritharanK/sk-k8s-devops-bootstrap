@@ -1,0 +1,42 @@
+{{- /*
+  success-rate: share of non-5xx HTTP responses of one Service over the last 2 minutes.
+
+  Contract with the shared app chart: a Rollout references this template as
+    templates: [{templateName: success-rate, clusterScope: true}]
+  with args service-name (the Service whose metrics are scraped), namespace, and optionally
+  threshold (default "0.99").
+
+  Both conditions require a non-empty, non-NaN result. A window without traffic (empty vector,
+  or 0/0 = NaN) matches neither condition, so the measurement is Inconclusive and the Rollout
+  pauses for a human decision instead of passing or failing.
+
+  The {{args.*}} placeholders belong to Argo Rollouts. They are wrapped in Go template raw
+  strings so Helm prints them unchanged.
+*/}}
+{{- if .Values.analysis.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterAnalysisTemplate
+metadata:
+  name: success-rate
+  labels:
+    {{- include "rollouts-platform.labels" . | nindent 4 }}
+spec:
+  args:
+    - name: service-name
+    - name: namespace
+    - name: threshold
+      value: "0.99"
+  metrics:
+    - name: success-rate
+      interval: 30s
+      count: 6
+      failureLimit: 1
+      consecutiveErrorLimit: 3
+      successCondition: {{ `len(result) > 0 && !isNaN(result[0]) && result[0] >= {{args.threshold}}` | squote }}
+      failureCondition: {{ `len(result) > 0 && !isNaN(result[0]) && result[0] < {{args.threshold}}` | squote }}
+      provider:
+        prometheus:
+          address: {{ required "analysis.prometheusAddress is required" .Values.analysis.prometheusAddress | quote }}
+          query: |-
+            {{ `sum(rate(http_requests_total{namespace="{{args.namespace}}",service="{{args.service-name}}",handler!~"/healthz|/readyz|/metrics",code!~"5.."}[2m])) / sum(rate(http_requests_total{namespace="{{args.namespace}}",service="{{args.service-name}}",handler!~"/healthz|/readyz|/metrics"}[2m]))` }}
+{{- end }}

@@ -1,0 +1,48 @@
+# {{ template "chart.name" . }}
+
+{{ template "chart.description" . }}
+
+Chart version {{ template "chart.version" . }}, app version {{ template "chart.appVersion" . }}, depends on helm-common 2.1.0.
+
+Deploys the `hello-api` sample service from `sample-services/hello-api`. All objects are rendered by the [helm-common](../../helm-common/README.md) library; the files in `templates/` only include its named templates.
+
+## What it renders
+
+| Object | When |
+|---|---|
+| Deployment, Service, ServiceAccount (token not mounted) | Always |
+| HTTPRoute `hello-api.<env>.<domain>` on Gateway `platform` (`envoy-gateway-system`, listener `https`) | `route.enabled` (on) |
+| NetworkPolicy allowing port `http` from `envoy-gateway-system` (route on) and from `monitoring` (ServiceMonitor on), and egress to `tracing` on 4318 (OpenTelemetry on) | `networkPolicy.enabled` (on) |
+| BackendTrafficPolicy on the HTTPRoute: connect and request timeouts, retries only for requests that never reached the service (plus 503), circuit breaker; local rate limit when `trafficPolicy.rateLimit.enabled` | `trafficPolicy.enabled` (on) |
+| PodDisruptionBudget (`maxUnavailable: 1`) | At least two replicas |
+| HorizontalPodAutoscaler | `autoscaling.enabled` |
+| KEDA ScaledObject on the request rate from Prometheus, an alternative to the HPA | `keda.enabled` (needs the `keda` toolchain and the ServiceMonitor) |
+| `OTEL_*` variables for trace export to Tempo | `otel.enabled` (needs the `tracing` toolchain) |
+| ServiceMonitor | `metrics.serviceMonitor.enabled` (needs the Prometheus Operator CRDs) |
+| Argo Rollouts Rollout with `workloadRef`, canary Service | `rollout.enabled` (needs the Argo Rollouts controller and its Gateway API plugin) |
+
+## Environment values
+
+Argo CD applies `values.yaml`, then `envs/<env>/hello-api/values.yaml`, and passes `global.environment`, `global.domain`, `global.cluster` and `global.profile` through the Application.
+
+- The environment files hold only `image.tag` and `image.digest`, which promotion changes. A digest pins the image; the tag is then informational.
+- The route hostname is derived as `hello-api.<global.environment>.<global.domain>`, so the same environment file works on clusters with different domains.
+- Sizing per environment lives in this chart under `environments.<env>`: dev runs one replica, stage two, prod autoscales from two to four.
+
+`ci/` holds sample values with the same shape (image keys plus the `global` block that Argo CD injects). They are used for lint and render checks only.
+
+## Checks
+
+```bash
+helm dependency build helmcharts/app-charts/hello-api
+for f in helmcharts/app-charts/hello-api/ci/*-values.yaml; do
+  helm lint --strict helmcharts/app-charts/hello-api -f "$f"
+  helm template hello-api helmcharts/app-charts/hello-api -n dev -f "$f" >/dev/null
+done
+```
+
+## Values
+
+The table lists the values this chart sets. Every other helm-common key keeps its library default.
+
+{{ template "chart.valuesTable" . }}

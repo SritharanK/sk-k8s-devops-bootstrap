@@ -1,0 +1,80 @@
+# Reference profile (RKE2 HA, three servers): highly available admission,
+# disruption budgets that still allow a node drain, and larger memory limits.
+#
+# CPU limits are left unset on purpose: the admission controller sits on the
+# write path of every matched request, and CFS throttling there shows up as API
+# latency and webhook timeouts. Memory limits are set. Sizes are starting
+# points; adjust them from the controller metrics of the running cluster.
+
+---
+kyverno:
+  admissionController:
+    replicas: 3
+    # The admission webhook is on the critical path of every write in the
+    # application namespaces. The built-in class is used because Kyverno syncs
+    # before the platform PriorityClasses exist (wave 1 versus wave 2).
+    priorityClassName: system-cluster-critical
+    podDisruptionBudget:
+      enabled: true
+      # 0 is falsy in the chart helper: drops the default minAvailable of 1
+      # so that maxUnavailable applies.
+      minAvailable: 0
+      maxUnavailable: 1
+      unhealthyPodEvictionPolicy: AlwaysAllow
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: admission-controller
+            app.kubernetes.io/instance: kyverno
+    container:
+      resources:
+        requests:
+          cpu: 250m
+          memory: 384Mi
+        limits:
+          memory: 1Gi
+
+  backgroundController:
+    replicas: 2
+    podDisruptionBudget:
+      enabled: true
+      # 0 is falsy in the chart helper: drops the default minAvailable of 1
+      # so that maxUnavailable applies.
+      minAvailable: 0
+      maxUnavailable: 1
+      unhealthyPodEvictionPolicy: AlwaysAllow
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+  cleanupController:
+    replicas: 2
+    podDisruptionBudget:
+      enabled: true
+      # 0 is falsy in the chart helper: drops the default minAvailable of 1
+      # so that maxUnavailable applies.
+      minAvailable: 0
+      maxUnavailable: 1
+      unhealthyPodEvictionPolicy: AlwaysAllow
+
+  reportsController:
+    replicas: 2
+    podDisruptionBudget:
+      enabled: true
+      # 0 is falsy in the chart helper: drops the default minAvailable of 1
+      # so that maxUnavailable applies.
+      minAvailable: 0
+      maxUnavailable: 1
+      unhealthyPodEvictionPolicy: AlwaysAllow
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi

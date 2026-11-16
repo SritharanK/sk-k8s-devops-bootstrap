@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=schema.json
+#
+# Example tenant. One file per tenant; the file name must equal .name.
+# Onboarding creates namespaces tenant-team-a-<env>, their quota, limits,
+# network policies and role bindings, and the AppProject tenant-team-a.
+# Validate with: hack/validate-config.sh tenants/team-a.yaml
+---
+name: team-a
+description: Example tenant. Replace with the owning team and its purpose.
+
+groups:
+  admins: team-a-admins  # edit in dev, view in stage and prod
+  viewers: team-a-viewers
+
+environments: [dev, stage, prod]
+
+sourceRepos:
+  - https://github.com/YOUR_ORG/team-a-apps.git
+
+quota:
+  requests.cpu: "4"
+  requests.memory: 8Gi
+  limits.cpu: "8"
+  limits.memory: 16Gi
+  requests.storage: 50Gi
+  pods: 40
+  persistentvolumeclaims: 10
+  services.loadbalancers: 0  # expose through the shared gateway instead
+  services.nodeports: 0
+
+limitRange:
+  default:
+    cpu: 500m
+    memory: 512Mi
+  defaultRequest:
+    cpu: 100m
+    memory: 128Mi
+
+network:
+  allowEgressCidrs: []

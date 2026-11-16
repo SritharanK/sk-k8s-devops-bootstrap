@@ -1,0 +1,27 @@
+---
+galaxy_info:
+  role_name: rke2
+  author: Sritharan K
+  description: >-
+    Installs, joins and upgrades RKE2 servers and agents: HA registration, kube-vip, CIS profile,
+    audit policy, etcd snapshots, kubeconfig fetch and uninstall.
+  license: MIT
+  min_ansible_version: "2.20"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: EL
+      versions:
+        - "9"
+  galaxy_tags:
+    - kubernetes
+    - rke2
+    - etcd
+    - cis
+    - kubevip
+dependencies: []

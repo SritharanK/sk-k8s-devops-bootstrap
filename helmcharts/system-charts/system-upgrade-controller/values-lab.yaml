@@ -1,0 +1,17 @@
+# Lab profile: kind or a single RKE2 node. One controller replica, no PodDisruptionBudget.
+# Plans stay disabled; enable them only when the lab runs on RKE2 (never on kind).
+replicas: 1
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 48Mi
+  limits:
+    memory: 128Mi
+
+podDisruptionBudget:
+  enabled: false
+
+plans:
+  enabled: false
+  version: CHANGE_ME

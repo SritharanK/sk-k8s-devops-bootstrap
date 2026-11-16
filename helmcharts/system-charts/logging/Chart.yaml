@@ -1,0 +1,19 @@
+apiVersion: v2
+name: logging
+description: Platform log pipeline. Grafana Loki stores and serves logs, a Grafana Alloy DaemonSet tails pod logs on every node and pushes them to Loki.
+type: application
+version: 0.1.0
+kubeVersion: ">=1.35.0-0"
+home: https://grafana.com/oss/loki/
+sources:
+  - https://github.com/grafana/loki
+  - https://github.com/grafana/alloy
+  - https://github.com/grafana-community/helm-charts/tree/main/charts/loki
+  - https://github.com/grafana/alloy/tree/main/operations/helm/charts/alloy
+dependencies:
+  - name: loki
+    version: 21.2.3
+    repository: oci://ghcr.io/grafana-community/helm-charts
+  - name: alloy
+    version: 1.16.0
+    repository: oci://ghcr.io/grafana/helm-charts

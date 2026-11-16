@@ -1,0 +1,39 @@
+---
+# The update packages (unattended-upgrades or dnf-automatic) are installed by packages.yml.
+
+- name: Enable the periodic apt jobs (Debian family)
+  ansible.builtin.template:
+    src: 20auto-upgrades.j2
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+  when: ansible_facts['os_family'] == 'Debian'
+
+# Sorts after the distribution file 50unattended-upgrades and clears its origin lists, so only security origins remain.
+- name: Limit unattended-upgrades to security origins (Debian family)
+  ansible.builtin.template:
+    src: 52unattended-upgrades-base.j2
+    dest: /etc/apt/apt.conf.d/52unattended-upgrades-base
+    owner: root
+    group: root
+    mode: "0644"
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Configure dnf-automatic for security updates (RedHat family)
+  ansible.builtin.template:
+    src: dnf-automatic.conf.j2
+    dest: /etc/dnf/automatic.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Enable and start the dnf-automatic timer (RedHat family)
+  ansible.builtin.systemd_service:
+    name: dnf-automatic.timer
+    enabled: true
+    state: started
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - not base__check_mode_pending

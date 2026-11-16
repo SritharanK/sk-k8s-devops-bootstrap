@@ -1,0 +1,82 @@
+suite: ServiceMonitor
+templates:
+  - templates/servicemonitor.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: is not rendered by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders the Prometheus selector label, the endpoint and the canary exclusion
+    set:
+      metrics.serviceMonitor.enabled: true
+    asserts:
+      - isKind:
+          of: ServiceMonitor
+      - equal:
+          path: apiVersion
+          value: monitoring.coreos.com/v1
+      - equal:
+          path: metadata.namespace
+          value: dev
+      - equal:
+          path: metadata.labels.release
+          value: monitoring
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: helm-common-test
+            app.kubernetes.io/instance: web
+      - equal:
+          path: spec.selector.matchExpressions
+          value:
+            - key: app.kubernetes.io/component
+              operator: NotIn
+              values:
+                - canary
+      - equal:
+          path: spec.namespaceSelector.matchNames
+          value:
+            - dev
+      - equal:
+          path: spec.endpoints
+          value:
+            - port: http
+              path: /metrics
+              interval: 30s
+              scrapeTimeout: 10s
+
+  - it: adds custom labels and endpoint settings
+    set:
+      metrics.serviceMonitor.enabled: true
+      metrics.serviceMonitor.labels.team: platform
+      metrics.serviceMonitor.port: metrics
+      metrics.serviceMonitor.path: /internal/metrics
+      metrics.serviceMonitor.interval: 15s
+    asserts:
+      - equal:
+          path: metadata.labels.team
+          value: platform
+      - equal:
+          path: metadata.labels.release
+          value: monitoring
+      - equal:
+          path: spec.endpoints[0].port
+          value: metrics
+      - equal:
+          path: spec.endpoints[0].path
+          value: /internal/metrics
+      - equal:
+          path: spec.endpoints[0].interval
+          value: 15s
+
+  - it: fails when the Service is disabled
+    set:
+      metrics.serviceMonitor.enabled: true
+      service.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "metrics.serviceMonitor.enabled requires service.enabled"

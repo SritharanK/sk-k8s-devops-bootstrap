@@ -1,0 +1,11 @@
+# Sample values for lint and render checks of the dev environment. Argo CD
+# applies envs/dev/hello-api/values.yaml (image.tag and image.digest) and
+# passes the global block through the Application.
+image:
+  tag: "0.1.0"
+  digest: ""
+global:
+  environment: dev
+  domain: localtest.me
+  cluster: lab
+  profile: lab

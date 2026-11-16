@@ -1,0 +1,26 @@
+---
+# Node role from the inventory groups: server, agent or none. Read by the template and documented as an output.
+- name: Derive the node role from the inventory groups
+  ansible.builtin.set_fact:
+    firewall_node_role: >-
+      {{ 'server' if inventory_hostname in groups[firewall_servers_group] | default([])
+         else 'agent' if inventory_hostname in groups[firewall_agents_group] | default([])
+         else 'none' }}
+  tags: [firewall]
+
+- name: Validate the settings and apply the firewall
+  when: firewall_enabled | bool
+  tags: [firewall]
+  block:
+    - name: Validate the firewall settings
+      ansible.builtin.import_tasks: validate.yml
+
+    - name: Install and load the firewall
+      ansible.builtin.import_tasks: configure.yml
+
+- name: Remove the firewall from service
+  when: not firewall_enabled | bool
+  tags: [firewall]
+  block:
+    - name: Stop and disable the firewall
+      ansible.builtin.import_tasks: disable.yml

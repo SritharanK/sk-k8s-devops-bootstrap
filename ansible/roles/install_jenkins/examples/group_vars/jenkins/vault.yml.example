@@ -1,0 +1,46 @@
+---
+# Encrypted secrets for the Jenkins controller.
+#
+# Copy to ansible/inventories/<env>/group_vars/jenkins/vault.yml, replace every
+# CHANGE_ME, then encrypt the file before use:
+#   ansible-vault encrypt --vault-id jenkins@prompt \
+#     ansible/inventories/<env>/group_vars/jenkins/vault.yml
+#
+# vault.yml is gitignored. vars.yml maps each role variable to one of these.
+# Only the secrets needed by the selected security realm are required.
+
+# Security realm, one of the three depending on install_jenkins_security_realm.
+vault_jenkins_oidc_client_secret: CHANGE_ME
+vault_jenkins_ldap_manager_password: CHANGE_ME
+vault_jenkins_local_admin_password: CHANGE_ME
+
+# Password of the build identity, only for install_jenkins_security_realm: local.
+vault_jenkins_local_build_user_password: CHANGE_ME
+
+# Registry token with write access to the image repositories (for GHCR, a
+# token with the write:packages scope).
+vault_jenkins_registry_password: CHANGE_ME
+
+# Token used to push promotion branches and open pull requests in this
+# repository (contents: write, pull-requests: write). Prefer a fine-grained
+# token limited to this one repository.
+vault_jenkins_github_token: CHANGE_ME
+
+# cosign key pair generated with `cosign generate-key-pair`. The private key
+# is the full PEM text, the password is the one chosen at generation.
+vault_jenkins_cosign_private_key: CHANGE_ME
+vault_jenkins_cosign_password: CHANGE_ME
+
+# Token of the jenkins-agent ServiceAccount in the agent namespace
+# (ci/jenkins/kubernetes/), used by the Kubernetes cloud to start agent pods.
+vault_jenkins_k8s_agent_token: CHANGE_ME
+
+# Optional read-only Argo CD tokens for the promotion health gate, one per
+# environment that is a promotion source. Each is a token of the project role
+# ci in apps-<env> (permission: applications, get), created with
+# `argocd proj role create-token apps-<env> ci --expires-in <duration>`.
+# Leave the map empty and install_jenkins_argocd_server empty to skip the gate (the
+# pull request review is then the only gate).
+vault_jenkins_argocd_tokens: {}
+#   dev: CHANGE_ME
+#   stage: CHANGE_ME

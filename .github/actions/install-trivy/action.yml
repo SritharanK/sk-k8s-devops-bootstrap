@@ -1,0 +1,57 @@
+# Installs the Trivy CLI pinned by version and by the SHA-256 of the release
+# archive, without the Trivy GitHub Actions.
+#
+# Why: in March 2026 the trivy-action and setup-trivy tags were force-pushed
+# to malicious commits and a malicious Trivy 0.69.4 was published
+# (GHSA-69fq-xp46-6x23, CVE-2026-33634). Pinning the archive digest means a
+# re-published or replaced release fails this step instead of running.
+#
+# The digest below comes from trivy_0.76.2_checksums.txt, whose signature was
+# verified with:
+#   cosign verify-blob --bundle trivy_0.76.2_checksums.txt.sigstore.json \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     --certificate-identity-regexp '^https://github\.com/aquasecurity/trivy/\.github/workflows/.+@refs/tags/v0\.76\.2$' \
+#     trivy_0.76.2_checksums.txt
+# Repeat that verification before changing the version or the digest.
+name: Install Trivy
+description: Install a pinned, checksum-verified Trivy CLI for linux-x64.
+
+# The binary path is returned as an output instead of being added to PATH, so
+# callers name it explicitly (for example `make trivy-config TRIVY=<path>`).
+outputs:
+  path:
+    description: Absolute path of the trivy binary.
+    value: ${{ steps.install.outputs.path }}
+  version:
+    description: Installed Trivy version.
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download, verify and install Trivy
+      id: install
+      shell: bash
+      env:
+        # renovate: datasource=github-releases depName=aquasecurity/trivy
+        TRIVY_VERSION: 0.76.2
+        TRIVY_SHA256: bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf
+      run: |
+        set -euo pipefail
+        if [ "${RUNNER_OS}" != Linux ] || [ "${RUNNER_ARCH}" != X64 ]; then
+          echo "::error::install-trivy supports linux-x64 runners only"
+          exit 1
+        fi
+        archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+        dir="${RUNNER_TEMP}/trivy-${TRIVY_VERSION}"
+        mkdir -p "${dir}"
+        curl --fail --silent --show-error --location --proto '=https' --retry 3 \
+          -o "${dir}/${archive}" \
+          "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${archive}"
+        echo "${TRIVY_SHA256}  ${dir}/${archive}" | sha256sum --check --strict
+        tar -xzf "${dir}/${archive}" -C "${dir}" trivy
+        "${dir}/trivy" --version
+        {
+          echo "path=${dir}/trivy"
+          echo "version=${TRIVY_VERSION}"
+        } >> "${GITHUB_OUTPUT}"

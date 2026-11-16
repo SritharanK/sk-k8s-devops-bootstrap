@@ -1,0 +1,25 @@
+# hello-api in pull request previews (namespace pr-<number>). Applied after
+# helmcharts/app-charts/hello-api/values.yaml and envs/dev/hello-api/values.yaml,
+# so a preview runs the dev image tag and digest unless
+# previews.image.tagFromHeadSha is set. Holds only the preview deltas: one
+# replica, no autoscaling, no canary (a preview has no Rollouts analysis) and
+# small resources within the preview namespace quota.
+---
+replicaCount: 1
+
+autoscaling:
+  enabled: false
+
+keda:
+  enabled: false
+
+rollout:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 96Mi

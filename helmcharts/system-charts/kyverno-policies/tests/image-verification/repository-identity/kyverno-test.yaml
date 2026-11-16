@@ -1,0 +1,20 @@
+# A valid signature from another workflow identity is rejected.
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: image-verification-repository-identity
+policies: [policies.yaml]
+resources: [resources.yaml]
+variables: values.yaml
+results:
+  - isImageValidatingPolicy: true
+    policy: verify-image-signatures-enforce
+    kind: Pod
+    result: fail
+    resources: [signed-by-another-workflow]
+  - isImageValidatingPolicy: true
+    policy: verify-image-signatures-enforce
+    kind: Pod
+    result: pass
+    resources: [outside-verified-registries]

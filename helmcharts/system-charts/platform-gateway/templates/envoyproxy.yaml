@@ -1,0 +1,66 @@
+{{- $svc := .Values.proxy.service -}}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: {{ .Values.gateway.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform-gateway.labels" . | nindent 4 }}
+  annotations:
+    {{- include "platform-gateway.annotations" . | nindent 4 }}
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        replicas: {{ .Values.proxy.replicas }}
+        container:
+          resources:
+            {{- toYaml .Values.proxy.resources | nindent 12 }}
+        {{- with .Values.proxy.topologySpreadConstraints }}
+        pod:
+          topologySpreadConstraints:
+            {{- range . }}
+            - {{- toYaml (omit . "labelSelector") | nindent 14 }}
+              labelSelector:
+                matchLabels:
+                  gateway.envoyproxy.io/owning-gateway-name: {{ $.Values.gateway.name }}
+                  gateway.envoyproxy.io/owning-gateway-namespace: {{ $.Release.Namespace }}
+            {{- end }}
+        {{- end }}
+      {{- with .Values.proxy.podDisruptionBudget }}
+      envoyPDB:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      envoyService:
+        type: {{ $svc.type }}
+        externalTrafficPolicy: {{ $svc.externalTrafficPolicy }}
+        {{- with $svc.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with $svc.loadBalancerSourceRanges }}
+        loadBalancerSourceRanges:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with $svc.nodePorts }}
+        {{- /*
+        Strategic merge on Service ports matches on port. Envoy Gateway only
+        renders ports of listeners that are valid; while the https listener
+        waits for its certificate, the 443 entry is added as a new port, so
+        it must carry the name Envoy Gateway uses (<protocol>-<port>) or the
+        API server rejects the whole Service (spec.ports[].name required).
+        */}}
+        {{- $listeners := dict "http" (dict "port" 80 "name" "http-80") "https" (dict "port" 443 "name" "https-443") }}
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              ports:
+                {{- range $listener, $nodePort := . }}
+                {{- $l := required (printf "proxy.service.nodePorts: unknown listener %q (http or https)" $listener) (get $listeners $listener) }}
+                - name: {{ $l.name }}
+                  port: {{ $l.port }}
+                  nodePort: {{ $nodePort }}
+                {{- end }}
+        {{- end }}

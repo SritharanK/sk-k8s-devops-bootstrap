@@ -1,0 +1,42 @@
+gateway-helm:
+  # Job that creates the control plane certificates at install and upgrade.
+  certgen:
+    job:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 128Mi
+  # CRDs come from the gateway-api chart (sync wave 0, protected from prune
+  # and delete). The bundled CRD subchart would install the experimental
+  # Gateway API channel, which the safe-upgrades policy rejects.
+  crds:
+    enabled: false
+
+  deployment:
+    replicas: 1
+    envoyGateway:
+      # Upstream defaults already meet Pod Security Standards restricted
+      # (non-root UID 65532, read-only root filesystem, all capabilities
+      # dropped, RuntimeDefault seccomp). Resources are set explicitly.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 1024Mi
+
+  # minAvailable 0 keeps a single replica drainable.
+  podDisruptionBudget:
+    minAvailable: 0
+
+  config:
+    envoyGateway:
+      gateway:
+        controllerName: gateway.envoyproxy.io/gatewayclass-controller
+      provider:
+        type: Kubernetes
+      logging:
+        level:
+          default: info

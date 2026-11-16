@@ -1,0 +1,7 @@
+Tempo is running in namespace {{ .Release.Namespace }}.
+
+Send traces with OTLP:
+  HTTP: http://{{ .Values.tempo.fullnameOverride }}.{{ .Release.Namespace }}.svc:4318
+  gRPC: {{ .Values.tempo.fullnameOverride }}.{{ .Release.Namespace }}.svc:4317
+
+Query API for Grafana: http://{{ .Values.tempo.fullnameOverride }}.{{ .Release.Namespace }}.svc:3200

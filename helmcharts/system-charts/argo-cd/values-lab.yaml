@@ -1,0 +1,27 @@
+# Lab profile: kind or a single node. One replica per component, single Redis
+# with authentication, local admin enabled for the demo.
+
+global:
+  # *.localtest.me resolves to 127.0.0.1; kind maps host ports 80 and 443.
+  domain: argocd.localtest.me
+
+argo-cd:
+  configs:
+    cm:
+      # Demo login. The password is generated at install time into the
+      # argocd-initial-admin-secret Secret; no hash is committed. Read it with
+      #   kubectl -n argocd get secret argocd-initial-admin-secret \
+      #     -o jsonpath='{.data.password}' | base64 -d
+      admin.enabled: true
+
+  controller:
+    replicas: 1
+  server:
+    replicas: 1
+  repoServer:
+    replicas: 1
+  applicationSet:
+    replicas: 1
+
+  redis-ha:
+    enabled: false

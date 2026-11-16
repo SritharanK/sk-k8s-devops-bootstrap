@@ -1,0 +1,23 @@
+{{- /*
+Viewers (groups.viewers): the built-in "view" ClusterRole through a RoleBinding
+in each environment namespace. "view" is read-only and excludes Secrets.
+*/}}
+{{- $viewers := required "groups.viewers is required" .Values.groups.viewers }}
+{{- range $env, $ns := .Values.environments }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: viewers
+  namespace: {{ $ns }}
+  labels:
+    {{- include "misc.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: {{ $viewers | quote }}
+{{- end }}

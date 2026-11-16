@@ -1,0 +1,6 @@
+dependencies:
+- name: kyverno
+  repository: oci://ghcr.io/kyverno/charts
+  version: 3.10.0
+digest: sha256:8423c2dcc97738484f6843d8971f73dee408035891e813630762ccd18e0fac73
+generated: "2026-11-16T00:57:24.950236+01:00"

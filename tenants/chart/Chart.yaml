@@ -1,0 +1,15 @@
+---
+apiVersion: v2
+name: tenant
+description: >-
+  Onboards one tenant from tenants/<name>.yaml: per environment a namespace with
+  Pod Security, quota, limits, default-deny network policies and role bindings,
+  plus the tenant's Argo CD AppProject.
+type: application
+version: 0.1.0
+home: https://github.com/SritharanK/sk-k8s-devops-bootstrap
+sources:
+  - https://github.com/SritharanK/sk-k8s-devops-bootstrap/tree/main/tenants/chart
+maintainers:
+  - name: Sritharan K
+    url: https://www.skengineer.be

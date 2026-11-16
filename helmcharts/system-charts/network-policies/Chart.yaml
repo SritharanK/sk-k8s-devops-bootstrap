@@ -1,0 +1,10 @@
+---
+apiVersion: v2
+name: network-policies
+description: Baseline NetworkPolicies for application and platform namespaces.
+type: application
+version: 2.0.0
+kubeVersion: ">=1.35.0-0"
+home: https://github.com/SritharanK/sk-k8s-devops-bootstrap
+sources:
+  - https://github.com/SritharanK/sk-k8s-devops-bootstrap/tree/main/helmcharts/system-charts/network-policies

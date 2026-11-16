@@ -1,0 +1,36 @@
+---
+# Renders the role's configuration-as-code template with the lint test values
+# into lint_output_dir (casc/jenkins.yaml and casc-secrets/<name>).
+# Called by hack/jenkins-lint.sh:
+#   ansible-playbook ci/jenkins/lint/render.yml -e lint_output_dir=<dir> [-e install_jenkins_security_realm=ldap]
+- name: Render the Jenkins configuration for the lint controller
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../../ansible/roles/install_jenkins/defaults/main.yml
+    - vars.yml
+  tasks:
+    - name: Create the output directories
+      ansible.builtin.file:
+        path: "{{ lint_output_dir }}/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - casc
+        - casc-secrets
+
+    - name: Render jenkins.yaml
+      ansible.builtin.template:
+        src: ../../../ansible/roles/install_jenkins/templates/jenkins.yaml.j2
+        dest: "{{ lint_output_dir }}/casc/jenkins.yaml"
+        mode: "0644"
+
+    - name: Write the test secrets
+      ansible.builtin.copy:
+        content: "{{ item.value }}"
+        dest: "{{ lint_output_dir }}/casc-secrets/{{ item.key }}"
+        mode: "0644"
+      loop: "{{ lint_secrets | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"

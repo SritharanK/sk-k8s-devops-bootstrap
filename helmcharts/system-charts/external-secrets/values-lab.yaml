@@ -1,0 +1,16 @@
+# lab: the toolchain is not deployed in this profile. These values render a
+# single-replica setup without disruption budgets, for trying the chart on a
+# single-node cluster such as kind.
+external-secrets:
+  replicaCount: 1
+  leaderElect: false
+  podDisruptionBudget:
+    enabled: false
+  webhook:
+    replicaCount: 1
+    podDisruptionBudget:
+      enabled: false
+  certController:
+    replicaCount: 1
+    podDisruptionBudget:
+      enabled: false

@@ -1,0 +1,48 @@
+suite: common.all
+templates:
+  - templates/all.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: renders only the enabled objects with defaults
+    set:
+      renderAll: true
+    asserts:
+      - hasDocuments:
+          count: 3
+      - isKind:
+          of: ServiceAccount
+        documentIndex: 0
+      - isKind:
+          of: Service
+        documentIndex: 1
+      - isKind:
+          of: Deployment
+        documentIndex: 2
+
+  - it: renders every object with everything enabled, all in the release namespace
+    values:
+      - ../ci/everything-values.yaml
+    set:
+      renderAll: true
+    asserts:
+      - hasDocuments:
+          count: 13
+      - equal:
+          path: metadata.namespace
+          value: dev
+      - isKind:
+          of: Secret
+        not: true
+      - isKind:
+          of: BackendTrafficPolicy
+        documentIndex: 10
+      - isKind:
+          of: ServiceMonitor
+        documentIndex: 12
+
+  - it: renders nothing when the test switch is off
+    asserts:
+      - hasDocuments:
+          count: 0

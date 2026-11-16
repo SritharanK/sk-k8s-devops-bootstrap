@@ -1,0 +1,150 @@
+---
+# Runtime checks: state that the base role establishes (swap, kernel modules, sysctls, time). Every check only reads.
+# Findings are collected first, then reported together as a failure or as a warning (preflight_runtime_fatal).
+
+- name: Gather the facts the runtime checks need
+  ansible.builtin.setup:
+    gather_subset:
+      - "!all"
+      - min
+  when: ansible_facts['kernel'] is not defined
+  tags: [preflight, preflight_runtime]
+
+- name: Read the active swap devices
+  ansible.builtin.slurp:
+    src: /proc/swaps
+  register: preflight__proc_swaps
+  when: preflight_swap_off_required | bool
+  tags: [preflight, preflight_runtime]
+
+- name: Read the kernel module state
+  when: preflight_required_kernel_modules | length > 0
+  tags: [preflight, preflight_runtime]
+  block:
+    - name: Read the loaded kernel modules
+      ansible.builtin.slurp:
+        src: /proc/modules
+      register: preflight__proc_modules
+
+    - name: Check for the list of built-in kernel modules
+      ansible.builtin.stat:
+        path: /lib/modules/{{ ansible_facts['kernel'] }}/modules.builtin
+        get_checksum: false
+      register: preflight__builtin_modules_file
+
+    - name: Read the built-in kernel modules
+      ansible.builtin.slurp:
+        src: /lib/modules/{{ ansible_facts['kernel'] }}/modules.builtin
+      register: preflight__builtin_modules
+      when: preflight__builtin_modules_file.stat.exists
+
+- name: Read the required kernel parameters
+  ansible.builtin.slurp:
+    src: /proc/sys/{{ item.key | replace('.', '/') }}
+  loop: "{{ preflight_required_sysctls | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: preflight__sysctl_values
+  # A missing key (for example bridge-nf-call-iptables before br_netfilter is loaded) is a finding, not an error.
+  failed_when: false
+  tags: [preflight, preflight_runtime]
+
+- name: Query the clock synchronisation state from systemd
+  ansible.builtin.command:
+    argv:
+      - timedatectl
+      - show
+      - --property=NTPSynchronized
+      - --value
+  register: preflight__timedatectl
+  # A time daemon that the base role has just started needs a few polls to synchronise; wait for it instead of
+  # failing a fresh node. Any answer other than "no" ends the wait at once.
+  until: preflight__timedatectl.stdout | default('') | trim != 'no'
+  retries: "{{ (preflight_time_sync_wait_seconds | int / 5) | round(0, 'ceil') | int }}"
+  delay: 5
+  changed_when: false
+  # The tool may be missing or unable to reach systemd-timedated; chronyc is the fallback.
+  failed_when: false
+  check_mode: false
+  when: preflight_time_sync_required | bool
+  tags: [preflight, preflight_runtime]
+
+- name: Query the clock synchronisation state from chrony
+  ansible.builtin.command:
+    argv:
+      - chronyc
+      - -n
+      - tracking
+  register: preflight__chronyc
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when:
+    - preflight_time_sync_required | bool
+    - preflight__timedatectl.stdout | default('') | trim not in ['yes', 'no']
+  tags: [preflight, preflight_runtime]
+
+- name: Evaluate the runtime checks
+  ansible.builtin.set_fact:
+    preflight__runtime_failures: >-
+      {{ (['swap is active on ' ~ (preflight__swap_devices | join(', '))] if preflight__swap_devices else [])
+         + (['kernel modules not loaded: ' ~ (preflight__missing_modules | join(', '))]
+            if preflight__missing_modules else [])
+         + (['kernel parameters not set: ' ~ (preflight__sysctl_mismatches | join(', '))]
+            if preflight__sysctl_mismatches else [])
+         + ([preflight__time_finding] if preflight__time_finding else []) }}
+  vars:
+    preflight__swap_devices: >-
+      {{ ((preflight__proc_swaps['content'] | b64decode).splitlines()[1:] | select | map('split') | map('first')
+          | list) if preflight_swap_off_required | bool else [] }}
+    preflight__loaded_modules: >-
+      {{ ((preflight__proc_modules['content'] | b64decode).splitlines() | select | map('split') | map('first')
+          | list)
+         + (((preflight__builtin_modules['content'] | b64decode).splitlines() | map('basename')
+             | map('regex_replace', '[.]ko([.].*)?$', '') | list)
+            if preflight__builtin_modules['content'] is defined else []) }}
+    preflight__missing_modules: >-
+      {{ (preflight_required_kernel_modules | map('replace', '-', '_')
+          | reject('in', preflight__loaded_modules | map('replace', '-', '_') | list) | list)
+         if preflight_required_kernel_modules | length > 0 else [] }}
+    preflight__sysctl_mismatches: >-
+      {%- set ns = namespace(found=[]) -%}
+      {%- for result in preflight__sysctl_values['results'] | default([]) -%}
+      {%-   set wanted = result['item']['value'] | string | split | join(' ') -%}
+      {%-   set actual = (result['content'] | b64decode | split | join(' '))
+              if result['content'] is defined else 'missing' -%}
+      {%-   if actual != wanted -%}
+      {%-     set ns.found = ns.found + [result['item']['key'] ~ '=' ~ actual ~ ' (want ' ~ wanted ~ ')'] -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ ns.found }}
+    preflight__leap_status: >-
+      {{ preflight__chronyc['stdout_lines'] | default([]) | select('match', 'Leap status')
+         | map('split', ':') | map('last') | map('trim') | first | default('unknown', true) }}
+    preflight__timedatectl_state: "{{ preflight__timedatectl['stdout'] | default('') | trim }}"
+    preflight__chronyc_answered: "{{ preflight__chronyc['rc'] | default(1) == 0 }}"
+    preflight__time_finding: >-
+      {{ '' if not preflight_time_sync_required | bool
+         else '' if preflight__timedatectl_state == 'yes'
+         else 'clock not synchronised (timedatectl NTPSynchronized=no)' if preflight__timedatectl_state == 'no'
+         else '' if preflight__chronyc_answered and preflight__leap_status == 'Normal'
+         else 'clock not synchronised (chronyc leap status: ' ~ preflight__leap_status ~ ')'
+         if preflight__chronyc_answered
+         else 'clock synchronisation state unknown (neither timedatectl nor chronyc answered)' }}
+  tags: [preflight, preflight_runtime]
+
+- name: Fail on runtime check findings
+  ansible.builtin.fail:
+    msg: "Runtime checks failed: {{ preflight__runtime_failures | join('; ') }}."
+  when:
+    - preflight_runtime_fatal | bool
+    - preflight__runtime_failures | length > 0
+  tags: [preflight, preflight_runtime]
+
+- name: Warn about runtime check findings
+  ansible.builtin.debug:
+    msg: "WARNING: runtime checks found: {{ preflight__runtime_failures | join('; ') }}."
+  when:
+    - not preflight_runtime_fatal | bool
+    - preflight__runtime_failures | length > 0
+  tags: [preflight, preflight_runtime]

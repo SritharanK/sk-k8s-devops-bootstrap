@@ -1,0 +1,13 @@
+# Reference profile (RKE2 HA). stage and prod admit owned images only when
+# they carry a cosign keyless signature from the build workflow on main
+# (docs/adr/0008-keyless-image-signing.md). Images are pinned to their digest at admission.
+# They also need a vulnerability scan attestation from the same workflow that
+# is younger than seven days and has no CRITICAL finding
+# (docs/security/supply-chain.md#vulnerability-attestation-gate).
+
+---
+imageVerification:
+  enabled: true
+  environments: [stage, prod]
+  vulnerabilities:
+    enabled: true

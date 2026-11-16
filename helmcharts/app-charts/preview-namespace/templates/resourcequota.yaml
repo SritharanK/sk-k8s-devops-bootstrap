@@ -1,0 +1,18 @@
+{{- /*
+Caps what one preview may consume. The apps-preview AppProject blacklists
+ResourceQuota, so the pull request cannot raise it.
+*/ -}}
+{{- if .Values.quota }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: preview-quota
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "preview-namespace.labels" . | nindent 4 }}
+spec:
+  hard:
+    {{- range $key, $value := .Values.quota }}
+    {{ $key }}: {{ include "preview-namespace.quantity" $value }}
+    {{- end }}
+{{- end }}

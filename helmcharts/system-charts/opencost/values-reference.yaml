@@ -1,0 +1,22 @@
+# Reference profile: 3-node RKE2 HA cluster.
+# OpenCost stays at one replica: it holds no state of its own (Prometheus has the
+# data), a restart only delays the API and UI, and a second replica would export
+# every price metric twice. No PodDisruptionBudget, so node drains are never blocked.
+# CPU limits are omitted on purpose to avoid throttling.
+opencost:
+  opencost:
+    exporter:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          memory: 2Gi
+    ui:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 64Mi
+        limits:
+          memory: 256Mi

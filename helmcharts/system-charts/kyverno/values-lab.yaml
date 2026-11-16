@@ -1,0 +1,9 @@
+# Lab profile (kind or a single RKE2 node): one replica per controller, no
+# disruption budgets, upstream resource defaults from values.yaml.
+
+---
+kyverno:
+  admissionController:
+    replicas: 1
+    podDisruptionBudget:
+      enabled: false

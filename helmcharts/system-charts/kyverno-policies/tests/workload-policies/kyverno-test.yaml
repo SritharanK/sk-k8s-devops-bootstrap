@@ -1,0 +1,1315 @@
+# Full result matrix: every fixture is asserted against every policy that
+# matches it, so a policy that rejects too much fails the test as well.
+# policies.yaml and exceptions.yaml are rendered by ../render.sh.
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: workload-policies
+policies:
+  - policies.yaml
+resources:
+  - resources.yaml
+exceptions:
+  - exceptions.yaml
+variables: values.yaml
+results:
+  - isValidatingPolicy: true
+    policy: disallow-host-namespaces-audit
+    kind: Pod
+    result: pass
+    resources:
+      - bad-non-root-dev
+      - bad-registry-dev
+      - good-pod-dev
+  - isValidatingPolicy: true
+    policy: disallow-host-namespaces-audit
+    kind: Pod
+    result: skip
+    resources:
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: disallow-host-namespaces-enforce
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-tag-latest
+      - good-cronjob-without-probes
+  - isValidatingPolicy: true
+    policy: disallow-host-namespaces-enforce
+    kind: DaemonSet
+    result: fail
+    resources:
+      - bad-daemonset-host-network
+  - isValidatingPolicy: true
+    policy: disallow-host-namespaces-enforce
+    kind: DaemonSet
+    result: pass
+    resources:
+      - good-daemonset
+  - isValidatingPolicy: true
+    policy: disallow-host-namespaces-enforce
+    kind: Deployment
+    result: pass
+    resources:
+      - bad-deployment-run-as-root
+      - good-deployment
+  - isValidatingPolicy: true
+    policy: disallow-host-namespaces-enforce
+    kind: Job
+    result: pass
+    resources:
+      - good-job-without-probes
+  - isValidatingPolicy: true
+    policy: disallow-host-namespaces-enforce
+    kind: Pod
+    result: fail
+    resources:
+      - bad-host-network
+      - bad-host-pid
+      - bad-host-port
+  - isValidatingPolicy: true
+    policy: disallow-host-namespaces-enforce
+    kind: Pod
+    result: pass
+    resources:
+      - bad-capabilities-add
+      - bad-capabilities-not-dropped
+      - bad-fake-acme-solver
+      - bad-host-path
+      - bad-init-resources-missing
+      - bad-limits-missing
+      - bad-liveness-missing
+      - bad-non-root-container-false
+      - bad-non-root-init-false
+      - bad-non-root-unset
+      - bad-privilege-escalation-init
+      - bad-privilege-escalation-unset
+      - bad-privileged
+      - bad-readiness-missing
+      - bad-registry
+      - bad-registry-lookalike
+      - bad-registry-short-name
+      - bad-requests-missing
+      - bad-run-as-user-zero
+      - bad-seccomp-unconfined
+      - bad-seccomp-unset
+      - bad-tag-latest
+      - bad-tag-latest-ephemeral
+      - bad-tag-latest-init
+      - bad-tag-missing
+      - bad-tag-missing-registry-port
+      - bad-writable-root-filesystem
+      - bad-writable-root-filesystem-init
+      - good-pod
+      - good-pod-digest
+      - good-pod-level-non-root
+      - good-pod-localhost-seccomp
+      - good-pod-net-bind-service
+      - good-pod-owned-by-job
+      - threat-model-no-probe
+      - threat-model-privileged
+  - isValidatingPolicy: true
+    policy: disallow-host-namespaces-enforce
+    kind: Pod
+    result: skip
+    resources:
+      - cm-acme-http-solver-abcde
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: disallow-host-namespaces-enforce
+    kind: StatefulSet
+    result: pass
+    resources:
+      - good-statefulset
+  - isValidatingPolicy: true
+    policy: disallow-host-path-audit
+    kind: Pod
+    result: pass
+    resources:
+      - bad-non-root-dev
+      - bad-registry-dev
+      - good-pod-dev
+  - isValidatingPolicy: true
+    policy: disallow-host-path-audit
+    kind: Pod
+    result: skip
+    resources:
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: disallow-host-path-enforce
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-tag-latest
+      - good-cronjob-without-probes
+  - isValidatingPolicy: true
+    policy: disallow-host-path-enforce
+    kind: DaemonSet
+    result: pass
+    resources:
+      - bad-daemonset-host-network
+      - good-daemonset
+  - isValidatingPolicy: true
+    policy: disallow-host-path-enforce
+    kind: Deployment
+    result: pass
+    resources:
+      - bad-deployment-run-as-root
+      - good-deployment
+  - isValidatingPolicy: true
+    policy: disallow-host-path-enforce
+    kind: Job
+    result: pass
+    resources:
+      - good-job-without-probes
+  - isValidatingPolicy: true
+    policy: disallow-host-path-enforce
+    kind: Pod
+    result: fail
+    resources:
+      - bad-host-path
+  - isValidatingPolicy: true
+    policy: disallow-host-path-enforce
+    kind: Pod
+    result: pass
+    resources:
+      - bad-capabilities-add
+      - bad-capabilities-not-dropped
+      - bad-fake-acme-solver
+      - bad-host-network
+      - bad-host-pid
+      - bad-host-port
+      - bad-init-resources-missing
+      - bad-limits-missing
+      - bad-liveness-missing
+      - bad-non-root-container-false
+      - bad-non-root-init-false
+      - bad-non-root-unset
+      - bad-privilege-escalation-init
+      - bad-privilege-escalation-unset
+      - bad-privileged
+      - bad-readiness-missing
+      - bad-registry
+      - bad-registry-lookalike
+      - bad-registry-short-name
+      - bad-requests-missing
+      - bad-run-as-user-zero
+      - bad-seccomp-unconfined
+      - bad-seccomp-unset
+      - bad-tag-latest
+      - bad-tag-latest-ephemeral
+      - bad-tag-latest-init
+      - bad-tag-missing
+      - bad-tag-missing-registry-port
+      - bad-writable-root-filesystem
+      - bad-writable-root-filesystem-init
+      - good-pod
+      - good-pod-digest
+      - good-pod-level-non-root
+      - good-pod-localhost-seccomp
+      - good-pod-net-bind-service
+      - good-pod-owned-by-job
+      - threat-model-no-probe
+      - threat-model-privileged
+  - isValidatingPolicy: true
+    policy: disallow-host-path-enforce
+    kind: Pod
+    result: skip
+    resources:
+      - cm-acme-http-solver-abcde
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: disallow-host-path-enforce
+    kind: StatefulSet
+    result: pass
+    resources:
+      - good-statefulset
+  - isValidatingPolicy: true
+    policy: disallow-privilege-escalation-audit
+    kind: Pod
+    result: pass
+    resources:
+      - bad-non-root-dev
+      - bad-registry-dev
+      - good-pod-dev
+  - isValidatingPolicy: true
+    policy: disallow-privilege-escalation-audit
+    kind: Pod
+    result: skip
+    resources:
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: disallow-privilege-escalation-enforce
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-tag-latest
+      - good-cronjob-without-probes
+  - isValidatingPolicy: true
+    policy: disallow-privilege-escalation-enforce
+    kind: DaemonSet
+    result: pass
+    resources:
+      - bad-daemonset-host-network
+      - good-daemonset
+  - isValidatingPolicy: true
+    policy: disallow-privilege-escalation-enforce
+    kind: Deployment
+    result: pass
+    resources:
+      - bad-deployment-run-as-root
+      - good-deployment
+  - isValidatingPolicy: true
+    policy: disallow-privilege-escalation-enforce
+    kind: Job
+    result: pass
+    resources:
+      - good-job-without-probes
+  - isValidatingPolicy: true
+    policy: disallow-privilege-escalation-enforce
+    kind: Pod
+    result: fail
+    resources:
+      - bad-fake-acme-solver
+      - bad-privilege-escalation-init
+      - bad-privilege-escalation-unset
+      - threat-model-no-probe
+      - threat-model-privileged
+  - isValidatingPolicy: true
+    policy: disallow-privilege-escalation-enforce
+    kind: Pod
+    result: pass
+    resources:
+      - bad-capabilities-add
+      - bad-capabilities-not-dropped
+      - bad-host-network
+      - bad-host-path
+      - bad-host-pid
+      - bad-host-port
+      - bad-init-resources-missing
+      - bad-limits-missing
+      - bad-liveness-missing
+      - bad-non-root-container-false
+      - bad-non-root-init-false
+      - bad-non-root-unset
+      - bad-privileged
+      - bad-readiness-missing
+      - bad-registry
+      - bad-registry-lookalike
+      - bad-registry-short-name
+      - bad-requests-missing
+      - bad-run-as-user-zero
+      - bad-seccomp-unconfined
+      - bad-seccomp-unset
+      - bad-tag-latest
+      - bad-tag-latest-ephemeral
+      - bad-tag-latest-init
+      - bad-tag-missing
+      - bad-tag-missing-registry-port
+      - bad-writable-root-filesystem
+      - bad-writable-root-filesystem-init
+      - good-pod
+      - good-pod-digest
+      - good-pod-level-non-root
+      - good-pod-localhost-seccomp
+      - good-pod-net-bind-service
+      - good-pod-owned-by-job
+  - isValidatingPolicy: true
+    policy: disallow-privilege-escalation-enforce
+    kind: Pod
+    result: skip
+    resources:
+      - cm-acme-http-solver-abcde
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: disallow-privilege-escalation-enforce
+    kind: StatefulSet
+    result: pass
+    resources:
+      - good-statefulset
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers-audit
+    kind: Pod
+    result: pass
+    resources:
+      - bad-non-root-dev
+      - bad-registry-dev
+      - good-pod-dev
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers-audit
+    kind: Pod
+    result: skip
+    resources:
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers-enforce
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-tag-latest
+      - good-cronjob-without-probes
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers-enforce
+    kind: DaemonSet
+    result: pass
+    resources:
+      - bad-daemonset-host-network
+      - good-daemonset
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers-enforce
+    kind: Deployment
+    result: pass
+    resources:
+      - bad-deployment-run-as-root
+      - good-deployment
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers-enforce
+    kind: Job
+    result: pass
+    resources:
+      - good-job-without-probes
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers-enforce
+    kind: Pod
+    result: fail
+    resources:
+      - bad-privileged
+      - threat-model-privileged
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers-enforce
+    kind: Pod
+    result: pass
+    resources:
+      - bad-capabilities-add
+      - bad-capabilities-not-dropped
+      - bad-fake-acme-solver
+      - bad-host-network
+      - bad-host-path
+      - bad-host-pid
+      - bad-host-port
+      - bad-init-resources-missing
+      - bad-limits-missing
+      - bad-liveness-missing
+      - bad-non-root-container-false
+      - bad-non-root-init-false
+      - bad-non-root-unset
+      - bad-privilege-escalation-init
+      - bad-privilege-escalation-unset
+      - bad-readiness-missing
+      - bad-registry
+      - bad-registry-lookalike
+      - bad-registry-short-name
+      - bad-requests-missing
+      - bad-run-as-user-zero
+      - bad-seccomp-unconfined
+      - bad-seccomp-unset
+      - bad-tag-latest
+      - bad-tag-latest-ephemeral
+      - bad-tag-latest-init
+      - bad-tag-missing
+      - bad-tag-missing-registry-port
+      - bad-writable-root-filesystem
+      - bad-writable-root-filesystem-init
+      - good-pod
+      - good-pod-digest
+      - good-pod-level-non-root
+      - good-pod-localhost-seccomp
+      - good-pod-net-bind-service
+      - good-pod-owned-by-job
+      - threat-model-no-probe
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers-enforce
+    kind: Pod
+    result: skip
+    resources:
+      - cm-acme-http-solver-abcde
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: disallow-privileged-containers-enforce
+    kind: StatefulSet
+    result: pass
+    resources:
+      - good-statefulset
+  - isValidatingPolicy: true
+    policy: require-drop-all-capabilities-audit
+    kind: Pod
+    result: pass
+    resources:
+      - bad-non-root-dev
+      - bad-registry-dev
+      - good-pod-dev
+  - isValidatingPolicy: true
+    policy: require-drop-all-capabilities-audit
+    kind: Pod
+    result: skip
+    resources:
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-drop-all-capabilities-enforce
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-tag-latest
+      - good-cronjob-without-probes
+  - isValidatingPolicy: true
+    policy: require-drop-all-capabilities-enforce
+    kind: DaemonSet
+    result: pass
+    resources:
+      - bad-daemonset-host-network
+      - good-daemonset
+  - isValidatingPolicy: true
+    policy: require-drop-all-capabilities-enforce
+    kind: Deployment
+    result: pass
+    resources:
+      - bad-deployment-run-as-root
+      - good-deployment
+  - isValidatingPolicy: true
+    policy: require-drop-all-capabilities-enforce
+    kind: Job
+    result: pass
+    resources:
+      - good-job-without-probes
+  - isValidatingPolicy: true
+    policy: require-drop-all-capabilities-enforce
+    kind: Pod
+    result: fail
+    resources:
+      - bad-capabilities-add
+      - bad-capabilities-not-dropped
+      - bad-fake-acme-solver
+      - threat-model-no-probe
+      - threat-model-privileged
+  - isValidatingPolicy: true
+    policy: require-drop-all-capabilities-enforce
+    kind: Pod
+    result: pass
+    resources:
+      - bad-host-network
+      - bad-host-path
+      - bad-host-pid
+      - bad-host-port
+      - bad-init-resources-missing
+      - bad-limits-missing
+      - bad-liveness-missing
+      - bad-non-root-container-false
+      - bad-non-root-init-false
+      - bad-non-root-unset
+      - bad-privilege-escalation-init
+      - bad-privilege-escalation-unset
+      - bad-privileged
+      - bad-readiness-missing
+      - bad-registry
+      - bad-registry-lookalike
+      - bad-registry-short-name
+      - bad-requests-missing
+      - bad-run-as-user-zero
+      - bad-seccomp-unconfined
+      - bad-seccomp-unset
+      - bad-tag-latest
+      - bad-tag-latest-ephemeral
+      - bad-tag-latest-init
+      - bad-tag-missing
+      - bad-tag-missing-registry-port
+      - bad-writable-root-filesystem
+      - bad-writable-root-filesystem-init
+      - good-pod
+      - good-pod-digest
+      - good-pod-level-non-root
+      - good-pod-localhost-seccomp
+      - good-pod-net-bind-service
+      - good-pod-owned-by-job
+  - isValidatingPolicy: true
+    policy: require-drop-all-capabilities-enforce
+    kind: Pod
+    result: skip
+    resources:
+      - cm-acme-http-solver-abcde
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-drop-all-capabilities-enforce
+    kind: StatefulSet
+    result: pass
+    resources:
+      - good-statefulset
+  - isValidatingPolicy: true
+    policy: require-image-tag-or-digest-audit
+    kind: Pod
+    result: pass
+    resources:
+      - bad-non-root-dev
+      - bad-registry-dev
+      - good-pod-dev
+  - isValidatingPolicy: true
+    policy: require-image-tag-or-digest-audit
+    kind: Pod
+    result: skip
+    resources:
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-image-tag-or-digest-enforce
+    kind: CronJob
+    result: fail
+    resources:
+      - bad-cronjob-tag-latest
+  - isValidatingPolicy: true
+    policy: require-image-tag-or-digest-enforce
+    kind: CronJob
+    result: pass
+    resources:
+      - good-cronjob-without-probes
+  - isValidatingPolicy: true
+    policy: require-image-tag-or-digest-enforce
+    kind: DaemonSet
+    result: pass
+    resources:
+      - bad-daemonset-host-network
+      - good-daemonset
+  - isValidatingPolicy: true
+    policy: require-image-tag-or-digest-enforce
+    kind: Deployment
+    result: pass
+    resources:
+      - bad-deployment-run-as-root
+      - good-deployment
+  - isValidatingPolicy: true
+    policy: require-image-tag-or-digest-enforce
+    kind: Job
+    result: pass
+    resources:
+      - good-job-without-probes
+  - isValidatingPolicy: true
+    policy: require-image-tag-or-digest-enforce
+    kind: Pod
+    result: fail
+    resources:
+      - bad-tag-latest
+      - bad-tag-latest-ephemeral
+      - bad-tag-latest-init
+      - bad-tag-missing
+      - bad-tag-missing-registry-port
+      - threat-model-privileged
+  - isValidatingPolicy: true
+    policy: require-image-tag-or-digest-enforce
+    kind: Pod
+    result: pass
+    resources:
+      - bad-capabilities-add
+      - bad-capabilities-not-dropped
+      - bad-fake-acme-solver
+      - bad-host-network
+      - bad-host-path
+      - bad-host-pid
+      - bad-host-port
+      - bad-init-resources-missing
+      - bad-limits-missing
+      - bad-liveness-missing
+      - bad-non-root-container-false
+      - bad-non-root-init-false
+      - bad-non-root-unset
+      - bad-privilege-escalation-init
+      - bad-privilege-escalation-unset
+      - bad-privileged
+      - bad-readiness-missing
+      - bad-registry
+      - bad-registry-lookalike
+      - bad-registry-short-name
+      - bad-requests-missing
+      - bad-run-as-user-zero
+      - bad-seccomp-unconfined
+      - bad-seccomp-unset
+      - bad-writable-root-filesystem
+      - bad-writable-root-filesystem-init
+      - good-pod
+      - good-pod-digest
+      - good-pod-level-non-root
+      - good-pod-localhost-seccomp
+      - good-pod-net-bind-service
+      - good-pod-owned-by-job
+      - threat-model-no-probe
+  - isValidatingPolicy: true
+    policy: require-image-tag-or-digest-enforce
+    kind: Pod
+    result: skip
+    resources:
+      - cm-acme-http-solver-abcde
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-image-tag-or-digest-enforce
+    kind: StatefulSet
+    result: pass
+    resources:
+      - good-statefulset
+  - isValidatingPolicy: true
+    policy: require-probes-audit
+    kind: Pod
+    result: pass
+    resources:
+      - bad-non-root-dev
+      - bad-registry-dev
+      - good-pod-dev
+  - isValidatingPolicy: true
+    policy: require-probes-audit
+    kind: Pod
+    result: skip
+    resources:
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-probes-enforce
+    kind: CronJob
+    result: skip
+    resources:
+      - bad-cronjob-tag-latest
+      - good-cronjob-without-probes
+  - isValidatingPolicy: true
+    policy: require-probes-enforce
+    kind: DaemonSet
+    result: pass
+    resources:
+      - bad-daemonset-host-network
+      - good-daemonset
+  - isValidatingPolicy: true
+    policy: require-probes-enforce
+    kind: Deployment
+    result: pass
+    resources:
+      - bad-deployment-run-as-root
+      - good-deployment
+  - isValidatingPolicy: true
+    policy: require-probes-enforce
+    kind: Job
+    result: skip
+    resources:
+      - good-job-without-probes
+  - isValidatingPolicy: true
+    policy: require-probes-enforce
+    kind: Pod
+    result: fail
+    resources:
+      - bad-fake-acme-solver
+      - bad-liveness-missing
+      - bad-readiness-missing
+      - threat-model-no-probe
+      - threat-model-privileged
+  - isValidatingPolicy: true
+    policy: require-probes-enforce
+    kind: Pod
+    result: pass
+    resources:
+      - bad-capabilities-add
+      - bad-capabilities-not-dropped
+      - bad-host-network
+      - bad-host-path
+      - bad-host-pid
+      - bad-host-port
+      - bad-init-resources-missing
+      - bad-limits-missing
+      - bad-non-root-container-false
+      - bad-non-root-init-false
+      - bad-non-root-unset
+      - bad-privilege-escalation-init
+      - bad-privilege-escalation-unset
+      - bad-privileged
+      - bad-registry
+      - bad-registry-lookalike
+      - bad-registry-short-name
+      - bad-requests-missing
+      - bad-run-as-user-zero
+      - bad-seccomp-unconfined
+      - bad-seccomp-unset
+      - bad-tag-latest
+      - bad-tag-latest-ephemeral
+      - bad-tag-latest-init
+      - bad-tag-missing
+      - bad-tag-missing-registry-port
+      - bad-writable-root-filesystem
+      - bad-writable-root-filesystem-init
+      - good-pod
+      - good-pod-digest
+      - good-pod-level-non-root
+      - good-pod-localhost-seccomp
+      - good-pod-net-bind-service
+  - isValidatingPolicy: true
+    policy: require-probes-enforce
+    kind: Pod
+    result: skip
+    resources:
+      - cm-acme-http-solver-abcde
+      - good-pod-owned-by-job
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-probes-enforce
+    kind: StatefulSet
+    result: pass
+    resources:
+      - good-statefulset
+  - isValidatingPolicy: true
+    policy: require-read-only-root-filesystem-audit
+    kind: Pod
+    result: pass
+    resources:
+      - bad-non-root-dev
+      - bad-registry-dev
+      - good-pod-dev
+  - isValidatingPolicy: true
+    policy: require-read-only-root-filesystem-audit
+    kind: Pod
+    result: skip
+    resources:
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-read-only-root-filesystem-enforce
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-tag-latest
+      - good-cronjob-without-probes
+  - isValidatingPolicy: true
+    policy: require-read-only-root-filesystem-enforce
+    kind: DaemonSet
+    result: pass
+    resources:
+      - bad-daemonset-host-network
+      - good-daemonset
+  - isValidatingPolicy: true
+    policy: require-read-only-root-filesystem-enforce
+    kind: Deployment
+    result: pass
+    resources:
+      - bad-deployment-run-as-root
+      - good-deployment
+  - isValidatingPolicy: true
+    policy: require-read-only-root-filesystem-enforce
+    kind: Job
+    result: pass
+    resources:
+      - good-job-without-probes
+  - isValidatingPolicy: true
+    policy: require-read-only-root-filesystem-enforce
+    kind: Pod
+    result: fail
+    resources:
+      - bad-fake-acme-solver
+      - bad-writable-root-filesystem
+      - bad-writable-root-filesystem-init
+      - threat-model-no-probe
+      - threat-model-privileged
+  - isValidatingPolicy: true
+    policy: require-read-only-root-filesystem-enforce
+    kind: Pod
+    result: pass
+    resources:
+      - bad-capabilities-add
+      - bad-capabilities-not-dropped
+      - bad-host-network
+      - bad-host-path
+      - bad-host-pid
+      - bad-host-port
+      - bad-init-resources-missing
+      - bad-limits-missing
+      - bad-liveness-missing
+      - bad-non-root-container-false
+      - bad-non-root-init-false
+      - bad-non-root-unset
+      - bad-privilege-escalation-init
+      - bad-privilege-escalation-unset
+      - bad-privileged
+      - bad-readiness-missing
+      - bad-registry
+      - bad-registry-lookalike
+      - bad-registry-short-name
+      - bad-requests-missing
+      - bad-run-as-user-zero
+      - bad-seccomp-unconfined
+      - bad-seccomp-unset
+      - bad-tag-latest
+      - bad-tag-latest-ephemeral
+      - bad-tag-latest-init
+      - bad-tag-missing
+      - bad-tag-missing-registry-port
+      - good-pod
+      - good-pod-digest
+      - good-pod-level-non-root
+      - good-pod-localhost-seccomp
+      - good-pod-net-bind-service
+      - good-pod-owned-by-job
+  - isValidatingPolicy: true
+    policy: require-read-only-root-filesystem-enforce
+    kind: Pod
+    result: skip
+    resources:
+      - cm-acme-http-solver-abcde
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-read-only-root-filesystem-enforce
+    kind: StatefulSet
+    result: pass
+    resources:
+      - good-statefulset
+  - isValidatingPolicy: true
+    policy: require-requests-limits-audit
+    kind: Pod
+    result: pass
+    resources:
+      - bad-non-root-dev
+      - bad-registry-dev
+      - good-pod-dev
+  - isValidatingPolicy: true
+    policy: require-requests-limits-audit
+    kind: Pod
+    result: skip
+    resources:
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-requests-limits-enforce
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-tag-latest
+      - good-cronjob-without-probes
+  - isValidatingPolicy: true
+    policy: require-requests-limits-enforce
+    kind: DaemonSet
+    result: pass
+    resources:
+      - bad-daemonset-host-network
+      - good-daemonset
+  - isValidatingPolicy: true
+    policy: require-requests-limits-enforce
+    kind: Deployment
+    result: pass
+    resources:
+      - bad-deployment-run-as-root
+      - good-deployment
+  - isValidatingPolicy: true
+    policy: require-requests-limits-enforce
+    kind: Job
+    result: pass
+    resources:
+      - good-job-without-probes
+  - isValidatingPolicy: true
+    policy: require-requests-limits-enforce
+    kind: Pod
+    result: fail
+    resources:
+      - bad-fake-acme-solver
+      - bad-init-resources-missing
+      - bad-limits-missing
+      - bad-requests-missing
+      - threat-model-no-probe
+      - threat-model-privileged
+  - isValidatingPolicy: true
+    policy: require-requests-limits-enforce
+    kind: Pod
+    result: pass
+    resources:
+      - bad-capabilities-add
+      - bad-capabilities-not-dropped
+      - bad-host-network
+      - bad-host-path
+      - bad-host-pid
+      - bad-host-port
+      - bad-liveness-missing
+      - bad-non-root-container-false
+      - bad-non-root-init-false
+      - bad-non-root-unset
+      - bad-privilege-escalation-init
+      - bad-privilege-escalation-unset
+      - bad-privileged
+      - bad-readiness-missing
+      - bad-registry
+      - bad-registry-lookalike
+      - bad-registry-short-name
+      - bad-run-as-user-zero
+      - bad-seccomp-unconfined
+      - bad-seccomp-unset
+      - bad-tag-latest
+      - bad-tag-latest-ephemeral
+      - bad-tag-latest-init
+      - bad-tag-missing
+      - bad-tag-missing-registry-port
+      - bad-writable-root-filesystem
+      - bad-writable-root-filesystem-init
+      - good-pod
+      - good-pod-digest
+      - good-pod-level-non-root
+      - good-pod-localhost-seccomp
+      - good-pod-net-bind-service
+      - good-pod-owned-by-job
+  - isValidatingPolicy: true
+    policy: require-requests-limits-enforce
+    kind: Pod
+    result: skip
+    resources:
+      - cm-acme-http-solver-abcde
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-requests-limits-enforce
+    kind: StatefulSet
+    result: pass
+    resources:
+      - good-statefulset
+  - isValidatingPolicy: true
+    policy: require-run-as-non-root-audit
+    kind: Pod
+    result: fail
+    resources:
+      - bad-non-root-dev
+  - isValidatingPolicy: true
+    policy: require-run-as-non-root-audit
+    kind: Pod
+    result: pass
+    resources:
+      - bad-registry-dev
+      - good-pod-dev
+  - isValidatingPolicy: true
+    policy: require-run-as-non-root-audit
+    kind: Pod
+    result: skip
+    resources:
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-run-as-non-root-enforce
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-tag-latest
+      - good-cronjob-without-probes
+  - isValidatingPolicy: true
+    policy: require-run-as-non-root-enforce
+    kind: DaemonSet
+    result: pass
+    resources:
+      - bad-daemonset-host-network
+      - good-daemonset
+  - isValidatingPolicy: true
+    policy: require-run-as-non-root-enforce
+    kind: Deployment
+    result: fail
+    resources:
+      - bad-deployment-run-as-root
+  - isValidatingPolicy: true
+    policy: require-run-as-non-root-enforce
+    kind: Deployment
+    result: pass
+    resources:
+      - good-deployment
+  - isValidatingPolicy: true
+    policy: require-run-as-non-root-enforce
+    kind: Job
+    result: pass
+    resources:
+      - good-job-without-probes
+  - isValidatingPolicy: true
+    policy: require-run-as-non-root-enforce
+    kind: Pod
+    result: fail
+    resources:
+      - bad-fake-acme-solver
+      - bad-non-root-container-false
+      - bad-non-root-init-false
+      - bad-non-root-unset
+      - bad-run-as-user-zero
+      - threat-model-no-probe
+      - threat-model-privileged
+  - isValidatingPolicy: true
+    policy: require-run-as-non-root-enforce
+    kind: Pod
+    result: pass
+    resources:
+      - bad-capabilities-add
+      - bad-capabilities-not-dropped
+      - bad-host-network
+      - bad-host-path
+      - bad-host-pid
+      - bad-host-port
+      - bad-init-resources-missing
+      - bad-limits-missing
+      - bad-liveness-missing
+      - bad-privilege-escalation-init
+      - bad-privilege-escalation-unset
+      - bad-privileged
+      - bad-readiness-missing
+      - bad-registry
+      - bad-registry-lookalike
+      - bad-registry-short-name
+      - bad-requests-missing
+      - bad-seccomp-unconfined
+      - bad-seccomp-unset
+      - bad-tag-latest
+      - bad-tag-latest-ephemeral
+      - bad-tag-latest-init
+      - bad-tag-missing
+      - bad-tag-missing-registry-port
+      - bad-writable-root-filesystem
+      - bad-writable-root-filesystem-init
+      - good-pod
+      - good-pod-digest
+      - good-pod-level-non-root
+      - good-pod-localhost-seccomp
+      - good-pod-net-bind-service
+      - good-pod-owned-by-job
+  - isValidatingPolicy: true
+    policy: require-run-as-non-root-enforce
+    kind: Pod
+    result: skip
+    resources:
+      - cm-acme-http-solver-abcde
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-run-as-non-root-enforce
+    kind: StatefulSet
+    result: pass
+    resources:
+      - good-statefulset
+  - isValidatingPolicy: true
+    policy: require-seccomp-profile-audit
+    kind: Pod
+    result: pass
+    resources:
+      - bad-non-root-dev
+      - bad-registry-dev
+      - good-pod-dev
+  - isValidatingPolicy: true
+    policy: require-seccomp-profile-audit
+    kind: Pod
+    result: skip
+    resources:
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-seccomp-profile-enforce
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-tag-latest
+      - good-cronjob-without-probes
+  - isValidatingPolicy: true
+    policy: require-seccomp-profile-enforce
+    kind: DaemonSet
+    result: pass
+    resources:
+      - bad-daemonset-host-network
+      - good-daemonset
+  - isValidatingPolicy: true
+    policy: require-seccomp-profile-enforce
+    kind: Deployment
+    result: pass
+    resources:
+      - bad-deployment-run-as-root
+      - good-deployment
+  - isValidatingPolicy: true
+    policy: require-seccomp-profile-enforce
+    kind: Job
+    result: pass
+    resources:
+      - good-job-without-probes
+  - isValidatingPolicy: true
+    policy: require-seccomp-profile-enforce
+    kind: Pod
+    result: fail
+    resources:
+      - bad-fake-acme-solver
+      - bad-seccomp-unconfined
+      - bad-seccomp-unset
+      - threat-model-no-probe
+      - threat-model-privileged
+  - isValidatingPolicy: true
+    policy: require-seccomp-profile-enforce
+    kind: Pod
+    result: pass
+    resources:
+      - bad-capabilities-add
+      - bad-capabilities-not-dropped
+      - bad-host-network
+      - bad-host-path
+      - bad-host-pid
+      - bad-host-port
+      - bad-init-resources-missing
+      - bad-limits-missing
+      - bad-liveness-missing
+      - bad-non-root-container-false
+      - bad-non-root-init-false
+      - bad-non-root-unset
+      - bad-privilege-escalation-init
+      - bad-privilege-escalation-unset
+      - bad-privileged
+      - bad-readiness-missing
+      - bad-registry
+      - bad-registry-lookalike
+      - bad-registry-short-name
+      - bad-requests-missing
+      - bad-run-as-user-zero
+      - bad-tag-latest
+      - bad-tag-latest-ephemeral
+      - bad-tag-latest-init
+      - bad-tag-missing
+      - bad-tag-missing-registry-port
+      - bad-writable-root-filesystem
+      - bad-writable-root-filesystem-init
+      - good-pod
+      - good-pod-digest
+      - good-pod-level-non-root
+      - good-pod-localhost-seccomp
+      - good-pod-net-bind-service
+      - good-pod-owned-by-job
+  - isValidatingPolicy: true
+    policy: require-seccomp-profile-enforce
+    kind: Pod
+    result: skip
+    resources:
+      - cm-acme-http-solver-abcde
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: require-seccomp-profile-enforce
+    kind: StatefulSet
+    result: pass
+    resources:
+      - good-statefulset
+  - isValidatingPolicy: true
+    policy: restrict-image-registries-audit
+    kind: Pod
+    result: fail
+    resources:
+      - bad-registry-dev
+  - isValidatingPolicy: true
+    policy: restrict-image-registries-audit
+    kind: Pod
+    result: pass
+    resources:
+      - bad-non-root-dev
+      - good-pod-dev
+  - isValidatingPolicy: true
+    policy: restrict-image-registries-audit
+    kind: Pod
+    result: skip
+    resources:
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: restrict-image-registries-enforce
+    kind: CronJob
+    result: pass
+    resources:
+      - bad-cronjob-tag-latest
+      - good-cronjob-without-probes
+  - isValidatingPolicy: true
+    policy: restrict-image-registries-enforce
+    kind: DaemonSet
+    result: pass
+    resources:
+      - bad-daemonset-host-network
+      - good-daemonset
+  - isValidatingPolicy: true
+    policy: restrict-image-registries-enforce
+    kind: Deployment
+    result: pass
+    resources:
+      - bad-deployment-run-as-root
+      - good-deployment
+  - isValidatingPolicy: true
+    policy: restrict-image-registries-enforce
+    kind: Job
+    result: pass
+    resources:
+      - good-job-without-probes
+  - isValidatingPolicy: true
+    policy: restrict-image-registries-enforce
+    kind: Pod
+    result: fail
+    resources:
+      - bad-fake-acme-solver
+      - bad-registry
+      - bad-registry-lookalike
+      - bad-registry-short-name
+      - bad-tag-missing-registry-port
+      - threat-model-no-probe
+      - threat-model-privileged
+  - isValidatingPolicy: true
+    policy: restrict-image-registries-enforce
+    kind: Pod
+    result: pass
+    resources:
+      - bad-capabilities-add
+      - bad-capabilities-not-dropped
+      - bad-host-network
+      - bad-host-path
+      - bad-host-pid
+      - bad-host-port
+      - bad-init-resources-missing
+      - bad-limits-missing
+      - bad-liveness-missing
+      - bad-non-root-container-false
+      - bad-non-root-init-false
+      - bad-non-root-unset
+      - bad-privilege-escalation-init
+      - bad-privilege-escalation-unset
+      - bad-privileged
+      - bad-readiness-missing
+      - bad-requests-missing
+      - bad-run-as-user-zero
+      - bad-seccomp-unconfined
+      - bad-seccomp-unset
+      - bad-tag-latest
+      - bad-tag-latest-ephemeral
+      - bad-tag-latest-init
+      - bad-tag-missing
+      - bad-writable-root-filesystem
+      - bad-writable-root-filesystem-init
+      - good-pod
+      - good-pod-digest
+      - good-pod-level-non-root
+      - good-pod-localhost-seccomp
+      - good-pod-net-bind-service
+      - good-pod-owned-by-job
+  - isValidatingPolicy: true
+    policy: restrict-image-registries-enforce
+    kind: Pod
+    result: skip
+    resources:
+      - cm-acme-http-solver-abcde
+      - unmanaged-namespace-pod
+  - isValidatingPolicy: true
+    policy: restrict-image-registries-enforce
+    kind: StatefulSet
+    result: pass
+    resources:
+      - good-statefulset
+  - isValidatingPolicy: true
+    policy: restrict-networkpolicy-broad-ingress-audit
+    kind: NetworkPolicy
+    result: fail
+    resources:
+      - bad-netpol-all-namespaces
+      - bad-netpol-all-namespaces-dev
+      - bad-netpol-all-namespaces-selected-peers
+      - bad-netpol-any-source
+      - bad-netpol-ipblock-any
+  - isValidatingPolicy: true
+    policy: restrict-networkpolicy-broad-ingress-audit
+    kind: NetworkPolicy
+    result: pass
+    resources:
+      - good-netpol-all-namespaces-to-one-app
+      - good-netpol-all-pods-from-monitoring
+      - good-netpol-default-deny
+      - good-netpol-egress-only
+      - good-netpol-gateway-to-app
+  - isValidatingPolicy: true
+    policy: restrict-networkpolicy-broad-ingress-audit
+    kind: NetworkPolicy
+    result: skip
+    resources:
+      - unmanaged-namespace-netpol
+  - isValidatingPolicy: true
+    policy: restrict-service-external-ips-enforce
+    kind: Service
+    result: fail
+    resources:
+      - bad-service-external-ips
+  - isValidatingPolicy: true
+    policy: restrict-service-external-ips-enforce
+    kind: Service
+    result: pass
+    resources:
+      - good-service

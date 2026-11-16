@@ -1,0 +1,78 @@
+---
+# Converges the role on Ubuntu 24.04 and Rocky Linux 9 containers that run
+# systemd, checks idempotence and verifies the security properties.
+#
+# Run from ansible/roles/install_jenkins:
+#   uvx --with 'molecule-plugins[docker]' molecule test
+#
+# Requires Docker with cgroup v2 and privileged containers (systemd as PID 1).
+
+# The role is used from this repository by path and is not published to
+# Galaxy, so it has no Galaxy namespace to check.
+role_name_check: 2
+
+driver:
+  name: docker
+
+platforms:
+  - name: jenkins-ubuntu2404
+    image: geerlingguy/docker-ubuntu2404-ansible@sha256:fa0889a991fe4f9404efc2f53d5960804f4e409e74bff6ad2443992cc57915c4
+    pre_build_image: true
+    # An empty command keeps the image's systemd init as PID 1.
+    command: ""
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    groups:
+      - jenkins
+  - name: jenkins-rockylinux9
+    image: geerlingguy/docker-rockylinux9-ansible@sha256:370133da77678450c59c78c5ede1a9fec90c87dbe3ba968ab0dcad24b80524c0
+    pre_build_image: true
+    command: ""
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    groups:
+      - jenkins
+
+provisioner:
+  name: ansible
+  inventory:
+    group_vars:
+      # Test settings shared by converge.yml and verify.yml. Every secret is
+      # an obviously fake value; verify.yml checks that none of them appears
+      # in the rendered configuration as code file.
+      jenkins:
+        install_jenkins_security_realm: local
+        install_jenkins_url: "http://jenkins.localtest.me:8080/"
+        install_jenkins_registry_username: molecule
+        install_jenkins_java_heap_min: 256m
+        install_jenkins_java_heap_max: 1g
+        install_jenkins_startup_timeout: 600
+        install_jenkins_local_admin_password: molecule-only-not-a-secret-admin
+        install_jenkins_local_build_user_password: molecule-only-not-a-secret-build-user
+        install_jenkins_registry_password: molecule-only-not-a-secret-registry
+        install_jenkins_github_token: molecule-only-not-a-secret-github
+        install_jenkins_cosign_private_key: |
+          molecule-only-not-a-secret-cosign-key-line-one
+          molecule-only-not-a-secret-cosign-key-line-two
+        install_jenkins_cosign_password: molecule-only-not-a-secret-cosign-password
+        install_jenkins_k8s_agent_token: molecule-only-not-a-secret-k8s-agent
+
+verifier:
+  name: ansible
+
+scenario:
+  name: default
+  test_sequence:
+    - dependency
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

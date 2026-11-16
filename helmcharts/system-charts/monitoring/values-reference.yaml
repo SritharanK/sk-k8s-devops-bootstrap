@@ -1,0 +1,217 @@
+# monitoring: reference profile (3-node RKE2 HA cluster).
+# Two Prometheus replicas with persistent storage, three Alertmanager replicas,
+# PodDisruptionBudgets, webhook receivers whose URLs come from a Secret, Grafana admin
+# from the platform secret store, and RKE2 control plane scraping.
+
+datasources:
+  loki:
+    enabled: true
+  tempo:
+    enabled: false
+
+grafanaAdmin:
+  externalSecret:
+    enabled: true
+
+alertmanagerReceivers:
+  externalSecret:
+    enabled: true
+
+kube-prometheus-stack:
+  # RKE2 control plane. Requires the RKE2 server configuration in the README
+  # (bind-address=0.0.0.0, etcd-expose-metrics, kube-proxy metrics-bind-address).
+  # The Services are created in kube-system and select the RKE2 static pods by their
+  # component label.
+  kubeControllerManager:
+    enabled: true
+    service:
+      port: 10257
+      targetPort: 10257
+    serviceMonitor:
+      https: true
+      tlsConfig:
+        # The RKE2 controller manager and scheduler serve metrics with a
+        # self-signed certificate that no cluster CA signs; the scrape still
+        # authenticates with the Prometheus ServiceAccount token.
+        insecureSkipVerify: true
+  kubeScheduler:
+    enabled: true
+    service:
+      port: 10259
+      targetPort: 10259
+    serviceMonitor:
+      https: true
+      tlsConfig:
+        # The RKE2 controller manager and scheduler serve metrics with a
+        # self-signed certificate that no cluster CA signs; the scrape still
+        # authenticates with the Prometheus ServiceAccount token.
+        insecureSkipVerify: true
+  kubeEtcd:
+    enabled: true
+    service:
+      port: 2381
+      targetPort: 2381
+    serviceMonitor:
+      scheme: http
+  kubeProxy:
+    enabled: true
+    service:
+      port: 10249
+      targetPort: 10249
+      # RKE2 runs kube-proxy as a static pod labelled component=kube-proxy. The upstream
+      # default selector (k8s-app=kube-proxy) matches the kubeadm DaemonSet only.
+      selector:
+        component: kube-proxy
+    serviceMonitor:
+      https: false
+
+  alertmanager:
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 2
+    config:
+      # Webhook URLs are read from files mounted from Secret alertmanager-receivers
+      # (alertmanagerSpec.secrets below). No URL is stored in Git.
+      receivers:
+        - name: "null"
+        - name: heartbeat
+          webhook_configs:
+            - url_file: /etc/alertmanager/secrets/alertmanager-receivers/heartbeat-webhook-url
+              send_resolved: false
+        - name: platform-critical
+          webhook_configs:
+            - url_file: /etc/alertmanager/secrets/alertmanager-receivers/critical-webhook-url
+              send_resolved: true
+        - name: platform-default
+          webhook_configs:
+            - url_file: /etc/alertmanager/secrets/alertmanager-receivers/default-webhook-url
+              send_resolved: true
+    alertmanagerSpec:
+      replicas: 3
+      secrets:
+        - alertmanager-receivers
+      podAntiAffinity: soft
+      storage:
+        volumeClaimTemplate:
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 2Gi
+      resources:
+        requests:
+          cpu: 20m
+          memory: 64Mi
+        limits:
+          memory: 256Mi
+
+  grafana:
+    # One replica: without an external database each Grafana pod has its own SQLite
+    # database and sessions, so a second replica would break logins behind the Gateway.
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 768Mi
+    sidecar:
+      resources:
+        requests:
+          cpu: 20m
+          memory: 96Mi
+        limits:
+          memory: 192Mi
+    # envFromSecrets:
+    #   - name: grafana-oauth
+    #     optional: false
+    grafana.ini:
+      # Single sign-on through the platform identity provider. Disabled until the IdP
+      # client exists. To switch it on: set enabled to true, replace the placeholders,
+      # create Secret grafana-oauth with key GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET in the
+      # monitoring namespace, and uncomment envFromSecrets below. Grafana reads the
+      # client secret from that environment variable, so it never appears in grafana.ini.
+      auth.generic_oauth:
+        enabled: false
+        name: SSO
+        client_id: CHANGE_ME
+        scopes: openid profile email groups
+        auth_url: https://idp.example.com/oauth2/authorize
+        token_url: https://idp.example.com/oauth2/token
+        api_url: https://idp.example.com/oauth2/userinfo
+        use_pkce: true
+        allow_sign_up: true
+        role_attribute_path: contains(groups[*], 'CHANGE_ME') && 'Admin' || 'Viewer'
+        role_attribute_strict: true
+
+  prometheusOperator:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+    prometheusConfigReloader:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 96Mi
+
+  prometheus:
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+    # Keep each client (Grafana) on one replica so graphs do not alternate between two
+    # slightly different data sets.
+    service:
+      sessionAffinity: ClientIP
+    prometheusSpec:
+      replicas: 2
+      # The SLO rules (slo chart) evaluate a 30-day window, so keep at least 31 days.
+      retention: 31d
+      # Keep size-based retention below the volume size so compaction and the WAL fit.
+      # Size this volume from the observed ingestion rate; when retentionSize is hit
+      # first, the 30-day SLO window is cut short.
+      retentionSize: 40GB
+      podAntiAffinity: hard
+      podAntiAffinityTopologyKey: kubernetes.io/hostname
+      # No storageClassName: the cluster default StorageClass is used.
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 50Gi
+      resources:
+        requests:
+          cpu: 500m
+          memory: 3Gi
+        limits:
+          memory: 6Gi
+
+  kube-state-metrics:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 384Mi
+
+  prometheus-node-exporter:
+    # RKE2 keeps its containerd state under /run/k3s/containerd and
+    # /var/lib/rancher/rke2/agent/containerd. Exclude those mount points as well as the
+    # upstream ones (this list replaces the upstream list).
+    extraArgs:
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/containerd/.+|run/k3s/containerd/.+|var/lib/docker/.+|var/lib/kubelet/.+|var/lib/rancher/rke2/agent/containerd/.+)($|/)
+      - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs|erofs)$
+    resources:
+      requests:
+        cpu: 50m
+        memory: 32Mi
+      limits:
+        memory: 128Mi

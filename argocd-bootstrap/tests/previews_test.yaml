@@ -1,0 +1,602 @@
+suite: pull request previews
+templates:
+  - templates/previews/projects.yaml
+  - templates/previews/applicationsets.yaml
+release:
+  name: argocd-bootstrap
+  namespace: argocd
+tests:
+  - it: renders nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders two AppProjects and two ApplicationSets when enabled
+    set:
+      toolchains.previews.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 2
+      - isKind:
+          of: AppProject
+        template: templates/previews/projects.yaml
+      - isKind:
+          of: ApplicationSet
+        template: templates/previews/applicationsets.yaml
+      - equal:
+          path: metadata.name
+          value: apps-preview
+        template: templates/previews/projects.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: preview-namespaces
+        template: templates/previews/projects.yaml
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: previews-namespaces
+        template: templates/previews/applicationsets.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: previews-apps
+        template: templates/previews/applicationsets.yaml
+        documentIndex: 1
+
+  - it: puts the projects in wave -1 without Prune=false or Delete=false
+    set:
+      toolchains.previews.enabled: true
+    template: templates/previews/projects.yaml
+    asserts:
+      - equal:
+          path: metadata.annotations
+          value:
+            argocd.argoproj.io/sync-wave: "-1"
+      - equal:
+          path: metadata.finalizers
+          value:
+            - resources-finalizer.argocd.argoproj.io
+      - equal:
+          path: metadata.namespace
+          value: argocd
+
+  - it: restricts apps-preview to pr-* namespaces, no cluster kinds and the apps blacklist
+    set:
+      toolchains.previews.enabled: true
+    template: templates/previews/projects.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.sourceRepos
+          value:
+            - https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap.git
+      - equal:
+          path: spec.destinations
+          value:
+            - namespace: pr-*
+              server: https://kubernetes.default.svc
+      - equal:
+          path: spec.clusterResourceWhitelist
+          value: []
+      - equal:
+          path: spec.namespaceResourceBlacklist
+          value:
+            - {group: "", kind: ResourceQuota}
+            - {group: "", kind: LimitRange}
+            - {group: rbac.authorization.k8s.io, kind: Role}
+            - {group: rbac.authorization.k8s.io, kind: RoleBinding}
+      - notExists:
+          path: spec.namespaceResourceWhitelist
+      - equal:
+          path: spec.roles[0].policies
+          value:
+            - p, proj:apps-preview:deployers, applications, get, apps-preview/*, allow
+            - p, proj:apps-preview:deployers, applications, sync, apps-preview/*, allow
+      - equal:
+          path: spec.roles[1].policies
+          value:
+            - p, proj:apps-preview:viewers, applications, get, apps-preview/*, allow
+
+  - it: limits preview-namespaces to the Namespace and the guardrail kinds
+    set:
+      toolchains.previews.enabled: true
+    template: templates/previews/projects.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.destinations
+          value:
+            - namespace: pr-*
+              server: https://kubernetes.default.svc
+      - equal:
+          path: spec.clusterResourceWhitelist
+          value:
+            - {group: "", kind: Namespace}
+      - equal:
+          path: spec.namespaceResourceWhitelist
+          value:
+            - {group: "", kind: ResourceQuota}
+            - {group: "", kind: LimitRange}
+            - {group: networking.k8s.io, kind: NetworkPolicy}
+      - lengthEqual:
+          path: spec.roles
+          count: 1
+      - equal:
+          path: spec.roles[0].name
+          value: viewers
+
+  - it: derives owner and repo from git.repoURL and uses tokenRef, labels and requeue
+    set:
+      toolchains.previews.enabled: true
+    template: templates/previews/applicationsets.yaml
+    asserts:
+      - equal:
+          path: spec.generators[0].pullRequest
+          value:
+            github:
+              owner: YOUR_ORG
+              repo: sk-k8s-devops-bootstrap
+              tokenRef:
+                secretName: github-previews
+                key: token
+              labels:
+                - preview
+            requeueAfterSeconds: 300
+        documentIndex: 0
+      - equal:
+          path: spec.generators[0].matrix.generators[0].pullRequest
+          value:
+            github:
+              owner: YOUR_ORG
+              repo: sk-k8s-devops-bootstrap
+              tokenRef:
+                secretName: github-previews
+                key: token
+              labels:
+                - preview
+            requeueAfterSeconds: 300
+        documentIndex: 1
+
+  - it: derives owner and repo from the SSH form of git.repoURL
+    set:
+      toolchains.previews.enabled: true
+      git.repoURL: git@github.com:example-org/platform.git
+    template: templates/previews/applicationsets.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.generators[0].pullRequest.github.owner
+          value: example-org
+      - equal:
+          path: spec.generators[0].pullRequest.github.repo
+          value: platform
+
+  - it: derives the repo from an HTTPS URL without .git
+    set:
+      toolchains.previews.enabled: true
+      git.repoURL: https://github.com/example-org/platform.repo
+    template: templates/previews/applicationsets.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.generators[0].pullRequest.github.repo
+          value: platform.repo
+
+  - it: uses explicit owner, repo, api and labels
+    set:
+      toolchains.previews.enabled: true
+      git.repoURL: https://git.example.com/scm/platform.git
+      previews.github.owner: example-org
+      previews.github.repo: platform
+      previews.github.api: https://github.example.com/api/v3
+      previews.github.labels: [preview, safe-to-deploy]
+      previews.requeueAfterSeconds: 120
+    template: templates/previews/applicationsets.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.generators[0].pullRequest
+          value:
+            github:
+              owner: example-org
+              repo: platform
+              api: https://github.example.com/api/v3
+              tokenRef:
+                secretName: github-previews
+                key: token
+              labels:
+                - preview
+                - safe-to-deploy
+            requeueAfterSeconds: 120
+
+  - it: replaces tokenRef with appSecretName
+    set:
+      toolchains.previews.enabled: true
+      previews.github.appSecretName: github-app-previews
+    template: templates/previews/applicationsets.yaml
+    asserts:
+      - equal:
+          path: spec.generators[0].pullRequest.github.appSecretName
+          value: github-app-previews
+        documentIndex: 0
+      - notExists:
+          path: spec.generators[0].pullRequest.github.tokenRef
+        documentIndex: 0
+      - equal:
+          path: spec.generators[0].matrix.generators[0].pullRequest.github.appSecretName
+          value: github-app-previews
+        documentIndex: 1
+      - notExists:
+          path: spec.generators[0].matrix.generators[0].pullRequest.github.tokenRef
+        documentIndex: 1
+
+  - it: deletes generated Applications with their resources
+    set:
+      toolchains.previews.enabled: true
+    template: templates/previews/applicationsets.yaml
+    asserts:
+      - equal:
+          path: spec.syncPolicy
+          value:
+            preserveResourcesOnDeletion: false
+      - equal:
+          path: spec.template.metadata.finalizers
+          value:
+            - resources-finalizer.argocd.argoproj.io
+      - equal:
+          path: spec.goTemplateOptions
+          value: ["missingkey=error"]
+      - equal:
+          path: metadata.annotations
+          value:
+            argocd.argoproj.io/sync-wave: "10"
+
+  - it: renders the namespace Application from targetRevision in project preview-namespaces
+    set:
+      toolchains.previews.enabled: true
+    template: templates/previews/applicationsets.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.metadata.name
+          value: pr-{{ .number }}-namespace
+      - equal:
+          path: spec.template.metadata.labels
+          value:
+            app.kubernetes.io/name: preview-namespace
+            app.kubernetes.io/part-of: previews
+            pull-request: "{{ .number }}"
+      - equal:
+          path: spec.template.spec.project
+          value: preview-namespaces
+      - equal:
+          path: spec.template.spec.source
+          value:
+            repoURL: https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap.git
+            targetRevision: main
+            path: helmcharts/app-charts/preview-namespace
+            helm:
+              releaseName: preview-namespace
+              valuesObject:
+                pullRequest: "{{ .number }}"
+                podSecurity:
+                  version: v1.36
+      - equal:
+          path: spec.template.spec.destination
+          value:
+            server: https://kubernetes.default.svc
+            namespace: pr-{{ .number }}
+      - equal:
+          path: spec.template.spec.syncPolicy.syncOptions
+          value:
+            - CreateNamespace=false
+            - ServerSideApply=true
+      - equal:
+          path: spec.template.spec.syncPolicy.automated
+          value:
+            prune: true
+            selfHeal: true
+
+  - it: merges previews.namespace.values under the platform keys
+    set:
+      toolchains.previews.enabled: true
+      previews.namespace.values:
+        pullRequest: "1"
+        quota:
+          pods: 20
+      toolchains.previews.values:
+        namespace:
+          values:
+            limitRange:
+              max:
+                memory: 2Gi
+    template: templates/previews/applicationsets.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.source.helm.valuesObject
+          value:
+            pullRequest: "{{ .number }}"
+            podSecurity:
+              version: v1.36
+            quota:
+              pods: 20
+            limitRange:
+              max:
+                memory: 2Gi
+
+  - it: renders the app Application from the pull request head commit
+    set:
+      toolchains.previews.enabled: true
+    template: templates/previews/applicationsets.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.generators[0].matrix.generators[1].list.elements
+          value:
+            - app: hello-api
+              chart: helmcharts/app-charts/hello-api
+              generatePaths: /helmcharts/app-charts/hello-api;/helmcharts/helm-common;/envs/dev/hello-api;/envs/preview/hello-api
+      - equal:
+          path: spec.template.metadata.name
+          value: pr-{{ .number }}-{{ .app }}
+      - equal:
+          path: spec.template.metadata.labels
+          value:
+            app.kubernetes.io/name: "{{ .app }}"
+            app.kubernetes.io/part-of: previews
+            pull-request: "{{ .number }}"
+      - equal:
+          path: spec.template.metadata.annotations
+          value:
+            argocd.argoproj.io/manifest-generate-paths: "{{ .generatePaths }}"
+      - equal:
+          path: spec.template.spec.project
+          value: apps-preview
+      - equal:
+          path: spec.template.spec.sources[0].repoURL
+          value: https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap.git
+      - equal:
+          path: spec.template.spec.sources[0].targetRevision
+          value: "{{ .head_sha }}"
+      - equal:
+          path: spec.template.spec.sources[0].path
+          value: "{{ .chart }}"
+      - equal:
+          path: spec.template.spec.sources[0].helm.valueFiles
+          value:
+            - values.yaml
+            - $values/envs/dev/{{ .app }}/values.yaml
+            - $values/envs/preview/{{ .app }}/values.yaml
+      - equal:
+          path: spec.template.spec.sources[0].helm.ignoreMissingValueFiles
+          value: true
+      - equal:
+          path: spec.template.spec.sources[1]
+          value:
+            repoURL: https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap.git
+            targetRevision: "{{ .head_sha }}"
+            ref: values
+      - equal:
+          path: spec.template.spec.destination
+          value:
+            server: https://kubernetes.default.svc
+            namespace: pr-{{ .number }}
+      - equal:
+          path: spec.template.spec.syncPolicy.syncOptions
+          value:
+            - CreateNamespace=false
+            - ServerSideApply=true
+            - PruneLast=true
+      - equal:
+          path: spec.template.spec.syncPolicy.retry.limit
+          value: 10
+
+  - it: leaves the hostname to helm-common in nested style and keeps the dev image
+    set:
+      toolchains.previews.enabled: true
+    template: templates/previews/applicationsets.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.template.spec.sources[0].helm.valuesObject
+          value:
+            global:
+              environment: pr-{{ .number }}
+              domain: localtest.me
+              cluster: lab
+              profile: lab
+              imageRegistry: ghcr.io/your-org
+
+  - it: sets a flat hostname under the base domain
+    set:
+      toolchains.previews.enabled: true
+      previews.hostnameStyle: flat
+    template: templates/previews/applicationsets.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.template.spec.sources[0].helm.valuesObject.route
+          value:
+            hostnames:
+              - "{{ .app }}-pr-{{ .number }}.localtest.me"
+      - notExists:
+          path: spec.template.spec.sources[0].helm.valuesObject.image
+
+  - it: takes settings from toolchains.previews.values over previews
+    set:
+      toolchains.previews.enabled: true
+      toolchains.previews.values:
+        hostnameStyle: flat
+        requeueAfterSeconds: 60
+    template: templates/previews/applicationsets.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.template.spec.sources[0].helm.valuesObject.route.hostnames
+          value:
+            - "{{ .app }}-pr-{{ .number }}.localtest.me"
+      - equal:
+          path: spec.generators[0].matrix.generators[0].pullRequest.requeueAfterSeconds
+          value: 60
+
+  - it: pins the image to the head commit with tagFromHeadSha
+    set:
+      toolchains.previews.enabled: true
+      previews.image.tagFromHeadSha: true
+    template: templates/previews/applicationsets.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.template.spec.sources[0].helm.valuesObject.image
+          value:
+            tag: sha-{{ .head_sha }}
+            digest: ""
+      - notExists:
+          path: spec.template.spec.sources[0].helm.valuesObject.route
+
+  - it: renders one list element per app
+    set:
+      toolchains.previews.enabled: true
+      previews.apps:
+        - name: hello-api
+          chart: ./helmcharts/app-charts/hello-api/
+        - name: web
+          chart: helmcharts/app-charts/web
+    template: templates/previews/applicationsets.yaml
+    documentIndex: 1
+    asserts:
+      - lengthEqual:
+          path: spec.generators[0].matrix.generators[1].list.elements
+          count: 2
+      - equal:
+          path: spec.generators[0].matrix.generators[1].list.elements[0].chart
+          value: helmcharts/app-charts/hello-api
+      - equal:
+          path: spec.generators[0].matrix.generators[1].list.elements[1].generatePaths
+          value: /helmcharts/app-charts/web;/helmcharts/helm-common;/envs/dev/web;/envs/preview/web
+
+  - it: prefixes names and targets the registered cluster in hub mode
+    set:
+      toolchains.previews.enabled: true
+      cluster.name: nonprod
+      cluster.destination.name: nonprod
+    asserts:
+      - equal:
+          path: metadata.name
+          value: nonprod-apps-preview
+        template: templates/previews/projects.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.destinations
+          value:
+            - namespace: pr-*
+              name: nonprod
+        template: templates/previews/projects.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: nonprod-preview-namespaces
+        template: templates/previews/projects.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.roles[0].policies[0]
+          value: p, proj:nonprod-preview-namespaces:viewers, applications, get, nonprod-preview-namespaces/*, allow
+        template: templates/previews/projects.yaml
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: nonprod-previews-namespaces
+        template: templates/previews/applicationsets.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.template.metadata.name
+          value: nonprod-pr-{{ .number }}-namespace
+        template: templates/previews/applicationsets.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.project
+          value: nonprod-preview-namespaces
+        template: templates/previews/applicationsets.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.destination
+          value:
+            name: nonprod
+            namespace: pr-{{ .number }}
+        template: templates/previews/applicationsets.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: nonprod-previews-apps
+        template: templates/previews/applicationsets.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.name
+          value: nonprod-pr-{{ .number }}-{{ .app }}
+        template: templates/previews/applicationsets.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.project
+          value: nonprod-apps-preview
+        template: templates/previews/applicationsets.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.destination
+          value:
+            name: nonprod
+            namespace: pr-{{ .number }}
+        template: templates/previews/applicationsets.yaml
+        documentIndex: 1
+
+  - it: fails on an unknown hostnameStyle
+    set:
+      toolchains.previews.enabled: true
+      previews.hostnameStyle: deep
+    template: templates/previews/applicationsets.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "previews.hostnameStyle must be nested or flat"
+
+  - it: fails when the owner cannot be derived from a non-GitHub repoURL
+    set:
+      toolchains.previews.enabled: true
+      git.repoURL: https://git.example.com/scm/platform.git
+    template: templates/previews/applicationsets.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "cannot derive the GitHub owner and repository from git.repoURL"
+
+  - it: fails on an app name that is not a DNS label
+    set:
+      toolchains.previews.enabled: true
+      previews.apps:
+        - name: Hello_API
+          chart: helmcharts/app-charts/hello-api
+    template: templates/previews/applicationsets.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "previews.apps: invalid name"
+
+  - it: fails on a duplicate app name
+    set:
+      toolchains.previews.enabled: true
+      previews.apps:
+        - name: hello-api
+          chart: helmcharts/app-charts/hello-api
+        - name: hello-api
+          chart: helmcharts/app-charts/hello-api
+    template: templates/previews/applicationsets.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "previews.apps: duplicate name"
+
+  - it: fails without a label gate
+    set:
+      toolchains.previews.enabled: true
+      previews.github.labels: []
+    template: templates/previews/applicationsets.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "previews.github.labels must name at least one label"

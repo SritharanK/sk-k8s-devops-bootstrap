@@ -1,0 +1,11 @@
+---
+# Jenkins hosts get the OS baseline only. base_kubernetes_node is already false for hosts outside
+# k8s_cluster (group_vars/all/main.yml); it is repeated here so the intent is visible next to the
+# Jenkins variables.
+#
+# Jenkins settings and secrets are scoped to this group so they never reach cluster nodes. Templates
+# live with the role: copy roles/install_jenkins/examples/group_vars/jenkins/vars.yml.example to
+# vars.yml and vault.yml.example to vault.yml in this directory, then encrypt vault.yml with
+#   ansible-vault encrypt --vault-id reference@prompt inventories/reference/group_vars/jenkins/vault.yml
+# vault.yml is gitignored.
+base_kubernetes_node: false

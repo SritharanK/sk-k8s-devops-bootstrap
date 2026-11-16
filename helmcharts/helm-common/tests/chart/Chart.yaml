@@ -1,0 +1,10 @@
+apiVersion: v2
+name: helm-common-test
+description: Test chart that renders every helm-common template for helm-unittest.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+dependencies:
+  - name: helm-common
+    version: 2.1.0
+    repository: file://../..

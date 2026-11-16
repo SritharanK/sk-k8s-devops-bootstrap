@@ -1,0 +1,98 @@
+suite: kargo toolchain
+templates:
+  - templates/toolchains/kargo.yaml
+  - templates/apps/applications.yaml
+  - templates/projects/platform.yaml
+release:
+  name: argocd-bootstrap
+  namespace: argocd
+tests:
+  - it: renders nothing and no authorization while kargo is off
+    template: templates/apps/applications.yaml
+    asserts:
+      - notExists:
+          path: metadata.annotations["kargo.akuity.io/authorized-stage"]
+
+  - it: renders the kargo and kargo-pipelines Applications in waves 4 and 11
+    template: templates/toolchains/kargo.yaml
+    set:
+      toolchains.kargo.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "4"
+        documentIndex: 0
+      - equal:
+          path: spec.source.helm.valuesObject.kargo.api.host
+          value: kargo.localtest.me
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "11"
+        documentIndex: 1
+      - equal:
+          path: spec.source.helm.valuesObject.apps[0].stages[2]
+          value: {name: prod, namespace: prod, application: hello-api-prod}
+        documentIndex: 1
+      - equal:
+          path: spec.source.helm.valuesObject.verification.enabled
+          value: false
+        documentIndex: 1
+
+  - it: authorizes each stage on its Application when kargo is on
+    template: templates/apps/applications.yaml
+    set:
+      toolchains.kargo.enabled: true
+    asserts:
+      - equal:
+          path: metadata.annotations["kargo.akuity.io/authorized-stage"]
+          value: kargo-hello-api:dev
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["kargo.akuity.io/authorized-stage"]
+          value: kargo-hello-api:prod
+        documentIndex: 2
+
+  - it: authorizes nothing when only the pipelines are off
+    template: templates/apps/applications.yaml
+    set:
+      toolchains.kargo.enabled: true
+      toolchains.kargo.pipelines.enabled: false
+    asserts:
+      - notExists:
+          path: metadata.annotations["kargo.akuity.io/authorized-stage"]
+
+  - it: adds the Project namespaces to the platform project
+    template: templates/projects/platform.yaml
+    set:
+      toolchains.kargo.enabled: true
+    asserts:
+      - contains:
+          path: spec.destinations
+          content: {namespace: kargo-hello-api, server: https://kubernetes.default.svc}
+      - contains:
+          path: spec.clusterResourceWhitelist
+          content: {group: kargo.akuity.io, kind: Project}
+
+  - it: turns verification on with argo-rollouts and monitoring
+    template: templates/toolchains/kargo.yaml
+    set:
+      toolchains.kargo.enabled: true
+      toolchains.argo-rollouts.enabled: true
+      toolchains.monitoring.enabled: true
+    asserts:
+      - equal:
+          path: spec.source.helm.valuesObject.verification.enabled
+          value: true
+        documentIndex: 1
+
+  - it: refuses verification without argo-rollouts
+    template: templates/toolchains/kargo.yaml
+    set:
+      toolchains.kargo.enabled: true
+      toolchains.kargo.pipelines.values.verification.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: needs the argo-rollouts toolchain

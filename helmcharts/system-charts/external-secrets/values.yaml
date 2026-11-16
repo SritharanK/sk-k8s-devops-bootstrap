@@ -1,0 +1,118 @@
+external-secrets:
+  # Fixed resource names. The OpenBao Kubernetes auth role binds to the
+  # ServiceAccount external-secrets in namespace external-secrets.
+  fullnameOverride: external-secrets
+
+  # The CRDs are templates of this release. Setting this to false removes
+  # them from the render, Argo CD prunes them and every ExternalSecret,
+  # SecretStore and PushSecret is garbage collected. templates/guards.yaml
+  # fails rendering if it is false.
+  installCRDs: true
+  crds:
+    annotations:
+      # Never prune or delete the CRDs from Argo CD.
+      argocd.argoproj.io/sync-options: Prune=false,Delete=false
+
+  # Only needed for the Bitwarden Secrets Manager provider.
+  bitwarden-sdk-server:
+    enabled: false
+
+  # Pod Security Standards "restricted" is enforced on the namespace. The
+  # upstream chart renders podSecurityContext only when it has keys besides
+  # "enabled".
+  podSecurityContext:
+    enabled: true
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    enabled: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # Both probes are off upstream. Enabling either starts the health server
+  # on port 8082.
+  livenessProbe:
+    enabled: true
+  readinessProbe:
+    enabled: true
+
+  webhook:
+    # Serving certificate is issued and rotated by the bundled cert-controller,
+    # so this release does not depend on cert-manager being synced first.
+    certManager:
+      enabled: false
+    podSecurityContext:
+      enabled: true
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      enabled: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 1000
+      seccompProfile:
+        type: RuntimeDefault
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+    livenessProbe:
+      enabled: true
+    readinessProbe:
+      enabled: true
+
+  certController:
+    podSecurityContext:
+      enabled: true
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      enabled: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 1000
+      seccompProfile:
+        type: RuntimeDefault
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+    livenessProbe:
+      enabled: true
+    readinessProbe:
+      enabled: true
+
+  # Metrics endpoints stay at upstream defaults. ServiceMonitors are owned by
+  # the observability design.
+  serviceMonitor:
+    enabled: false

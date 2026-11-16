@@ -1,0 +1,15 @@
+apiVersion: v2
+name: sealed-secrets
+description: Sealed Secrets controller, wrapper around the upstream chart
+type: application
+version: 0.1.0
+appVersion: "0.41.2"
+kubeVersion: ">=1.35.0-0"
+home: https://github.com/bitnami/sealed-secrets
+sources:
+  - https://github.com/bitnami/sealed-secrets
+  - https://github.com/bitnami/sealed-secrets/tree/main/helm/sealed-secrets
+dependencies:
+  - name: sealed-secrets
+    version: "2.22.0"
+    repository: https://bitnami.github.io/sealed-secrets

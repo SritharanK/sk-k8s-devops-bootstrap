@@ -1,0 +1,48 @@
+---
+# Reference inventory: three RKE2 servers behind a registration address, plus agents.
+# Either render hosts.yml from infra/hetzner (tofu output -raw ansible_inventory) or copy this file to
+# hosts.yml in this directory (gitignored) and replace every CHANGE_ME.
+# The addresses below come from documentation and private ranges; use your own.
+all:
+  vars:
+    # Non-root user with key-based login and passwordless sudo.
+    ansible_user: CHANGE_ME
+    # Private network of the nodes; source for kubelet, CNI, supervisor and etcd ports.
+    firewall_node_cidrs: [CHANGE_ME]
+    # Networks allowed to reach SSH, for example your admin network 192.0.2.0/24.
+    firewall_ssh_cidrs: [CHANGE_ME]
+    # Extra sources allowed to reach the Kubernetes API on 6443, besides the node network.
+    firewall_api_cidrs: []
+    # Registration address used when rke2.registrationAddress in clusters/reference/cluster.yaml is
+    # empty: the private address of the load balancer or the kube-vip VIP.
+    infra_registration_address: CHANGE_ME
+    # Address written into the fetched kubeconfig, for example the load balancer's public address.
+    rke2_api_endpoint: ""
+    # Extra API server certificate SANs, for example a DNS name such as api.reference.example.com.
+    rke2_tls_san_extra: []
+  children:
+    k8s_cluster:
+      children:
+        rke2_servers:
+          hosts:
+            reference-server-1:
+              ansible_host: 192.0.2.21
+              rke2_node_ip: 10.20.0.10
+            reference-server-2:
+              ansible_host: 192.0.2.22
+              rke2_node_ip: 10.20.0.11
+            reference-server-3:
+              ansible_host: 192.0.2.23
+              rke2_node_ip: 10.20.0.12
+        rke2_agents:
+          hosts:
+            reference-agent-1:
+              ansible_host: 192.0.2.31
+              rke2_node_ip: 10.20.0.20
+            reference-agent-2:
+              ansible_host: 192.0.2.32
+              rke2_node_ip: 10.20.0.21
+    nfs_server:
+      hosts: {}
+    jenkins:
+      hosts: {}

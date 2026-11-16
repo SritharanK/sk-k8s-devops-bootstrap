@@ -1,0 +1,120 @@
+# Pods under test. run.sh replaces each <image:CASE> with the digest
+# reference of that case in the local registry and writes the result as
+# resources.yaml. Images are referenced by digest: verifyDigest is on, and the
+# CLI does not perform the admission-time tag to digest mutation.
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pass
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      image: <image:pass>
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pass-with-unmatched-image
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      image: <image:pass>
+    # Outside imageVerification.registries: not verified by this policy.
+    - name: sidecar
+      image: docker.io/library/busybox:1.37.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: accepted-risk
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      image: <image:accepted>
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: critical
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      image: <image:critical>
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: critical-init
+  namespace: prod
+spec:
+  initContainers:
+    - name: init
+      image: <image:critical>
+  containers:
+    - name: app
+      image: <image:pass>
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unfixed
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      image: <image:unfixed>
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: stale
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      image: <image:stale>
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: missing
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      image: <image:missing>
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: foreign-attestation
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      image: <image:foreign>
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: renewed
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      image: <image:renewed>
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: regressed
+  namespace: prod
+spec:
+  containers:
+    - name: app
+      image: <image:regressed>

@@ -1,0 +1,55 @@
+nfs-subdir-external-provisioner:
+  nfs:
+    # NFS server address, set per cluster.
+    server: CHANGE_ME
+    # Export root. Every volume becomes a subdirectory of this path.
+    path: /srv/nfs
+    # With mountOptions set, the chart mounts the export into the provisioner
+    # through a static PersistentVolume and PersistentVolumeClaim instead of
+    # an inline nfs volume. The same options apply to provisioned volumes.
+    mountOptions:
+      - nfsvers=4.1
+
+  storageClass:
+    create: true
+    name: nfs
+    # Never the default StorageClass, so no claim lands on the share by
+    # accident. Workloads opt in with storageClassName: nfs.
+    defaultClass: false
+    # Pinned so the StorageClass and the provisioned-by annotation on every
+    # PersistentVolume do not depend on the release name (immutable field).
+    provisionerName: cluster.local/nfs-subdir-external-provisioner
+    reclaimPolicy: Delete
+    # On PVC deletion the directory is renamed archived-<name> on the share
+    # instead of removed. Archived directories are cleaned up by hand.
+    archiveOnDelete: true
+    allowVolumeExpansion: true
+    # Also used for the static PV and PVC that mount the export root.
+    accessModes: ReadWriteMany
+
+  # Empty on purpose: the provisioner runs on any worker node.
+  nodeSelector: {}
+
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+  # The namespace runs Pod Security Standards "baseline" (set by the
+  # toolchain Application). Not forced to non-root: the provisioner creates,
+  # chmods and renames directories on the export as the container user, and
+  # the upstream image sets no USER (UID 0). A non-root UID only works when
+  # the export root is owned by that UID or squashed to it on the server.
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    # The provisioner writes only to the NFS export mounted at /persistentvolumes.
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL

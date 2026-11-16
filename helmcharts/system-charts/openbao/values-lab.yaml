@@ -1,0 +1,22 @@
+# lab: the toolchain is not deployed in this profile. These values render a
+# single-node Raft cluster (not dev mode) without audit volume, disruption
+# budget or ClusterSecretStore, for trying the chart on a single-node cluster
+# such as kind.
+clusterSecretStore:
+  enabled: false
+
+openbao:
+  server:
+    # Never allowed, in any profile. templates/guards.yaml fails otherwise.
+    dev:
+      enabled: false
+    ha:
+      replicas: 1
+      # With one replica the upstream budget is maxUnavailable 0, which blocks
+      # every node drain.
+      disruptionBudget:
+        enabled: false
+    dataStorage:
+      size: 1Gi
+    auditStorage:
+      enabled: false

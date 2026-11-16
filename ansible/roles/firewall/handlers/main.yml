@@ -1,0 +1,15 @@
+---
+# Restart runs first when both are notified: a changed unit needs a daemon reload before anything else.
+- name: Restart rke2 host firewall
+  ansible.builtin.systemd_service:
+    name: "{{ firewall__unit_name }}"
+    state: restarted
+    daemon_reload: true
+  when: not ansible_check_mode or firewall__unit_name in ansible_facts['services']
+
+# nft -f replaces the table in one transaction, so a reload never leaves the host without rules.
+- name: Reload rke2 host firewall
+  ansible.builtin.systemd_service:
+    name: "{{ firewall__unit_name }}"
+    state: reloaded
+  when: not ansible_check_mode or firewall__unit_name in ansible_facts['services']

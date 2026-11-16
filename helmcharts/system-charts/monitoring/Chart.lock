@@ -1,0 +1,9 @@
+dependencies:
+- name: prometheus-operator-crds
+  repository: oci://ghcr.io/prometheus-community/charts
+  version: 33.0.2
+- name: kube-prometheus-stack
+  repository: oci://ghcr.io/prometheus-community/charts
+  version: 93.3.0
+digest: sha256:825a8c29ba376cc0fedd9c2283802a029e175a0906f00b1ca03ef8e34cd7f83a
+generated: "2026-11-16T01:14:07.277402+01:00"

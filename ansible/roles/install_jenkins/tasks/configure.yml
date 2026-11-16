@@ -1,0 +1,99 @@
+---
+# Directories, configuration as code, secret files and the systemd drop-in.
+# Configuration files belong to root and are only readable by the jenkins
+# group, so the service account cannot change its own configuration.
+
+- name: Ensure the Jenkins home directory is private to the service account
+  ansible.builtin.file:
+    path: "{{ install_jenkins_home }}"
+    state: directory
+    owner: "{{ install_jenkins_user }}"
+    group: "{{ install_jenkins_group }}"
+    mode: "0750"
+
+- name: Ensure the plugin directory exists
+  ansible.builtin.file:
+    path: "{{ install_jenkins_home }}/plugins"
+    state: directory
+    owner: "{{ install_jenkins_user }}"
+    group: "{{ install_jenkins_group }}"
+    mode: "0750"
+
+- name: Ensure the configuration directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: "{{ install_jenkins_group }}"
+    mode: "0750"
+  loop:
+    - "{{ install_jenkins_config_dir }}"
+    - "{{ install_jenkins_casc_dir }}"
+
+- name: Ensure the secret directory is accessible to the service account only
+  ansible.builtin.file:
+    path: "{{ install_jenkins_casc_secrets_dir }}"
+    state: directory
+    owner: "{{ install_jenkins_user }}"
+    group: "{{ install_jenkins_group }}"
+    mode: "0700"
+
+- name: Render the configuration as code file
+  ansible.builtin.template:
+    src: jenkins.yaml.j2
+    dest: "{{ install_jenkins_casc_dir }}/jenkins.yaml"
+    owner: root
+    group: "{{ install_jenkins_group }}"
+    mode: "0640"
+  notify: Restart Jenkins
+
+# One file per secret, read by the configuration as code directory secret
+# source (SECRETS). Leading and trailing whitespace is removed and no
+# trailing newline is written, so a value from a YAML block scalar and from
+# a quoted string produce the same file.
+- name: Write one file per secret of the active configuration
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.vars', item.value) | string | trim }}"
+    dest: "{{ install_jenkins_casc_secrets_dir }}/{{ item.key }}"
+    owner: "{{ install_jenkins_user }}"
+    group: "{{ install_jenkins_group }}"
+    mode: "0400"
+  loop: "{{ __jenkins_secret_vars | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  no_log: true
+  diff: false
+  notify: Restart Jenkins
+
+- name: Write one file per Argo CD token of the promotion health gate
+  ansible.builtin.copy:
+    content: "{{ item.value | string | trim }}"
+    dest: "{{ install_jenkins_casc_secrets_dir }}/argocd_token_{{ item.key }}"
+    owner: "{{ install_jenkins_user }}"
+    group: "{{ install_jenkins_group }}"
+    mode: "0400"
+  loop: "{{ (install_jenkins_argocd_tokens | default({})) | dict2items if (install_jenkins_argocd_server | length > 0) else [] }}"
+  loop_control:
+    label: "{{ item.key }}"
+  no_log: true
+  diff: false
+  notify: Restart Jenkins
+
+- name: Ensure the systemd drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/jenkins.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the systemd drop-in for the Jenkins unit
+  ansible.builtin.template:
+    src: override.conf.j2
+    dest: /etc/systemd/system/jenkins.service.d/override.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd units
+    - Restart Jenkins

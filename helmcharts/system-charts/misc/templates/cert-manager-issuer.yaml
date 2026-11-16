@@ -1,0 +1,153 @@
+{{- /*
+cert-manager ClusterIssuers. The names selfsigned, letsencrypt-staging and
+letsencrypt are a contract: other components select them through
+platform.issuer. The CRDs come from the cert-manager Application, so every
+object here skips the Argo CD dry run while those CRDs are missing.
+*/}}
+{{- $issuers := .Values.issuers }}
+{{- if $issuers.selfsigned.enabled }}
+{{- $ca := $issuers.selfsigned.rootCA }}
+---
+# Bootstrap issuer. It only signs the platform root CA certificate below.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-bootstrap
+  labels:
+    {{- include "misc.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  selfSigned: {}
+---
+# Platform root CA. It lives in the cert-manager namespace because a CA
+# ClusterIssuer reads its key pair from the cluster resource namespace.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-root-ca
+  namespace: {{ required "certManager.namespace is required" .Values.certManager.namespace }}
+  labels:
+    {{- include "misc.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  isCA: true
+  commonName: {{ $ca.commonName | quote }}
+  secretName: {{ $ca.secretName }}
+  duration: {{ $ca.duration }}
+  renewBefore: {{ $ca.renewBefore }}
+  privateKey:
+    algorithm: {{ $ca.privateKey.algorithm }}
+    size: {{ $ca.privateKey.size | int }}
+    rotationPolicy: Always
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: selfsigned-bootstrap
+---
+# CA issuer named "selfsigned" for the contract: it signs with the root CA above.
+# Clients trust its certificates only after they import that root CA.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+  labels:
+    {{- include "misc.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  ca:
+    secretName: {{ $ca.secretName }}
+{{- end }}
+{{- /*
+ACME issuers, one solver chosen by issuers.acme.solver (platform.acme.solver).
+http01 uses a Gateway API HTTPRoute on the platform Gateway listener and cannot
+issue wildcard certificates. dns01 builds the cert-manager provider block from
+issuers.acme.dns01 = {provider, config, credentialsSecretRef}: config holds the
+non-secret provider fields, and credentialsSecretRef becomes the Secret
+reference field of that provider. Inline secret values fail the render.
+*/}}
+{{- $acmeCfg := $issuers.acme }}
+{{- $solver := $acmeCfg.solver | default "http01" }}
+{{- if not (has $solver (list "http01" "dns01")) }}
+{{- fail (printf "issuers.acme.solver is %q: use http01 or dns01" $solver) }}
+{{- end }}
+{{- $dnsProvider := "" }}
+{{- $dnsBlock := dict }}
+{{- if and (eq $solver "dns01") (or $issuers.letsencrypt.enabled $issuers.letsencryptStaging.enabled) }}
+{{- $d := $acmeCfg.dns01 | default dict }}
+{{- $dnsProvider = required "issuers.acme.dns01.provider is required when the ACME solver is dns01" $d.provider }}
+{{- /* Secret reference field per provider (cert-manager v1 API). akamai needs
+three references and webhook solvers carry their own config, so both take
+their references in config instead. */}}
+{{- $credentialField := dict
+      "acmeDNS" "accountSecretRef"
+      "azureDNS" "clientSecretSecretRef"
+      "cloudDNS" "serviceAccountSecretRef"
+      "cloudflare" "apiTokenSecretRef"
+      "digitalocean" "tokenSecretRef"
+      "rfc2136" "tsigSecretSecretRef"
+      "route53" "secretAccessKeySecretRef" }}
+{{- if not (has $dnsProvider (list "acmeDNS" "akamai" "azureDNS" "cloudDNS" "cloudflare" "digitalocean" "rfc2136" "route53" "webhook")) }}
+{{- fail (printf "issuers.acme.dns01.provider %q is not a cert-manager DNS-01 provider" $dnsProvider) }}
+{{- end }}
+{{- $dnsBlock = deepCopy ($d.config | default dict) }}
+{{- if regexMatch "(?im)^\\s*([a-z0-9]+(password|secret|token|key)|password|secret|token)\\s*:\\s*[^\\s{]" (toYaml $dnsBlock) }}
+{{- fail "issuers.acme.dns01.config must not hold secret values; reference them through credentialsSecretRef or a *SecretRef field" }}
+{{- end }}
+{{- with $d.credentialsSecretRef }}
+{{- $field := get $credentialField $dnsProvider }}
+{{- if not $field }}
+{{- fail (printf "the %s provider takes its Secret references in issuers.acme.dns01.config, not in credentialsSecretRef" $dnsProvider) }}
+{{- end }}
+{{- $_ := set $dnsBlock $field (dict
+      "name" (required "credentialsSecretRef.name is required" .name)
+      "key" (required "credentialsSecretRef.key is required" .key)) }}
+{{- end }}
+{{- end }}
+{{- $acme := dict "letsencrypt-staging" $issuers.letsencryptStaging "letsencrypt" $issuers.letsencrypt }}
+{{- range $name, $issuer := $acme }}
+{{- if $issuer.enabled }}
+{{- /* Test only: issuers.acme.server and caBundle redirect the staging issuer
+to a test ACME server. The production issuer always uses its own server. */}}
+{{- $server := $issuer.server }}
+{{- $caBundle := "" }}
+{{- if eq $name "letsencrypt-staging" }}
+{{- $server = $acmeCfg.server | default $server }}
+{{- $caBundle = $acmeCfg.caBundle | default "" }}
+{{- end }}
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "misc.labels" $ | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  acme:
+    email: {{ required "certManager.email is required: the ACME issuers register an account with it" $.Values.certManager.email | quote }}
+    server: {{ required (printf "the server URL of the %s issuer is required" $name) $server }}
+    {{- with $caBundle }}
+    caBundle: {{ . }}
+    {{- end }}
+    privateKeySecretRef:
+      name: {{ $name }}-account-key
+    solvers:
+      {{- if eq $solver "http01" }}
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - name: {{ required "gateway.name is required" $.Values.gateway.name }}
+                namespace: {{ required "gateway.namespace is required" $.Values.gateway.namespace }}
+                kind: Gateway
+                sectionName: {{ required "gateway.sectionName is required" $.Values.gateway.sectionName }}
+      {{- else }}
+      - dns01:
+          {{ $dnsProvider }}:
+            {{- toYaml $dnsBlock | nindent 12 }}
+      {{- end }}
+{{- end }}
+{{- end }}

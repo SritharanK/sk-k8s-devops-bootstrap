@@ -1,0 +1,24 @@
+# Patterns to ignore when packaging the chart.
+# Test chart and helm-unittest suites
+tests/
+# Documentation template
+README.md.gotmpl
+# Packaged charts
+*.tgz
+# Version control
+.git/
+.gitignore
+# Operating system files
+.DS_Store
+Thumbs.db
+# Editor files
+*.swp
+*.swo
+*.bak
+*.tmp
+*.orig
+*~
+.idea/
+.vscode/
+*.tmproj
+.project

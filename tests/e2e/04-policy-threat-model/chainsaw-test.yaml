@@ -1,0 +1,218 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/v0.2.15/.schemas/json/test-chainsaw-v1alpha1.json
+#
+# Threat-model cases, each a pod that is otherwise compliant with the policy
+# contract and differs in one control:
+#   privileged  securityContext.privileged true (the API requires
+#               allowPrivilegeEscalation true with it)
+#   root        runAsUser 0, runAsNonRoot false
+#   latest      image tag :latest
+# Every case must be denied in stage and in prod (one scenario each). The
+# denial message of each case is kept as an output and printed with the layer
+# that produced it, as evidence for the threat model.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: policy-threat-model
+spec:
+  description: Privileged, root and latest-tag pods are denied in stage and prod, and the admission layer that denied each one is recorded.
+  concurrent: false
+  scenarios:
+    - name: stage
+      bindings:
+        - name: env
+          value: stage
+    - name: prod
+      bindings:
+        - name: env
+          value: prod
+  catch:
+    - script:
+        env:
+          - name: TARGET_NAMESPACE
+            value: ($env)
+        content: |
+          kubectl get namespace "${TARGET_NAMESPACE}" --show-labels
+          kubectl get pods -n "${TARGET_NAMESPACE}" -l app.kubernetes.io/part-of=lab-e2e
+  steps:
+    - name: threat-cases-denied
+      try:
+        - script:
+            content: bash ../lib/hello-api-image.sh dev
+            outputs:
+              - name: hello
+                value: (json_parse($stdout))
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: e2e-threat-privileged
+                namespace: ($env)
+                labels:
+                  app.kubernetes.io/part-of: lab-e2e
+              spec:
+                automountServiceAccountToken: false
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 65532
+                  runAsGroup: 65532
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: app
+                    image: ($hello.image)
+                    imagePullPolicy: Never
+                    ports:
+                      - name: http
+                        containerPort: 8080
+                    securityContext:
+                      privileged: true
+                      allowPrivilegeEscalation: true
+                      runAsNonRoot: true
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                        drop:
+                          - ALL
+                      seccompProfile:
+                        type: RuntimeDefault
+                    resources:
+                      requests:
+                        cpu: 25m
+                        memory: 32Mi
+                      limits:
+                        cpu: 250m
+                        memory: 96Mi
+                    readinessProbe:
+                      httpGet:
+                        path: /readyz
+                        port: http
+                    livenessProbe:
+                      httpGet:
+                        path: /healthz
+                        port: http
+            expect:
+              - check:
+                  ($error != null): true
+            outputs:
+              - name: privilegedError
+                value: ($error)
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: e2e-threat-root
+                namespace: ($env)
+                labels:
+                  app.kubernetes.io/part-of: lab-e2e
+              spec:
+                automountServiceAccountToken: false
+                securityContext:
+                  runAsNonRoot: false
+                  runAsUser: 0
+                  runAsGroup: 0
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: app
+                    image: ($hello.image)
+                    imagePullPolicy: Never
+                    ports:
+                      - name: http
+                        containerPort: 8080
+                    securityContext:
+                      runAsNonRoot: false
+                      runAsUser: 0
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                        drop:
+                          - ALL
+                      seccompProfile:
+                        type: RuntimeDefault
+                    resources:
+                      requests:
+                        cpu: 25m
+                        memory: 32Mi
+                      limits:
+                        cpu: 250m
+                        memory: 96Mi
+                    readinessProbe:
+                      httpGet:
+                        path: /readyz
+                        port: http
+                    livenessProbe:
+                      httpGet:
+                        path: /healthz
+                        port: http
+            expect:
+              - check:
+                  ($error != null): true
+            outputs:
+              - name: rootError
+                value: ($error)
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: e2e-threat-latest
+                namespace: ($env)
+                labels:
+                  app.kubernetes.io/part-of: lab-e2e
+              spec:
+                automountServiceAccountToken: false
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 65532
+                  runAsGroup: 65532
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: app
+                    image: ($hello.latest)
+                    imagePullPolicy: Never
+                    ports:
+                      - name: http
+                        containerPort: 8080
+                    securityContext:
+                      runAsNonRoot: true
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                        drop:
+                          - ALL
+                      seccompProfile:
+                        type: RuntimeDefault
+                    resources:
+                      requests:
+                        cpu: 25m
+                        memory: 32Mi
+                      limits:
+                        cpu: 250m
+                        memory: 96Mi
+                    readinessProbe:
+                      httpGet:
+                        path: /readyz
+                        port: http
+                    livenessProbe:
+                      httpGet:
+                        path: /healthz
+                        port: http
+            expect:
+              - check:
+                  ($error != null): true
+            outputs:
+              - name: latestError
+                value: ($error)
+        - script:
+            env:
+              - name: TARGET_NAMESPACE
+                value: ($env)
+              - name: PRIVILEGED_ERROR
+                value: ($privilegedError)
+              - name: ROOT_ERROR
+                value: ($rootError)
+              - name: LATEST_ERROR
+                value: ($latestError)
+            content: bash ../lib/denial-layer.sh

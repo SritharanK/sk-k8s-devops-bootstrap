@@ -1,0 +1,78 @@
+---
+- name: Assert that the node network CIDRs are set
+  ansible.builtin.assert:
+    that:
+      - firewall_node_cidrs is sequence
+      - firewall_node_cidrs is not string
+      - firewall_node_cidrs | length > 0
+      - firewall_node_cidrs | map('string') | select('search', 'CHANGE_ME') | list | length == 0
+    fail_msg: >-
+      firewall_node_cidrs must list the private node network CIDRs, for example [10.10.0.0/24].
+      Set it in the inventory (all.vars in hosts.yml).
+    quiet: true
+
+- name: Assert that the SSH sources are set
+  ansible.builtin.assert:
+    that:
+      - firewall_ssh_cidrs is sequence
+      - firewall_ssh_cidrs is not string
+      - firewall_ssh_cidrs | length > 0
+      - firewall_ssh_cidrs | map('string') | select('search', 'CHANGE_ME') | list | length == 0
+    fail_msg: >-
+      firewall_ssh_cidrs must list the networks allowed to reach SSH. With an empty list the firewall would block
+      every new SSH session, including the next Ansible run.
+    quiet: true
+
+- name: Assert that the extra rules are well formed
+  ansible.builtin.assert:
+    that:
+      - firewall_extra_rules is sequence
+      - firewall_extra_rules is not string
+      - firewall__bad_extra_rules | length == 0
+    fail_msg: >-
+      Each firewall_extra_rules item needs port (a number or "start-end"), proto (tcp or udp), sources (a non-empty
+      list of CIDRs) and comment (at most 100 characters, no double quotes). Invalid: {{ firewall__bad_extra_rules }}
+    quiet: true
+  vars:
+    firewall__bad_extra_rules: >-
+      {%- set ns = namespace(bad=[]) -%}
+      {%- for rule in firewall_extra_rules -%}
+      {%-   if rule is not mapping
+              or rule['port'] is not defined or (rule['port'] | string) is not match('^[0-9]+(-[0-9]+)?$')
+              or rule['proto'] | default('') not in ['tcp', 'udp']
+              or rule['sources'] is not defined or rule['sources'] is string or rule['sources'] | length == 0
+              or rule['comment'] is not defined or rule['comment'] | length > 100 or '"' in rule['comment'] -%}
+      {%-     set ns.bad = ns.bad + [rule] -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ ns.bad }}
+
+- name: Assert that the ingress ports are numbers or ranges
+  ansible.builtin.assert:
+    that:
+      - firewall_ingress_ports is sequence
+      - firewall_ingress_ports is not string
+      - firewall_ingress_ports | map('string') | reject('match', '^[0-9]+(-[0-9]+)?$') | list | length == 0
+    fail_msg: >-
+      firewall_ingress_ports must list port numbers or "start-end" ranges, got {{ firewall_ingress_ports }}.
+    quiet: true
+
+- name: Assert that every source is an IP address or CIDR
+  ansible.builtin.assert:
+    that: firewall__invalid_sources | length == 0
+    fail_msg: >-
+      These sources are not IP addresses or CIDRs: {{ firewall__invalid_sources | join(', ') }}.
+      For etcd, set rke2_node_ip on the servers or set firewall_etcd_sources.
+    quiet: true
+  vars:
+    firewall__invalid_sources: >-
+      {{ firewall__source_names | map('extract', firewall__sources) | flatten | map('string')
+         | reject('match', firewall__address_pattern) | unique | list }}
+
+- name: Assert that a server has etcd sources
+  ansible.builtin.assert:
+    that: firewall__etcd_sources | length > 0
+    fail_msg: >-
+      No etcd sources: the group '{{ firewall_servers_group }}' has no hosts and firewall_etcd_sources is empty.
+    quiet: true
+  when: firewall_node_role == 'server'

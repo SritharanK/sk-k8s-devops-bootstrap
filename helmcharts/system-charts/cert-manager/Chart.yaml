@@ -1,0 +1,14 @@
+apiVersion: v2
+name: cert-manager
+description: cert-manager with CRDs, Gateway API support and the platform ClusterIssuers
+type: application
+version: 0.1.0
+appVersion: v1.21.3
+kubeVersion: ">=1.35.0-0"
+home: https://cert-manager.io/
+sources:
+  - https://github.com/cert-manager/cert-manager
+dependencies:
+  - name: cert-manager
+    version: v1.21.3
+    repository: oci://quay.io/jetstack/charts

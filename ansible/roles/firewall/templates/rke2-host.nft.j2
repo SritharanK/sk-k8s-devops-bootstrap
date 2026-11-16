@@ -1,0 +1,55 @@
+{{ ansible_managed | comment }}
+# Host input firewall, loaded by {{ firewall__unit_name }}.
+# Node role: {{ firewall_node_role }}
+# CNI: {{ firewall_cni if firewall_node_role in ['server', 'agent'] else 'none (no cluster rules)' }}
+#
+# Only the input hook is filtered. This table has no forward or output chain and the file never flushes the ruleset,
+# so the rules that the CNI and kube-proxy keep in their own tables stay intact.
+
+# Declare the table so that the delete below cannot fail on the first load. nft -f applies the file as one
+# transaction, so the table is replaced atomically.
+table inet rke2_host
+delete table inet rke2_host
+
+table inet rke2_host {
+{% for name in firewall__source_names %}
+{%   for family, address_type, elements in [('v4', 'ipv4_addr', firewall__sets_v4[name]),
+                                            ('v6', 'ipv6_addr', firewall__sets_v6[name])] if elements %}
+    set {{ name }}_{{ family }} {
+        type {{ address_type }}
+        flags interval
+        auto-merge
+        elements = { {{ elements | join(', ') }} }
+    }
+
+{%   endfor %}
+{% endfor %}
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        ct state established,related accept comment "Established and related connections"
+        ct state invalid drop comment "Invalid connection state"
+        iif "lo" accept comment "Loopback"
+        icmp type { echo-request, destination-unreachable, time-exceeded, parameter-problem } accept comment "ICMP"
+        icmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded, parameter-problem } accept comment "ICMPv6"
+        icmpv6 type { nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept comment "ICMPv6: neighbour discovery"
+        ip6 saddr fe80::/10 icmpv6 type { mld-listener-query, mld-listener-report, mld2-listener-report } accept comment "ICMPv6: multicast listener discovery"
+        ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept comment "DHCPv6 replies from link-local servers"
+{% if firewall_node_role in ['server', 'agent'] %}
+{%   for interface in firewall__cni_interfaces %}
+        iifname "{{ interface }}" accept comment "CNI interface {{ interface }}"
+{%   endfor %}
+{% endif %}
+{% for rule in firewall__rules %}
+{%   for family, keyword, elements in [('v4', 'ip', firewall__sets_v4[rule['source']]),
+                                       ('v6', 'ip6', firewall__sets_v6[rule['source']])]
+       if elements and family in rule['families'] | default(['v4', 'v6']) %}
+        {{ [keyword ~ ' saddr @' ~ rule['source'] ~ '_' ~ family, rule['match'], 'accept'] | select | join(' ') }} comment "{{ rule['comment'] }}"
+{%   endfor %}
+{% endfor %}
+{% if firewall_log_dropped | bool %}
+        limit rate {{ firewall_log_rate }} log prefix "{{ firewall__log_prefix }}" comment "Log dropped packets, rate limited"
+{% endif %}
+        counter drop comment "Drop everything else"
+    }
+}

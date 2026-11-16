@@ -1,0 +1,16 @@
+---
+# Debian family: Ubuntu 24.04 and Debian 13. Loaded by tasks/main.yml.
+# Internal variables keep the role's jenkins_ namespace (see README.md).
+
+# Java 21 runtime and the font libraries Jenkins needs for headless rendering.
+__jenkins_runtime_packages:  # noqa: var-naming[no-role-prefix]
+  - openjdk-21-jre-headless
+  - fontconfig
+
+# apt selects an exact version with name=version.
+__jenkins_package_spec: "jenkins={{ install_jenkins_version }}"  # noqa: var-naming[no-role-prefix]
+
+# LTS repository and the signing key used since LTS 2.541.1. The key file is
+# checked against install_jenkins_repo_key_sha256 before apt trusts it.
+__jenkins_repo_url: https://pkg.jenkins.io/debian-stable  # noqa: var-naming[no-role-prefix]
+__jenkins_repo_key_url: https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key  # noqa: var-naming[no-role-prefix]

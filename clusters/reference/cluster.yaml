@@ -1,0 +1,100 @@
+# yaml-language-server: $schema=../schema.json
+#
+# Cluster definition for the reference profile: one RKE2 HA cluster with three
+# servers behind a VIP, CIS profile and etcd snapshots to S3.
+# Non-secret. Read by Ansible (vars_files) and by the root Argo CD Application
+# (extra Helm values file after argocd-bootstrap/values.yaml).
+# Replace every CHANGE_ME, YOUR_ORG and example.com value before a real
+# install; make validate-config STRICT=1 fails while any remains.
+---
+cluster:
+  name: reference
+  profile: reference
+  domain: platform.example.com
+  kubernetesMinor: "1.36"
+  environments: [dev, stage, prod]
+
+git:
+  repoURL: https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap.git
+  targetRevision: main
+
+rke2:
+  version: v1.36.6+rke2r1
+  channel: stable
+  cni: canal
+  podCidr: 10.42.0.0/16
+  serviceCidr: 10.43.0.0/16
+  registrationAddress: CHANGE_ME  # VIP or load balancer in front of the three servers
+  cisProfile: true
+  etcdSnapshots:
+    schedule: "0 */6 * * *"
+    retention: 28
+    s3:
+      enabled: true
+      endpoint: CHANGE_ME
+      bucket: CHANGE_ME
+      folder: reference
+      region: CHANGE_ME
+
+namespaces:
+  argocd: argocd
+  dev: dev
+  stage: stage
+  prod: prod
+  gateway: envoy-gateway-system
+  certManager: cert-manager
+  kyverno: kyverno
+  monitoring: monitoring
+
+platform:
+  certManagerEmail: platform@example.com
+  # Let's Encrypt with HTTP-01 through the Gateway http listener: one
+  # certificate (Secret platform-tls) for the explicit names below, no
+  # wildcard. Use letsencrypt-staging for a first install to stay clear of
+  # the production rate limits. For a wildcard, set acme.solver: dns01 and
+  # an acme.dns01 provider block instead.
+  issuer: letsencrypt
+  acme:
+    solver: http01
+  gateway:
+    hostnames:
+      - argocd.platform.example.com
+      - grafana.platform.example.com
+      - kargo.platform.example.com
+      - hello-api.dev.platform.example.com
+      - hello-api.stage.platform.example.com
+      - hello-api.prod.platform.example.com
+  imageRegistry: ghcr.io/your-org  # lowercase: image references allow no capitals
+  groups:
+    admins: platform-admins
+    deployers: deployers
+    viewers: viewers
+
+# Per-profile toolchain switches. Defaults live in
+# argocd-bootstrap/values.yaml; set only the deltas for this cluster here.
+# Secrets come from OpenBao through External Secrets Operator (docs/adr/0006-sealed-secrets-and-eso-with-openbao.md).
+toolchains:
+  sealed-secrets: {enabled: false}
+  external-secrets: {enabled: true}
+  openbao: {enabled: true}
+  # RKE2 ships no StorageClass. Longhorn is the default class of this profile
+  # (the base role installs its node prerequisites); OpenBao and every other
+  # PersistentVolumeClaim without a class bind to it.
+  longhorn: {enabled: true}
+  # Metrics, dashboards and alerting (Grafana at grafana.<domain>; admin
+  # credentials, Alertmanager receivers and the Grafana OIDC client in
+  # helmcharts/system-charts/monitoring/values-reference.yaml and OpenBao).
+  # The app Applications enable the ServiceMonitor of every app.
+  monitoring: {enabled: true}
+  # Canary analysis. Its ClusterAnalysisTemplate success-rate also verifies
+  # every Kargo promotion.
+  argo-rollouts: {enabled: true}
+  # Kargo promotion orchestration (docs/adr/0012-kargo-promotion.md): SSO
+  # (issuer and client IDs in helmcharts/system-charts/kargo/values-reference.yaml),
+  # Git credential from OpenBao (platform/kargo/git). One pipeline per app;
+  # dev auto-promotes, stage and prod are manual, prod through a pull
+  # request. Verification runs because argo-rollouts and monitoring are
+  # enabled above. With Kargo enabled here, build-image.yml and promote.yml
+  # stop writing the environment files unless the repository variable
+  # PROMOTION_ENGINE says workflows.
+  kargo: {enabled: true}

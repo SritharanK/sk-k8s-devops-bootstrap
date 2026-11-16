@@ -1,0 +1,238 @@
+suite: NetworkPolicy
+templates:
+  - templates/networkpolicy.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: renders nothing without a route, metrics or extra rules
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: allows the Gateway namespace to the Service targetPort when the route is enabled
+    set:
+      route.enabled: true
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+      - equal:
+          path: apiVersion
+          value: networking.k8s.io/v1
+      - equal:
+          path: metadata.namespace
+          value: dev
+      - equal:
+          path: spec.podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: helm-common-test
+            app.kubernetes.io/instance: web
+      - equal:
+          path: spec.policyTypes
+          value:
+            - Ingress
+      - equal:
+          path: spec.ingress
+          value:
+            - from:
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: envoy-gateway-system
+              ports:
+                - port: http
+                  protocol: TCP
+      - notExists:
+          path: spec.egress
+
+  - it: uses a numeric targetPort and the protocol of the first service port
+    set:
+      route.enabled: true
+      service.ports:
+        - name: web
+          port: 80
+          targetPort: 8080
+          protocol: TCP
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports
+          value:
+            - port: 8080
+              protocol: TCP
+
+  - it: falls back to the service port when targetPort is not set
+    set:
+      route.enabled: true
+      service.ports:
+        - name: web
+          port: 8080
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports
+          value:
+            - port: 8080
+              protocol: TCP
+
+  - it: allows the monitoring namespace to the metrics port when the ServiceMonitor is enabled
+    set:
+      metrics.serviceMonitor.enabled: true
+    asserts:
+      - equal:
+          path: spec.ingress
+          value:
+            - from:
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: monitoring
+              ports:
+                - port: http
+                  protocol: TCP
+
+  - it: uses the targetPort of the service port named by metrics.serviceMonitor.port
+    set:
+      metrics.serviceMonitor.enabled: true
+      metrics.serviceMonitor.port: metrics
+      service.ports:
+        - name: http
+          port: 80
+          targetPort: http
+        - name: metrics
+          port: 9090
+          targetPort: 9090
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports
+          value:
+            - port: 9090
+              protocol: TCP
+
+  - it: fails when no service port matches the ServiceMonitor port
+    set:
+      metrics.serviceMonitor.enabled: true
+      metrics.serviceMonitor.port: metrics
+    asserts:
+      - failedTemplate:
+          errorPattern: "no entry in service.ports is named \"metrics\""
+
+  - it: renders the Gateway rule before the monitoring rule
+    set:
+      route.enabled: true
+      metrics.serviceMonitor.enabled: true
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: envoy-gateway-system
+      - equal:
+          path: spec.ingress[1].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: monitoring
+
+  - it: uses custom Gateway and monitoring namespaces
+    set:
+      route.enabled: true
+      metrics.serviceMonitor.enabled: true
+      networkPolicy.gatewayNamespace: gateway-system
+      networkPolicy.monitoringNamespace: observability
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: gateway-system
+      - equal:
+          path: spec.ingress[1].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: observability
+
+  - it: appends extraIngress after the generated rules
+    set:
+      route.enabled: true
+      networkPolicy.extraIngress:
+        - from:
+            - podSelector:
+                matchLabels:
+                  role: client
+          ports:
+            - port: 8080
+              protocol: TCP
+    asserts:
+      - equal:
+          path: spec.ingress[1]
+          value:
+            from:
+              - podSelector:
+                  matchLabels:
+                    role: client
+            ports:
+              - port: 8080
+                protocol: TCP
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: envoy-gateway-system
+
+  - it: renders extraIngress alone
+    set:
+      networkPolicy.extraIngress:
+        - from:
+            - podSelector:
+                matchLabels:
+                  role: client
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.ingress
+          value:
+            - from:
+                - podSelector:
+                    matchLabels:
+                      role: client
+
+  - it: adds the Egress policy type when egress rules are set
+    set:
+      route.enabled: true
+      networkPolicy.egress:
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: database
+          ports:
+            - port: 5432
+              protocol: TCP
+    asserts:
+      - equal:
+          path: spec.policyTypes
+          value:
+            - Ingress
+            - Egress
+      - equal:
+          path: spec.egress
+          value:
+            - to:
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: database
+              ports:
+                - port: 5432
+                  protocol: TCP
+
+  - it: renders egress alone with an empty ingress list
+    set:
+      networkPolicy.egress:
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: database
+    asserts:
+      - equal:
+          path: spec.policyTypes
+          value:
+            - Ingress
+            - Egress
+      - equal:
+          path: spec.ingress
+          value: []
+
+  - it: renders nothing when disabled
+    set:
+      networkPolicy.enabled: false
+      route.enabled: true
+      metrics.serviceMonitor.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0

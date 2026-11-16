@@ -1,0 +1,37 @@
+---
+# Handlers run first: they apply the CIS kernel parameters and restart a running service whose binary or
+# configuration changed. A service that was not running is started by the next task instead, so a fresh
+# node starts once. Both operations block until RKE2 reports ready to systemd (Type=notify), bounded by
+# rke2_service_start_timeout, and finish before the readiness wait below.
+- name: Apply pending handlers before the readiness wait
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start {{ rke2__service_unit }}
+  ansible.builtin.systemd_service:
+    name: "{{ rke2__service_unit }}"
+    enabled: true
+    state: started
+  async: "{{ rke2_service_start_timeout | int }}"
+  poll: 10
+
+# Agents have no admin kubeconfig, so their check runs on the bootstrap server.
+- name: Wait until the node reports Ready
+  ansible.builtin.command:
+    argv:
+      - "{{ rke2__kubectl }}"
+      - --kubeconfig
+      - "{{ rke2__kubeconfig_remote }}"
+      - get
+      - node
+      - "{{ rke2__node_name }}"
+      - --output
+      - 'jsonpath={.status.conditions[?(@.type=="Ready")].status}'
+  delegate_to: "{{ rke2_bootstrap_host if rke2__node_type == 'agent' else inventory_hostname }}"
+  register: rke2__node_ready
+  retries: "{{ rke2_node_ready_retries | int }}"
+  delay: "{{ rke2_node_ready_delay | int }}"
+  until: rke2__node_ready.rc == 0 and rke2__node_ready.stdout == 'True'
+  changed_when: false
+  failed_when: rke2__node_ready.rc != 0 or rke2__node_ready.stdout != 'True'
+  check_mode: false
+  when: not ansible_check_mode or rke2__service_was_active | default(false) | bool

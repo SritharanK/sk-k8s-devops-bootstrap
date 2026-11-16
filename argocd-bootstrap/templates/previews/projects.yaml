@@ -1,0 +1,97 @@
+{{- /*
+Pull request previews (toolchains.previews.enabled): one AppProject per
+trust level.
+
+apps-preview holds the workloads. Chart, values and envs/ files come from the
+pull request head commit, which is untrusted input. The project allows the
+pr-* namespaces only, no cluster-scoped kinds, and blacklists the same
+namespaced kinds as the apps-<env> projects (quota, limits, RBAC).
+
+preview-namespaces holds the guardrails: the Namespace with Pod Security
+labels, its ResourceQuota, LimitRange and NetworkPolicies. The
+previews-namespaces ApplicationSet renders them from git.targetRevision, so a
+pull request cannot change them.
+
+The split is the point: if one project allowed both, a pull request could
+render its own Namespace without Pod Security labels or raise its own quota.
+
+Neither project carries Prune=false,Delete=false: disabling previews prunes
+the ApplicationSets, which deletes their Applications, and both projects. The
+project finalizer keeps each project until its last Application is gone.
+*/ -}}
+{{- if dig "previews" "enabled" false .Values.toolchains }}
+{{- $apps := include "argocd-bootstrap.name" (list . "apps-preview") }}
+{{- $namespaces := include "argocd-bootstrap.name" (list . "preview-namespaces") }}
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ $apps }}
+  namespace: {{ .Values.namespaces.argocd }}
+  labels:
+    {{- include "argocd-bootstrap.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Pull request previews of cluster {{ .Values.cluster.name }}, built from the pull request head commit (untrusted).
+  sourceRepos:
+    - {{ .Values.git.repoURL }}
+  destinations:
+    - namespace: "pr-*"
+      {{- include "argocd-bootstrap.destination" . | nindent 6 }}
+  clusterResourceWhitelist: []
+  namespaceResourceBlacklist:
+    {{- toYaml .Values.projects.apps.namespaceResourceBlacklist | nindent 4 }}
+  roles:
+    - name: deployers
+      description: Members of the deployers group may view and sync.
+      groups:
+        - {{ .Values.platform.groups.deployers }}
+      policies:
+        - p, proj:{{ $apps }}:deployers, applications, get, {{ $apps }}/*, allow
+        - p, proj:{{ $apps }}:deployers, applications, sync, {{ $apps }}/*, allow
+    - name: viewers
+      description: Read-only access.
+      groups:
+        - {{ .Values.platform.groups.viewers }}
+      policies:
+        - p, proj:{{ $apps }}:viewers, applications, get, {{ $apps }}/*, allow
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ $namespaces }}
+  namespace: {{ .Values.namespaces.argocd }}
+  labels:
+    {{- include "argocd-bootstrap.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Platform guardrails of the pull request preview namespaces of cluster {{ .Values.cluster.name }}, rendered from {{ .Values.git.targetRevision }}.
+  sourceRepos:
+    - {{ .Values.git.repoURL }}
+  destinations:
+    - namespace: "pr-*"
+      {{- include "argocd-bootstrap.destination" . | nindent 6 }}
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+  roles:
+    - name: viewers
+      description: Read-only access to the preview namespace Applications.
+      groups:
+        - {{ .Values.platform.groups.viewers }}
+        - {{ .Values.platform.groups.deployers }}
+      policies:
+        - p, proj:{{ $namespaces }}:viewers, applications, get, {{ $namespaces }}/*, allow
+{{- end }}

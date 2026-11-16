@@ -1,0 +1,23 @@
+# Kyverno CLI test of the same gate rendered with ignoreUnfixed: true. run.sh
+# copies it as kyverno-test.yaml next to a second render; see test.yaml for
+# the cases and why the file has another name. Only the cases that depend on
+# ignoreUnfixed are listed.
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: vuln-attestation-ignore-unfixed
+policies: [policies.yaml]
+resources: [resources.yaml]
+variables: values.yaml
+results:
+  - isImageValidatingPolicy: true
+    policy: verify-image-signatures-enforce
+    kind: Pod
+    result: pass
+    resources: [pass, unfixed]
+  - isImageValidatingPolicy: true
+    policy: verify-image-signatures-enforce
+    kind: Pod
+    result: fail
+    resources: [critical]

@@ -1,0 +1,17 @@
+{{- /*
+PriorityClasses from .Values.priorityClasses. globalDefault is always false:
+a pod without priorityClassName keeps priority 0.
+*/}}
+{{- range .Values.priorityClasses }}
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ required "priorityClasses[].name is required" .name }}
+  labels:
+    {{- include "misc.labels" $ | nindent 4 }}
+value: {{ required (printf "priorityClasses[%s].value is required" .name) .value | int64 }}
+globalDefault: false
+preemptionPolicy: {{ .preemptionPolicy | default "PreemptLowerPriority" }}
+description: {{ required (printf "priorityClasses[%s].description is required" .name) .description | quote }}
+{{- end }}

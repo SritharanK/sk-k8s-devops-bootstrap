@@ -1,0 +1,150 @@
+# Backstage software catalog descriptors of this repository.
+#
+# Register the file in a Backstage instance (catalog.locations, or "Register
+# existing component" with the URL of this file on the default branch). The
+# owner refers to the platform administrators group of the cluster
+# definitions (platform.groups.admins); a fork replaces it with its own team.
+#
+# TechDocs: the documentation is the MkDocs site of this repository
+# (mkdocs.yml, docs/). backstage.io/techdocs-ref dir:. builds it from the
+# repository root; the System owns it and the other entities point at it with
+# backstage.io/techdocs-entity.
+#
+# Validated by `make lint-catalog` (also part of `make lint` and CI).
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform-admins
+  title: Platform administrators
+  description: >-
+    Maintainers of the platform. The group name equals platform.groups.admins
+    in clusters/<name>/cluster.yaml, which grants admin roles in Argo CD and
+    Kargo.
+spec:
+  type: team
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: k8s-platform
+  title: Kubernetes platform bootstrap
+  description: >-
+    RKE2 provisioning, an Argo CD app of apps, Gateway API, Kyverno admission
+    policies, secrets, observability, promotion and a sample service.
+  annotations:
+    github.com/project-slug: SritharanK/sk-k8s-devops-bootstrap
+    backstage.io/techdocs-ref: dir:.
+  links:
+    - url: https://sritharank.github.io/sk-k8s-devops-bootstrap/
+      title: Documentation site
+      icon: docs
+    - url: https://github.com/SritharanK/sk-k8s-devops-bootstrap
+      title: Repository
+      icon: github
+  tags: [kubernetes, gitops, argocd, platform]
+spec:
+  owner: group:default/platform-admins
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: hello-api
+  title: hello-api
+  description: >-
+    Sample Go HTTP service that exercises the workload contract: probes,
+    Prometheus metrics, structured logs, optional tracing, non-root
+    distroless image. Deployed to dev, stage and prod by Argo CD.
+  annotations:
+    github.com/project-slug: SritharanK/sk-k8s-devops-bootstrap
+    backstage.io/source-location: url:https://github.com/SritharanK/sk-k8s-devops-bootstrap/tree/main/sample-services/hello-api/
+    backstage.io/techdocs-entity: system:default/k8s-platform
+    # Pods and Argo CD Applications of hello-api carry this label.
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=hello-api
+    argocd/app-selector: app.kubernetes.io/name=hello-api
+  links:
+    - url: https://github.com/SritharanK/sk-k8s-devops-bootstrap/tree/main/helmcharts/app-charts/hello-api
+      title: Helm chart
+  tags: [go, http, sample]
+spec:
+  type: service
+  lifecycle: experimental
+  owner: group:default/platform-admins
+  system: system:default/k8s-platform
+  providesApis:
+    - api:default/hello-api
+  dependsOn:
+    - component:default/helm-common
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: hello-api
+  title: hello-api HTTP API
+  description: Greeting, liveness, readiness and metrics endpoints of hello-api.
+  annotations:
+    backstage.io/techdocs-entity: system:default/k8s-platform
+  tags: [rest]
+spec:
+  type: openapi
+  lifecycle: experimental
+  owner: group:default/platform-admins
+  system: system:default/k8s-platform
+  definition:
+    $text: ./sample-services/hello-api/openapi.yaml
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: helm-common
+  title: helm-common library chart
+  description: >-
+    Shared Helm library chart for applications: Deployment, Service,
+    HTTPRoute, NetworkPolicy, probes, security context, autoscaling and the
+    optional Argo Rollouts canary.
+  annotations:
+    github.com/project-slug: SritharanK/sk-k8s-devops-bootstrap
+    backstage.io/source-location: url:https://github.com/SritharanK/sk-k8s-devops-bootstrap/tree/main/helmcharts/helm-common/
+    backstage.io/techdocs-entity: system:default/k8s-platform
+  tags: [helm]
+spec:
+  type: library
+  lifecycle: production
+  owner: group:default/platform-admins
+  system: system:default/k8s-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: argocd-bootstrap
+  title: argocd-bootstrap chart
+  description: >-
+    Root chart of the app of apps: AppProjects, one Application per platform
+    toolchain and one per application and environment, rendered from
+    clusters/<name>/cluster.yaml.
+  annotations:
+    backstage.io/source-location: url:https://github.com/SritharanK/sk-k8s-devops-bootstrap/tree/main/argocd-bootstrap/
+    backstage.io/techdocs-entity: system:default/k8s-platform
+  tags: [helm, argocd]
+spec:
+  type: helm-chart
+  owner: group:default/platform-admins
+  system: system:default/k8s-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: system-charts
+  title: Platform wrapper charts
+  description: >-
+    Wrapper charts under helmcharts/system-charts, one per platform toolchain,
+    each pinned to an upstream chart version.
+  annotations:
+    backstage.io/source-location: url:https://github.com/SritharanK/sk-k8s-devops-bootstrap/tree/main/helmcharts/system-charts/
+    backstage.io/techdocs-entity: system:default/k8s-platform
+  tags: [helm]
+spec:
+  type: helm-chart
+  owner: group:default/platform-admins
+  system: system:default/k8s-platform

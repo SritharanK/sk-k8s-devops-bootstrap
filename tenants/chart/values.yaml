@@ -1,0 +1,68 @@
+# Values for the tenant chart.
+#
+# Precedence, lowest first (Argo CD: valueFiles < valuesObject):
+#   1. this file;
+#   2. tenants/<name>.yaml, the tenant definition (schema: tenants/schema.json);
+#   3. the ApplicationSet's valuesObject: namespaces, cluster and components.
+# Section 3 is owned by the platform and always overrides the tenant file, so
+# a tenant file cannot move its namespaces, project or cluster.
+#
+# Maps are merged key by key: a quota or limitRange key set here applies
+# unless the tenant file sets the same key.
+---
+# -- Tenant section (tenants/<name>.yaml) -------------------------------------
+
+# Tenant name (required). Namespaces are tenant-<name>-<env>.
+name: ""
+# Shown on the tenant AppProject.
+description: ""
+# Identity provider groups (required).
+groups:
+  admins: ""
+  viewers: ""
+# Environments to create a namespace for (required).
+environments: []
+# Repositories the tenant AppProject may deploy from (required).
+sourceRepos: []
+# ResourceQuota hard limits per namespace. The defaults deny Services of
+# type LoadBalancer and NodePort; a tenant file may raise them on review.
+quota:
+  services.loadbalancers: 0
+  services.nodeports: 0
+# LimitRange container defaults per namespace.
+limitRange:
+  default:
+    cpu: 500m
+    memory: 512Mi
+  defaultRequest:
+    cpu: 100m
+    memory: 128Mi
+network:
+  # IPv4 ranges outside the cluster the tenant's pods may reach.
+  allowEgressCidrs: []
+
+# -- Platform section (ApplicationSet valuesObject) ---------------------------
+
+namespaces:
+  # Namespace of Argo CD, where the tenant AppProject lives.
+  argocd: argocd
+  # Namespace of the gateway data plane. Informational: applications allow
+  # ingress from it in their own NetworkPolicy.
+  gateway: envoy-gateway-system
+
+cluster:
+  # Cluster name; prefixes the AppProject name in hub mode.
+  name: lab
+  # Kubernetes minor version pinned in the Pod Security labels.
+  kubernetesMinor: "1.36"
+  # Argo CD destination. in-cluster (or no name) renders the local API
+  # server; any other name is a cluster registered in a hub Argo CD.
+  destination:
+    name: in-cluster
+
+# Which parts to render. In hub mode the ApplicationSet renders the AppProject
+# (hub cluster) and the namespaced objects (remote cluster) as two
+# Applications; otherwise one Application renders both.
+components:
+  namespaces: true
+  project: true

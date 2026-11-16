@@ -1,0 +1,15 @@
+apiVersion: v2
+name: hello-api
+description: Sample HTTP service that exercises the platform workload contract.
+type: application
+version: 0.2.0
+appVersion: "0.1.0"
+home: https://github.com/SritharanK/sk-k8s-devops-bootstrap
+sources:
+  - https://github.com/SritharanK/sk-k8s-devops-bootstrap/tree/main/sample-services/hello-api
+maintainers:
+  - name: Sritharan K
+dependencies:
+  - name: helm-common
+    version: 2.1.0
+    repository: file://../../helm-common

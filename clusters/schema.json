@@ -1,0 +1,647 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap/clusters/schema.json",
+  "title": "Cluster definition",
+  "description": "One file per cluster at clusters/<name>/cluster.yaml. Read by Ansible through vars_files and by the root Argo CD Application as an extra Helm values file. Holds no secrets.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cluster",
+    "git",
+    "namespaces",
+    "platform"
+  ],
+  "properties": {
+    "cluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "profile",
+        "domain",
+        "kubernetesMinor"
+      ],
+      "properties": {
+        "name": {
+          "description": "Cluster name. Must equal the directory name under clusters/.",
+          "$ref": "#/$defs/dnsLabel",
+          "maxLength": 30
+        },
+        "profile": {
+          "description": "lab: kind or a single node. reference: RKE2 HA cluster.",
+          "enum": [
+            "lab",
+            "reference"
+          ]
+        },
+        "domain": {
+          "description": "Base DNS domain. Routes use <app>.<env>.<domain> and argocd.<domain>.",
+          "$ref": "#/$defs/dnsName"
+        },
+        "kubernetesMinor": {
+          "description": "Kubernetes minor version the manifests are rendered and validated for.",
+          "type": "string",
+          "pattern": "^1\\.[0-9]{2}$"
+        },
+        "destination": {
+          "description": "Argo CD destination for this cluster. Omit for the cluster Argo CD runs in. Set name to a registered cluster for hub mode.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name"
+          ],
+          "properties": {
+            "name": {
+              "description": "Argo CD cluster name as registered in the hub (argocd cluster add --name). in-cluster means the local cluster.",
+              "$ref": "#/$defs/dnsLabel"
+            }
+          }
+        },
+        "environments": {
+          "description": "Application environments hosted by this cluster. Defaults to dev, stage and prod.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/environment"
+          }
+        }
+      }
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repoURL",
+        "targetRevision"
+      ],
+      "properties": {
+        "repoURL": {
+          "description": "Repository Argo CD reads. One URL form everywhere (HTTPS or SSH).",
+          "type": "string",
+          "pattern": "^(https://[^\\s]+|ssh://[^\\s]+|git@[^\\s:]+:[^\\s]+)$"
+        },
+        "targetRevision": {
+          "description": "Branch, tag or commit SHA.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\\s]+$"
+        }
+      }
+    },
+    "rke2": {
+      "description": "Read by Ansible only. Helm ignores this section.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "channel",
+        "cni",
+        "podCidr",
+        "serviceCidr"
+      ],
+      "properties": {
+        "version": {
+          "description": "Exact RKE2 release, for example v1.36.6+rke2r1. Preflight rejects CHANGE_ME.",
+          "type": "string",
+          "pattern": "^(v1\\.[0-9]+\\.[0-9]+\\+rke2r[0-9]+|CHANGE_ME)$"
+        },
+        "channel": {
+          "type": "string",
+          "pattern": "^(stable|latest|testing|v1\\.[0-9]+)$"
+        },
+        "cni": {
+          "enum": [
+            "canal",
+            "calico",
+            "cilium"
+          ]
+        },
+        "podCidr": {
+          "$ref": "#/$defs/ipv4Cidr"
+        },
+        "serviceCidr": {
+          "$ref": "#/$defs/ipv4Cidr"
+        },
+        "registrationAddress": {
+          "description": "VIP or load balancer address for HA. Empty for a single server.",
+          "type": "string",
+          "pattern": "^$|^CHANGE_ME$|^[A-Za-z0-9.:-]+$"
+        },
+        "cisProfile": {
+          "type": "boolean"
+        },
+        "etcdSnapshots": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "schedule": {
+              "description": "Cron expression with five fields.",
+              "type": "string",
+              "pattern": "^\\S+( \\S+){4}$"
+            },
+            "retention": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "s3": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "enabled"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "endpoint": {
+                  "type": "string"
+                },
+                "bucket": {
+                  "type": "string"
+                },
+                "folder": {
+                  "type": "string"
+                },
+                "region": {
+                  "type": "string"
+                }
+              },
+              "if": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "endpoint": {
+                    "minLength": 1
+                  },
+                  "bucket": {
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "endpoint",
+                  "bucket"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "namespaces": {
+      "description": "Namespace names. Keys other than the required ones are allowed for additional components.",
+      "type": "object",
+      "required": [
+        "argocd",
+        "dev",
+        "stage",
+        "prod",
+        "gateway",
+        "certManager",
+        "kyverno",
+        "monitoring"
+      ],
+      "propertyNames": {
+        "pattern": "^[a-z][A-Za-z0-9]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/dnsLabel"
+      }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "certManagerEmail",
+        "issuer",
+        "imageRegistry",
+        "groups"
+      ],
+      "properties": {
+        "certManagerEmail": {
+          "type": "string",
+          "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        },
+        "issuer": {
+          "enum": [
+            "selfsigned",
+            "letsencrypt-staging",
+            "letsencrypt"
+          ],
+          "description": "ClusterIssuer of the platform-tls certificate. selfsigned is CA-backed (lab). ACME issuers need acme.solver and, for http01, gateway.hostnames."
+        },
+        "imageRegistry": {
+          "description": "Registry host and namespace for owned images, lowercase as image references require, for example ghcr.io/your-org. Applications receive it as global.imageRegistry.",
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]+)?(/[a-z0-9]+((\\.|_|__|-+)[a-z0-9]+)*)*$"
+        },
+        "groups": {
+          "description": "Identity provider group names mapped to platform roles.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "admins",
+            "deployers",
+            "viewers"
+          ],
+          "properties": {
+            "admins": {
+              "$ref": "#/$defs/groupName"
+            },
+            "deployers": {
+              "$ref": "#/$defs/groupName"
+            },
+            "viewers": {
+              "$ref": "#/$defs/groupName"
+            }
+          }
+        },
+        "acme": {
+          "description": "ACME settings, used when issuer is letsencrypt-staging or letsencrypt.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "solver": {
+              "description": "http01 (default): certificate for the explicit gateway.hostnames, solved through the Gateway http listener. dns01: wildcard certificate for <domain>, *.<domain> and *.<env>.<domain>.",
+              "enum": [
+                "http01",
+                "dns01"
+              ],
+              "default": "http01"
+            },
+            "dns01": {
+              "description": "DNS-01 provider block. Non-secret settings only; credentials come from a Secret in the cert-manager namespace referenced by credentialsSecretRef.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "provider"
+              ],
+              "properties": {
+                "provider": {
+                  "description": "cert-manager DNS-01 provider.",
+                  "enum": [
+                    "acmeDNS",
+                    "akamai",
+                    "azureDNS",
+                    "cloudDNS",
+                    "cloudflare",
+                    "digitalocean",
+                    "rfc2136",
+                    "route53",
+                    "webhook"
+                  ]
+                },
+                "config": {
+                  "description": "Non-secret provider settings as in the cert-manager solver block, for example region, hostedZoneID or nameserver. Key names that suggest a secret value are rejected unless they end in Ref, ID, Id or Name.",
+                  "type": "object",
+                  "propertyNames": {
+                    "not": {
+                      "pattern": "^(?!.*(Ref|ID|Id|Name)$).*([Pp]assword|[Tt]oken|[Ss]ecret|[Aa]pi[Kk]ey|[Pp]rivate[Kk]ey)"
+                    }
+                  }
+                },
+                "credentialsSecretRef": {
+                  "description": "Secret in the cert-manager namespace holding the provider credential. Omit for ambient credentials (workload identity) and for providers whose references sit in config (akamai: the *SecretRef fields; webhook: inside its solver config).",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "key"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$",
+                      "maxLength": 253
+                    },
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
+                    }
+                  }
+                }
+              }
+            },
+            "server": {
+              "description": "Test only. Replaces the ACME directory URL of the letsencrypt-staging ClusterIssuer, for example a Pebble server in tests/integration/acme. The letsencrypt issuer is never redirected. Leave empty.",
+              "type": "string",
+              "pattern": "^(https://.+)?$",
+              "default": ""
+            },
+            "caBundle": {
+              "description": "Test only. Base64-encoded PEM CA bundle that signs the TLS certificate of platform.acme.server. Leave empty.",
+              "type": "string",
+              "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+              "default": ""
+            }
+          }
+        },
+        "gateway": {
+          "description": "Settings of the shared Gateway platform in envoy-gateway-system.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "hostnames": {
+              "description": "Explicit certificate names for ACME http01, for example argocd.<domain> and <app>.<env>.<domain>. No wildcards.",
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/dnsName"
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "issuer"
+            ],
+            "properties": {
+              "issuer": {
+                "enum": [
+                  "letsencrypt-staging",
+                  "letsencrypt"
+                ]
+              }
+            },
+            "not": {
+              "required": [
+                "acme"
+              ],
+              "properties": {
+                "acme": {
+                  "required": [
+                    "solver"
+                  ],
+                  "properties": {
+                    "solver": {
+                      "const": "dns01"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "gateway"
+            ],
+            "properties": {
+              "gateway": {
+                "required": [
+                  "hostnames"
+                ],
+                "properties": {
+                  "hostnames": {
+                    "minItems": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "acme"
+            ],
+            "properties": {
+              "acme": {
+                "required": [
+                  "solver"
+                ],
+                "properties": {
+                  "solver": {
+                    "const": "dns01"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "acme": {
+                "required": [
+                  "dns01"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "toolchains": {
+      "description": "Per-cluster toolchain switches. Keys are toolchain names read by argocd-bootstrap templates with dig \"<name>\" \"enabled\". values is passed to the toolchain chart as helm.valuesObject.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/dnsLabel"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "values": {
+            "description": "Cluster-specific chart values, passed as helm.valuesObject. Never secrets.",
+            "type": "object"
+          }
+        }
+      },
+      "properties": {
+        "kargo": {
+          "description": "Promotion orchestration (docs/adr/0012-kargo-promotion.md). values go to the kargo chart; pipelines tunes the kargo-pipelines Application.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "values": {
+              "description": "Values of helmcharts/system-charts/kargo, passed as helm.valuesObject. Never secrets.",
+              "type": "object"
+            },
+            "pipelines": {
+              "description": "Kargo Projects, Warehouses and Stages for the app inventory (helmcharts/system-charts/kargo-pipelines).",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "description": "Default true. false renders the kargo toolchain without pipelines.",
+                  "type": "boolean"
+                },
+                "values": {
+                  "description": "Values of helmcharts/system-charts/kargo-pipelines. Injected keys (git, argocd, imageRegistry, groups, apps, podSecurityVersion) are normally left alone.",
+                  "type": "object",
+                  "properties": {
+                    "projectPrefix": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?-?$"
+                    },
+                    "warehouse": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "interval": {
+                          "type": "string",
+                          "pattern": "^([0-9]+h)?([0-9]+m)?([0-9]+s)?$",
+                          "minLength": 2
+                        },
+                        "constraint": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "discoveryLimit": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        },
+                        "insecureSkipTLSVerify": {
+                          "description": "Test-only.",
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "stages": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "autoPromote": {
+                            "type": "boolean"
+                          },
+                          "pullRequest": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "pullRequest": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "enum": [
+                            "",
+                            "github",
+                            "gitlab",
+                            "gitea",
+                            "azure",
+                            "bitbucket"
+                          ]
+                        },
+                        "timeout": {
+                          "type": "string",
+                          "pattern": "^([0-9]+h)?([0-9]+m)?([0-9]+s)?$",
+                          "minLength": 2
+                        }
+                      }
+                    },
+                    "verification": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "analysisTemplates": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "name"
+                            ],
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "AnalysisTemplate",
+                                  "ClusterAnalysisTemplate"
+                                ]
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "threshold": {
+                          "type": "string",
+                          "pattern": "^(0(\\.[0-9]+)?|1(\\.0+)?)$"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "cluster": {
+            "properties": {
+              "profile": {
+                "const": "reference"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "rke2"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "dnsLabel": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 63,
+      "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+    },
+    "dnsName": {
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?\\.)+[a-z]{2,63}$"
+    },
+    "environment": {
+      "enum": [
+        "dev",
+        "stage",
+        "prod"
+      ]
+    },
+    "ipv4Cidr": {
+      "type": "string",
+      "pattern": "^((25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])/([0-9]|[12][0-9]|3[0-2])$"
+    },
+    "groupName": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\s]+$"
+    }
+  }
+}

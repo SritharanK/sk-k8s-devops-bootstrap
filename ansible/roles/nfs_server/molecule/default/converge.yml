@@ -1,0 +1,12 @@
+---
+# nfsd needs the kernel NFS server, which a container cannot start, so the service is not managed here.
+- name: Converge
+  hosts: all
+  gather_facts: true
+  vars:
+    nfs_server_manage_service: false
+    nfs_server_exports:
+      - path: /srv/nfs/kubernetes
+        clients: [10.10.0.0/24]
+  roles:
+    - role: nfs_server

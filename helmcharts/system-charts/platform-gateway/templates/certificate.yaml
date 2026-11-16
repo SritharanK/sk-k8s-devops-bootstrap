@@ -1,0 +1,25 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.gateway.certificate.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform-gateway.labels" . | nindent 4 }}
+  annotations:
+    {{- include "platform-gateway.annotations" . | nindent 4 }}
+spec:
+  secretName: {{ .Values.gateway.certificate.secretName }}
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: {{ required "platform.issuer is required" .Values.platform.issuer }}
+  duration: {{ .Values.gateway.certificate.duration }}
+  renewBefore: {{ .Values.gateway.certificate.renewBefore }}
+  privateKey:
+    algorithm: {{ .Values.gateway.certificate.privateKey.algorithm }}
+    size: {{ .Values.gateway.certificate.privateKey.size }}
+    rotationPolicy: Always
+  dnsNames:
+    {{- range include "platform-gateway.dnsNames" . | fromJsonArray }}
+    - {{ . | quote }}
+    {{- end }}

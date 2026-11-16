@@ -1,0 +1,53 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Read the loaded rke2_host table
+      ansible.builtin.command:
+        argv: [nft, list, table, inet, rke2_host]
+      register: firewall_verify_table
+      changed_when: false
+      failed_when: firewall_verify_table.rc != 0
+
+    - name: Assert that the server, etcd and canal rules are loaded
+      ansible.builtin.assert:
+        that:
+          - "'policy drop' in firewall_verify_table.stdout"
+          - "'6443' in firewall_verify_table.stdout"
+          - "'9345' in firewall_verify_table.stdout"
+          - "'2379' in firewall_verify_table.stdout"
+          - "'8472' in firewall_verify_table.stdout"
+          - "'10250' in firewall_verify_table.stdout"
+          - "'10.10.0.0/24' in firewall_verify_table.stdout"
+
+    - name: Check that the firewall unit is enabled and active
+      ansible.builtin.systemd_service:
+        name: rke2-host-firewall.service
+        state: started
+        enabled: true
+      check_mode: true
+      register: firewall_verify_unit
+
+    - name: Assert that the firewall unit needed no change
+      ansible.builtin.assert:
+        that:
+          - not firewall_verify_unit.changed
+          - firewall_verify_unit.status.ActiveState == 'active'
+
+    - name: Read the rules file
+      ansible.builtin.slurp:
+        src: /etc/nftables.d/rke2-host.nft
+      register: firewall_verify_rules
+
+    - name: Read the rules file metadata
+      ansible.builtin.stat:
+        path: /etc/nftables.d/rke2-host.nft
+        get_checksum: false
+      register: firewall_verify_rules_stat
+
+    - name: Assert the derived node role and the file mode
+      ansible.builtin.assert:
+        that:
+          - "'# Node role: server' in (firewall_verify_rules.content | b64decode)"
+          - firewall_verify_rules_stat.stat.mode == '0640'

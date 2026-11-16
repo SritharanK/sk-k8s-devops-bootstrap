@@ -1,0 +1,106 @@
+# Common values for both profiles. Upstream chart values sit under `seaweedfs`.
+# Topology: one all-in-one pod (master, volume server, filer and S3 gateway in a
+# single `weed server` process) with one PersistentVolumeClaim. The split
+# master/volume/filer/s3 components of the upstream chart are switched off.
+
+# Shared Helm globals. The upstream chart keeps its own settings under
+# global.seaweedfs so they do not collide with other subcharts.
+global:
+  seaweedfs:
+    # The ClusterRole exists only to delete master pods after a migration of the
+    # split topology. The all-in-one pod does not call the Kubernetes API.
+    createClusterRole: false
+    automountServiceAccountToken: false
+    monitoring:
+      # ServiceMonitor for the all-in-one metrics port (requires the monitoring toolchain).
+      enabled: true
+      additionalLabels:
+        release: monitoring
+
+# Service `<release>-s3` (seaweedfs-s3 for the release `seaweedfs`) in front of
+# the S3 port of the all-in-one pod, so every consumer uses the platform address
+# http://seaweedfs-s3.seaweedfs.svc:8333. The upstream all-in-one Service
+# (seaweedfs-all-in-one) also exposes the port, together with the internal ones.
+s3Service:
+  enabled: true
+  port: 8333
+
+seaweedfs:
+  master:
+    enabled: false
+    # Used by the all-in-one pod: smaller volumes than the 1000 MB default give
+    # more volume slots on a small disk, because every bucket gets its own volumes.
+    volumeSizeLimitMB: 512
+    # Grow one volume at a time per bucket instead of seven (single node, no replication).
+    config: |-
+      [master.volume_growth]
+      copy_1 = 1
+  volume:
+    enabled: false
+  filer:
+    enabled: false
+  s3:
+    # The standalone S3 gateway Deployment stays off; the all-in-one pod serves S3.
+    enabled: false
+    port: 8333
+
+  allInOne:
+    enabled: true
+    serviceAccountName: seaweedfs
+    updateStrategy:
+      type: Recreate
+    s3:
+      enabled: true
+      enableAuth: true
+      # Existing Secret with the key `seaweedfs_s3_config` (identities JSON).
+      # See README.md, section Secrets.
+      existingConfigSecret: seaweedfs-s3-config
+      # Created by the upstream post-install/post-upgrade hook Job, which Argo CD
+      # runs as a PostSync hook. Existing buckets are skipped.
+      createBuckets:
+        - name: velero
+        - name: cnpg
+        - name: loki
+        - name: etcd
+      createBucketsHook:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            memory: 256Mi
+    data:
+      type: persistentVolumeClaim
+      size: 10Gi
+      # null: the default StorageClass of the cluster.
+      storageClass: null
+      annotations:
+        # Keep the claim (and the backups on it) when the Argo CD Application is deleted.
+        argocd.argoproj.io/sync-options: Delete=false
+    podSecurityContext:
+      enabled: true
+      runAsNonRoot: true
+      # UID and GID of the `seaweed` user in the upstream image.
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
+      fsGroupChangePolicy: OnRootMismatch
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      enabled: true
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+      seccompProfile:
+        type: RuntimeDefault
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: null
+        memory: 1Gi

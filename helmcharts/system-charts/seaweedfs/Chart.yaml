@@ -1,0 +1,15 @@
+apiVersion: v2
+name: seaweedfs
+description: SeaweedFS in all-in-one mode as the in-cluster S3 endpoint for backups in the lab profile.
+type: application
+version: 0.1.0
+appVersion: "4.53"
+kubeVersion: ">=1.35.0-0"
+home: https://github.com/seaweedfs/seaweedfs
+sources:
+  - https://github.com/seaweedfs/seaweedfs
+  - https://github.com/seaweedfs/seaweedfs/tree/master/k8s/charts/seaweedfs
+dependencies:
+  - name: seaweedfs
+    version: 4.53.0
+    repository: https://seaweedfs.github.io/seaweedfs/helm

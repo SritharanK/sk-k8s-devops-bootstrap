@@ -1,0 +1,42 @@
+---
+# Minimal images (for example the Rocky Linux container image) do not ship these directories.
+- name: Ensure the kernel configuration directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /etc/modules-load.d
+    - /etc/sysctl.d
+
+- name: Persist the Kubernetes kernel modules
+  ansible.builtin.template:
+    src: modules-load.conf.j2
+    dest: "{{ base__modules_kubernetes_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    base__modules_load_list: "{{ base_kernel_modules }}"
+
+# Modules load before the sysctls: the net.bridge keys only exist once br_netfilter is loaded.
+- name: Load the Kubernetes kernel modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ base_kernel_modules }}"
+  when: base_kernel_runtime_apply
+
+- name: Set the Kubernetes sysctls
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value | string }}"
+    sysctl_file: "{{ base__sysctl_kubernetes_file }}"
+    reload: "{{ base_kernel_runtime_apply }}"
+    sysctl_set: "{{ base_kernel_runtime_apply }}"
+    state: present
+  loop: "{{ base_kubernetes_sysctls | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"

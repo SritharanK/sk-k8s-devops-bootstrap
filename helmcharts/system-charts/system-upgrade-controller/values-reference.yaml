@@ -1,0 +1,29 @@
+# Reference profile: 3-node RKE2 HA cluster (three servers). Two controller replicas on
+# different control-plane nodes with leader election, and a PodDisruptionBudget.
+replicas: 2
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+plans:
+  # Enable only after the same version ran in the lab cluster (see README).
+  enabled: false
+  version: CHANGE_ME
+  # Optional maintenance window for both Plans (same format as kured schedule options).
+  # Jobs are only created inside the window; a running Job may continue after it closes.
+  # window:
+  #   days:
+  #     - tuesday
+  #     - wednesday
+  #     - thursday
+  #   startTime: "19:00"
+  #   endTime: "21:00"
+  #   timeZone: UTC

@@ -1,0 +1,42 @@
+{{- /*
+Root Application of the cluster Argo CD runs in. It renders argocd-bootstrap
+with the cluster definition as an extra values file, so the definition in
+Git is the only input. The git overrides given at bootstrap are carried in
+valuesObject, which takes precedence over both values files.
+
+No resources finalizer: deleting the root Application never cascades into
+the platform. Its children carry their own finalizers.
+*/ -}}
+{{- $name := required "cluster.name is required" .Values.cluster.name }}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $name) }}
+{{- fail (printf "cluster.name %q is not a DNS label" $name) }}
+{{- end }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: {{ .Values.namespaces.argocd }}
+  labels:
+    app.kubernetes.io/name: root
+    app.kubernetes.io/part-of: argocd-bootstrap
+  annotations:
+    argocd.argoproj.io/manifest-generate-paths: {{ printf "/argocd-bootstrap;/clusters/%s" $name | quote }}
+spec:
+  project: platform
+  source:
+    {{- include "bootstrap.rootSource" . | nindent 4 }}
+    helm:
+      releaseName: argocd-bootstrap
+      valueFiles:
+        - values.yaml
+        - {{ printf "../clusters/%s/cluster.yaml" $name }}
+      valuesObject:
+        git:
+          repoURL: {{ .Values.git.repoURL }}
+          targetRevision: {{ .Values.git.targetRevision | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.namespaces.argocd }}
+  syncPolicy:
+    {{- include "bootstrap.rootSyncPolicy" . | nindent 4 }}
+  revisionHistoryLimit: 10

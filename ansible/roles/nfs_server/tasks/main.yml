@@ -1,0 +1,118 @@
+---
+- name: Load the variables for the operating system family
+  ansible.builtin.include_vars:
+    file: "{{ lookup('ansible.builtin.first_found', nfs_server__vars_files) }}"
+  vars:
+    nfs_server__vars_files:
+      files:
+        - "{{ ansible_facts['os_family'] }}.yml"
+      paths:
+        - "{{ role_path }}/vars"
+  tags: [nfs_server]
+
+- name: Assert that the exports are valid
+  ansible.builtin.assert:
+    that:
+      - nfs_server_exports is sequence
+      - nfs_server_exports is not string
+      - nfs_server__invalid_exports | length == 0
+      - nfs_server_exports | map(attribute='path') | unique | list | length == nfs_server_exports | length
+    fail_msg: >-
+      Each nfs_server_exports item needs an absolute path without whitespace (not "/"), a non-empty list of client
+      CIDRs without "*", "0.0.0.0/0" or "::/0", and options without whitespace. Paths must be unique.
+      Invalid: {{ nfs_server__invalid_exports }}
+    quiet: true
+  vars:
+    nfs_server__invalid_exports: >-
+      {%- set ns = namespace(bad=[]) -%}
+      {%- for export in nfs_server_exports -%}
+      {%-   if export is not mapping
+              or export['path'] is not defined or export['path'] is not string
+              or export['path'] is not match('^/.') or ' ' in export['path']
+              or export['clients'] is not defined or export['clients'] is string or export['clients'] | length == 0
+              or export['clients'] | map('string') | select('in', nfs_server__forbidden_clients) | list | length > 0
+              or export['clients'] | map('string') | select('search', ' |CHANGE_ME') | list | length > 0
+              or ' ' in export['options'] | default(nfs_server_export_options) | string -%}
+      {%-     set ns.bad = ns.bad + [export] -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ ns.bad }}
+  tags: [nfs_server]
+
+- name: Install the NFS server (Debian family)
+  ansible.builtin.apt:
+    name: "{{ nfs_server__packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: nfs_server__packages_result
+  when: ansible_facts['os_family'] == 'Debian'
+  tags: [nfs_server]
+
+- name: Install the NFS server (RedHat family)
+  ansible.builtin.dnf:
+    name: "{{ nfs_server__packages }}"
+    state: present
+  register: nfs_server__packages_result_redhat
+  when: ansible_facts['os_family'] == 'RedHat'
+  tags: [nfs_server]
+
+- name: Create the NFS configuration directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ nfs_server__exports_dir }}"
+    - "{{ nfs_server__conf_dir }}"
+  register: nfs_server__dirs_result
+  tags: [nfs_server]
+
+- name: Create the exported directories
+  ansible.builtin.file:
+    path: "{{ item['path'] }}"
+    state: directory
+    owner: "{{ item['owner'] | default('root') }}"
+    group: "{{ item['group'] | default('root') }}"
+    mode: "{{ item['mode'] | default('0755') }}"
+  loop: "{{ nfs_server_exports }}"
+  loop_control:
+    label: "{{ item['path'] }}"
+  tags: [nfs_server]
+
+- name: Restrict nfsd to NFSv4
+  ansible.builtin.template:
+    src: nfs-server.conf.j2
+    dest: "{{ nfs_server__conf_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  # In check mode the directory may not exist yet.
+  when: not (ansible_check_mode and nfs_server__dirs_result is changed)
+  notify: Restart nfs-server
+  tags: [nfs_server]
+
+- name: Write the exports
+  ansible.builtin.template:
+    src: kubernetes.exports.j2
+    dest: "{{ nfs_server__exports_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: not (ansible_check_mode and nfs_server__dirs_result is changed)
+  notify: Reload NFS exports
+  tags: [nfs_server]
+
+- name: Enable and start nfs-server
+  ansible.builtin.systemd_service:
+    name: "{{ nfs_server__service }}"
+    enabled: true
+    state: started
+  # In check mode on a fresh host the package, and with it the unit, is not installed yet.
+  when:
+    - nfs_server_manage_service | bool
+    - not (ansible_check_mode and (nfs_server__packages_result is changed
+      or nfs_server__packages_result_redhat is changed))
+  tags: [nfs_server]

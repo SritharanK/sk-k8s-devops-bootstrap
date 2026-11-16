@@ -1,0 +1,177 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/v0.2.15/.schemas/json/test-chainsaw-v1alpha1.json
+#
+# Platform policy in dev, stage and prod: default-deny (ingress and egress)
+# plus allow-dns egress. The hello-api NetworkPolicy admits
+# envoy-gateway-system on 8080 and monitoring on the metrics port.
+#
+# Case 1, client in the ephemeral test namespace (no policies there): positive
+# control to the kube-apiserver, then dev hello-api must not accept a TCP
+# connection. Isolates the ingress protection of dev.
+#
+# Case 2, client in the app namespace stage: positive control is resolving the
+# dev hello-api Service name (allow-dns), then the TCP connect must time out.
+# Proves that a pod in another app namespace cannot reach hello-api. The stage
+# pod must pass the restricted Pod Security Standard and the policy contract,
+# including the lab registry allowlist (ghcr.io/your-org/): the probe image is
+# the pinned curl image, tagged under that prefix by lib/netprobe-image.sh only
+# to pass the allowlist, loaded into kind and never pushed.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: network-policy-default-deny
+spec:
+  description: >-
+    Neither a client outside the app namespaces nor a pod in stage can open a TCP connection to hello-
+    api in dev, while both have the egress the positive control needs.
+  concurrent: false
+  catch:
+    - describe:
+        apiVersion: v1
+        kind: Pod
+        name: netpol-client
+    - describe:
+        apiVersion: v1
+        kind: Pod
+        namespace: stage
+        name: e2e-netprobe
+    - events: {}
+    - script:
+        content: kubectl get networkpolicies -n dev -o wide && kubectl get networkpolicies -n stage -o wide
+  steps:
+    - name: start-client-pod
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: netpol-client
+                labels:
+                  app.kubernetes.io/name: netpol-client
+                  app.kubernetes.io/part-of: lab-e2e
+              spec:
+                automountServiceAccountToken: false
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 65532
+                  runAsGroup: 65532
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: curl
+                    image: docker.io/curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
+                    imagePullPolicy: IfNotPresent
+                    command:
+                      - sleep
+                      - "3600"
+                    securityContext:
+                      runAsNonRoot: true
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                        drop:
+                          - ALL
+                      seccompProfile:
+                        type: RuntimeDefault
+                    resources:
+                      requests:
+                        cpu: 10m
+                        memory: 16Mi
+                      limits:
+                        cpu: 100m
+                        memory: 64Mi
+        - assert:
+            timeout: 3m
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: netpol-client
+              status:
+                phase: Running
+                (conditions[?type == 'Ready']):
+                  - status: 'True'
+    - name: test-namespace-client-is-denied
+      try:
+        - script:
+            timeout: 1m
+            content: bash ../lib/netpol-probe.sh "${NAMESPACE}" netpol-client apiserver
+    - name: stage-client-is-denied
+      try:
+        - script:
+            # docker build (first run only) and kind load.
+            timeout: 5m
+            content: bash ../lib/netprobe-image.sh
+            outputs:
+              - name: probeImage
+                value: (trim_space($stdout))
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: e2e-netprobe
+                namespace: stage
+                labels:
+                  app.kubernetes.io/name: e2e-netprobe
+                  app.kubernetes.io/part-of: lab-e2e
+              spec:
+                automountServiceAccountToken: false
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 65532
+                  runAsGroup: 65532
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: probe
+                    image: ($probeImage)
+                    imagePullPolicy: Never
+                    command:
+                      - sleep
+                      - "3600"
+                    securityContext:
+                      runAsNonRoot: true
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                        drop:
+                          - ALL
+                      seccompProfile:
+                        type: RuntimeDefault
+                    # Same sizing as the hello-api chart, which fits the
+                    # LimitRange and ResourceQuota of the app namespaces.
+                    resources:
+                      requests:
+                        cpu: 25m
+                        memory: 32Mi
+                      limits:
+                        cpu: 250m
+                        memory: 96Mi
+                    readinessProbe:
+                      exec:
+                        command:
+                          - sh
+                          - -c
+                          - "true"
+                    livenessProbe:
+                      exec:
+                        command:
+                          - sh
+                          - -c
+                          - "true"
+        - assert:
+            timeout: 3m
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: e2e-netprobe
+                namespace: stage
+              status:
+                phase: Running
+                (conditions[?type == 'Ready']):
+                  - status: 'True'
+        - script:
+            timeout: 1m
+            content: bash ../lib/netpol-probe.sh stage e2e-netprobe dns

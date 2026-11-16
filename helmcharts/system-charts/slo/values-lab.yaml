@@ -1,0 +1,4 @@
+# Lab profile: every SLO is installed so the dashboards and alerts can be exercised.
+# The rules create no pods, so there is nothing to size. hello-api SLOs report no
+# data until the prod namespace receives traffic.
+disabledRuleFiles: []

@@ -1,0 +1,34 @@
+{{- /*
+Platform namespaces: one policy per extraIngress item. Without "from" the
+rule admits any source, which admission webhooks need: the API server
+connects from the host network. Without "ports" it admits every port.
+*/}}
+{{- range $key, $cfg := .Values.platformNamespaces }}
+{{- if $cfg.enabled }}
+{{- range $i, $item := $cfg.extraIngress }}
+{{- $path := printf "platformNamespaces.%s.extraIngress[%d]" $key $i }}
+{{- $rule := dict }}
+{{- with $item.from }}
+{{- $_ := set $rule "from" (tpl (toYaml .) $ | fromYamlArray) }}
+{{- end }}
+{{- with $item.ports }}
+{{- $_ := set $rule "ports" . }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ required (printf "%s.name is required" $path) $item.name }}
+  namespace: {{ $cfg.namespace }}
+  labels:
+    {{- include "network-policies.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    {{- toYaml (required (printf "%s.podSelector is required" $path) $item.podSelector) | nindent 4 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    {{- toYaml (list $rule) | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

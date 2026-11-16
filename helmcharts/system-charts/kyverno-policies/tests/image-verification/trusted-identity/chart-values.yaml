@@ -1,0 +1,11 @@
+# Chart values for this test: verify the public Kyverno test images against
+# the identity of the workflow that signed them. Needs network access to
+# ghcr.io and the Sigstore public-good instance.
+---
+imageVerification:
+  enabled: true
+  environments: [prod]
+  registries:
+    - ghcr.io/kyverno/test-images/cosign*
+  # yamllint disable-line rule:line-length
+  subjectRegExp: ^https://github\.com/kyverno/test-images/\.github/workflows/cosign\.yml@refs/heads/main$

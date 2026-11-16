@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/v0.2.15/.schemas/json/test-chainsaw-v1alpha1.json
+#
+# Monitoring is off in the lab profile by default; the script then prints
+# "monitoring not enabled in this profile; skipped" and passes.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: metrics-scrape
+spec:
+  description: When Prometheus runs, it has an active hello-api scrape target with health up.
+  concurrent: false
+  catch:
+    - script:
+        content: |
+          kubectl get services -n monitoring 2>/dev/null || true
+          kubectl get servicemonitors.monitoring.coreos.com -A 2>/dev/null || true
+  steps:
+    - name: hello-api-target-up
+      try:
+        - script:
+            timeout: 5m
+            content: bash ../lib/metrics-scrape.sh

@@ -1,0 +1,52 @@
+# reference: three Raft voters on separate nodes, audit volume, and the
+# ClusterSecretStore for External Secrets.
+clusterSecretStore:
+  enabled: true
+
+openbao:
+  server:
+    # Never allowed, in any profile. templates/guards.yaml fails otherwise.
+    dev:
+      enabled: false
+    # server.affinity keeps the upstream default: hard pod anti-affinity on
+    # kubernetes.io/hostname, so three schedulable nodes are required.
+    ha:
+      replicas: 3
+      disruptionBudget:
+        enabled: true
+        # Raft keeps quorum (2 of 3) during one voluntary disruption.
+        maxUnavailable: 1
+      raft:
+        # Auto-unseal placeholder, disabled. Without a seal stanza OpenBao
+        # uses Shamir: every pod start needs 3 of 5 unseal key shares.
+        #
+        # Transit is built into OpenBao and uses a key on a separate OpenBao
+        # or Vault cluster. pkcs11 (HSM) and the cloud KMS seals (awskms,
+        # azurekeyvault, gcpckms, ocikms, alicloudkms) are external plugins
+        # since OpenBao 2.7 and must be added to the image. Switching an
+        # initialised cluster needs "bao operator unseal -migrate" (README).
+        #
+        # sealConfig: |
+        #   seal "transit" {
+        #     address    = "https://CHANGE_ME:8200"
+        #     key_name   = "openbao-autounseal"
+        #     mount_path = "transit/"
+        #     # Without this the seal falls back to BAO_CACERT, which points
+        #     # at the platform CA. Mount the transit CA via server.volumes.
+        #     tls_ca_cert = "/openbao/transit-ca/ca.crt"
+        #   }
+        sealConfig: ""
+    # Transit seal token, read from BAO_TOKEN. The bao CLI inside the pod
+    # also picks up BAO_TOKEN, so pass -token explicitly when using it there.
+    # extraSecretEnvironmentVars:
+    #   - envName: BAO_TOKEN
+    #     secretName: openbao-transit-seal
+    #     secretKey: token
+    dataStorage:
+      size: 10Gi
+    # Mounted at /openbao/audit. The Raft config in values.yaml declares a
+    # file audit device writing audit.log there whenever this is enabled.
+    auditStorage:
+      enabled: true
+      size: 10Gi
+      storageClass: null

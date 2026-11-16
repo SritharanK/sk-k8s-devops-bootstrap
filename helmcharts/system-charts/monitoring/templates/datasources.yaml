@@ -1,0 +1,72 @@
+{{- /*
+Loki and Tempo datasources for Grafana, loaded by the datasource sidecar
+(label grafana_datasource: "1"). The Prometheus (uid prometheus) and Alertmanager
+(uid alertmanager) datasources come from kube-prometheus-stack.
+In Grafana provisioning files "$$" is a literal "$" (a single "$" means an
+environment variable).
+*/}}
+{{- $loki := .Values.datasources.loki }}
+{{- $tempo := .Values.datasources.tempo }}
+{{- if or $loki.enabled $tempo.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-platform-datasources
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+    grafana_datasource: "1"
+data:
+  platform-datasources.yaml: |-
+    apiVersion: 1
+    datasources:
+    {{- if $loki.enabled }}
+      - name: Loki
+        type: loki
+        uid: {{ $loki.uid }}
+        access: proxy
+        url: {{ $loki.url }}
+        isDefault: false
+        editable: false
+        jsonData:
+          maxLines: 1000
+          {{- with $loki.tenant }}
+          httpHeaderName1: X-Scope-OrgID
+          {{- end }}
+          {{- if $tempo.enabled }}
+          derivedFields:
+            - name: TraceID
+              datasourceUid: {{ $tempo.uid }}
+              matcherRegex: '(?:trace_id|traceID|traceId)[=:"]+(\w+)'
+              url: '$${__value.raw}'
+              urlDisplayLabel: View trace
+          {{- end }}
+        {{- with $loki.tenant }}
+        secureJsonData:
+          httpHeaderValue1: {{ . | quote }}
+        {{- end }}
+    {{- end }}
+    {{- if $tempo.enabled }}
+      - name: Tempo
+        type: tempo
+        uid: {{ $tempo.uid }}
+        access: proxy
+        url: {{ $tempo.url }}
+        isDefault: false
+        editable: false
+        jsonData:
+          nodeGraph:
+            enabled: true
+          serviceMap:
+            datasourceUid: prometheus
+          {{- if $loki.enabled }}
+          lokiSearch:
+            datasourceUid: {{ $loki.uid }}
+          tracesToLogsV2:
+            datasourceUid: {{ $loki.uid }}
+            filterByTraceID: true
+            spanStartTimeShift: -5m
+            spanEndTimeShift: 5m
+          {{- end }}
+    {{- end }}
+{{- end }}

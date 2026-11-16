@@ -1,0 +1,91 @@
+---
+# Internal values of the rke2 role. Not meant to be overridden.
+# Paths depend on the install method (tar or RPM), not on the OS family, so they are detected on the host
+# from the candidate lists below instead of being loaded from per-OS vars files.
+
+rke2__config_dir: /etc/rancher/rke2
+rke2__config_file: "{{ rke2__config_dir }}/config.yaml"
+rke2__audit_policy_file: "{{ rke2__config_dir }}/audit-policy.yaml"
+rke2__registries_file: "{{ rke2__config_dir }}/registries.yaml"
+rke2__kubeconfig_remote: "{{ rke2__config_dir }}/rke2.yaml"
+rke2__kubectl: "{{ rke2_data_dir }}/bin/kubectl"
+rke2__pod_manifests_dir: "{{ rke2_data_dir }}/agent/pod-manifests"
+rke2__nm_dropin: /etc/NetworkManager/conf.d/rke2-canal.conf
+rke2__cis_sysctl_file: /etc/sysctl.d/60-rke2-cis.conf
+
+# Tar installs use /usr/local (or /opt/rke2 when /usr/local is read-only or a separate mount),
+# RPM installs use /usr.
+rke2__binary_candidates:
+  - /usr/local/bin/rke2
+  - /usr/bin/rke2
+  - /opt/rke2/bin/rke2
+rke2__uninstall_candidates:
+  - /usr/local/bin/rke2-uninstall.sh
+  - /usr/bin/rke2-uninstall.sh
+  - /opt/rke2/bin/rke2-uninstall.sh
+rke2__cis_sysctl_candidates:
+  - /usr/local/share/rke2/rke2-cis-sysctl.conf
+  - /usr/share/rke2/rke2-cis-sysctl.conf
+  - /opt/rke2/share/rke2/rke2-cis-sysctl.conf
+
+# Install script pinned to the release tag; "+" must be URL-encoded in the tag.
+rke2__install_script_url: >-
+  https://raw.githubusercontent.com/rancher/rke2/{{ rke2_version | replace('+', '%2B') }}/install.sh
+# /var/cache exists on every supported distribution and is writable by root only, so the download needs no
+# directory of its own (a directory created in the same run would not exist yet in check mode).
+rke2__installer_dir: /var/cache
+rke2__installer_path: "{{ rke2__installer_dir }}/rke2-install-{{ rke2_version }}.sh"
+
+rke2__version_regex: '^v1\.[0-9]+\.[0-9]+\+rke2r[0-9]+$'
+# Comparable form of a release: v1.36.6+rke2r1 becomes 1.36.6.1.
+rke2__version_cmp: "{{ rke2_version | regex_replace('^v', '') | regex_replace('\\+rke2r', '.') }}"
+rke2__version_minor: "{{ rke2_version | regex_replace('^v1\\.([0-9]+)\\..*$', '\\1') | int }}"
+# First minor in which every release accepts the ingress-controller option (v1.33.0; some later
+# v1.31 and v1.32 patches have it as well). Older releases get "disable: [rke2-ingress-nginx]" instead.
+rke2__ingress_controller_min_minor: 33
+
+# Topology.
+rke2__servers: "{{ groups[rke2_servers_group] | default([]) }}"
+rke2__agents: "{{ groups[rke2_agents_group] | default([]) }}"
+rke2__node_type: >-
+  {{ 'server' if inventory_hostname in rke2__servers
+     else ('agent' if inventory_hostname in rke2__agents else '') }}
+rke2__is_bootstrap: "{{ inventory_hostname == rke2_bootstrap_host }}"
+rke2__service_unit: "rke2-{{ rke2__node_type }}.service"
+
+# Address used for cluster traffic on this node.
+rke2__node_ip: >-
+  {{ rke2_node_ip if rke2_node_ip | length > 0
+     else ansible_facts['default_ipv4']['address'] | default('') }}
+# Kubernetes node name: RKE2 uses the lowercased kernel hostname (the full nodename, not the short form).
+rke2__node_name: "{{ rke2_node_name if rke2_node_name | length > 0 else ansible_facts['nodename'] | lower }}"
+
+# Join address: the registration address, else the bootstrap server's private address, else its
+# connection address.
+rke2__join_host: >-
+  {{ rke2_registration_address if rke2_registration_address | length > 0
+     else (hostvars[rke2_bootstrap_host]['rke2_node_ip'] | default('', true))
+       or (hostvars[rke2_bootstrap_host]['ansible_facts']['default_ipv4']['address'] | default('', true))
+       or (hostvars[rke2_bootstrap_host]['ansible_host'] | default(rke2_bootstrap_host, true)) }}
+rke2__server_url: >-
+  https://{{ ('[' ~ rke2__join_host ~ ']') if ':' in rke2__join_host else rke2__join_host }}:9345
+
+# Address written into the fetched kubeconfig.
+rke2__api_host: >-
+  {{ rke2_api_endpoint if rke2_api_endpoint | length > 0
+     else (rke2_registration_address if rke2_registration_address | length > 0
+           else ansible_host | default(inventory_hostname)) }}
+rke2__api_url: >-
+  https://{{ ('[' ~ rke2__api_host ~ ']') if ':' in rke2__api_host else rke2__api_host }}:6443
+
+rke2__selinux_enabled: "{{ (ansible_facts['selinux']['status'] | default('disabled')) == 'enabled' }}"
+
+# NetworkManager must leave the CNI interfaces alone (docs.rke2.io/known_issues).
+rke2__nm_unmanaged_devices:
+  - interface-name:flannel*
+  - interface-name:cali*
+  - interface-name:tunl*
+  - interface-name:vxlan.calico
+  - interface-name:vxlan-v6.calico
+  - interface-name:wireguard.cali
+  - interface-name:wg-v6.cali

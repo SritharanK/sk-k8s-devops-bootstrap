@@ -1,0 +1,73 @@
+---
+# Java 21 and the pinned Jenkins package.
+#
+# The Debian package starts Jenkins as soon as it is installed, and package
+# upgrades restart it on both families. Whenever the Jenkins package is about
+# to change, the role stops Jenkins and masks the unit, so the package
+# scripts cannot start it before plugins, configuration as code and secrets
+# are in place. service.yml starts it afterwards.
+
+- name: Install Java 21 and the runtime libraries
+  ansible.builtin.package:
+    name: "{{ __jenkins_runtime_packages }}"
+    state: present
+
+- name: Gather the installed package versions
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Decide whether the Jenkins package changes in this run
+  ansible.builtin.set_fact:
+    __jenkins_package_changes: >-
+      {{ 'jenkins' not in ansible_facts['packages']
+         or (ansible_facts['packages']['jenkins'] | map(attribute='version') | list) != [install_jenkins_version] }}
+
+- name: Stop Jenkins before its package changes
+  ansible.builtin.systemd_service:
+    name: jenkins
+    state: stopped
+  when:
+    - __jenkins_package_changes | bool
+    - "'jenkins' in ansible_facts['packages']"
+
+- name: Install the Jenkins package with the unit masked
+  block:
+    - name: Mask the Jenkins unit while its package changes
+      ansible.builtin.systemd_service:
+        name: jenkins
+        masked: true
+      when: __jenkins_package_changes | bool
+
+    - name: Install Jenkins with apt at version {{ install_jenkins_version }}
+      ansible.builtin.apt:
+        name: "{{ __jenkins_package_spec }}"
+        state: present
+        allow_change_held_packages: true
+        update_cache: true
+        # Refresh the index right after the Jenkins repository was added or
+        # changed; otherwise reuse an index younger than one hour.
+        cache_valid_time: "{{ 0 if __jenkins_apt_repository is changed else 3600 }}"
+      when: ansible_facts['os_family'] == 'Debian'
+      notify: Restart Jenkins
+
+    - name: Hold the Jenkins package at the pinned version
+      ansible.builtin.dpkg_selections:
+        name: jenkins
+        selection: hold
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Install Jenkins with dnf at version {{ install_jenkins_version }}
+      ansible.builtin.dnf:
+        name: "{{ __jenkins_package_spec }}"
+        state: present
+        # The repository excludes jenkins for routine updates. This task is
+        # the only place that installs or upgrades it.
+        disable_excludes: all
+      when: ansible_facts['os_family'] == 'RedHat'
+      notify: Restart Jenkins
+
+  always:
+    - name: Unmask the Jenkins unit
+      ansible.builtin.systemd_service:
+        name: jenkins
+        masked: false

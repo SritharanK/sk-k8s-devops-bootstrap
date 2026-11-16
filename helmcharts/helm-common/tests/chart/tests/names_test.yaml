@@ -1,0 +1,139 @@
+suite: names and labels
+templates:
+  - templates/deployment.yaml
+  - templates/service.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: names objects <release>-<chart>
+    asserts:
+      - equal:
+          path: metadata.name
+          value: web-helm-common-test
+      - equal:
+          path: metadata.namespace
+          value: dev
+
+  - it: uses fullnameOverride
+    set:
+      fullnameOverride: hello-api
+    asserts:
+      - equal:
+          path: metadata.name
+          value: hello-api
+
+  - it: uses the release name when it already contains the chart name
+    release:
+      name: helm-common-test-prod
+    asserts:
+      - equal:
+          path: metadata.name
+          value: helm-common-test-prod
+
+  - it: truncates the full name to 63 characters without a trailing dash
+    set:
+      fullnameOverride: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbb
+    asserts:
+      - equal:
+          path: metadata.name
+          value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+  - it: applies nameOverride to the name label and the container
+    set:
+      nameOverride: hello
+    asserts:
+      - equal:
+          path: metadata.name
+          value: web-hello
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: hello
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: hello
+        template: templates/deployment.yaml
+
+  - it: renders the standard labels
+    asserts:
+      - equal:
+          path: metadata.labels
+          value:
+            app.kubernetes.io/name: helm-common-test
+            app.kubernetes.io/instance: web
+            app.kubernetes.io/version: 1.0.0
+            app.kubernetes.io/managed-by: Helm
+            helm.sh/chart: helm-common-test-0.1.0
+
+  - it: uses only name and instance in selectors
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: helm-common-test
+            app.kubernetes.io/instance: web
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.selector
+          value:
+            app.kubernetes.io/name: helm-common-test
+            app.kubernetes.io/instance: web
+        template: templates/service.yaml
+
+  - it: adds commonLabels and podLabels but never overrides the selector labels
+    values:
+      - ./values/labels.yaml
+    asserts:
+      - equal:
+          path: metadata.labels.team
+          value: platform
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: helm-common-test
+      - equal:
+          path: spec.template.metadata.labels.tier
+          value: web
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/instance"]
+          value: web
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: helm-common-test
+            app.kubernetes.io/instance: web
+        template: templates/deployment.yaml
+
+  - it: renders the Service with the first port and service annotations
+    set:
+      service.annotations:
+        team: platform
+    asserts:
+      - isKind:
+          of: Service
+        template: templates/service.yaml
+      - equal:
+          path: spec.type
+          value: ClusterIP
+        template: templates/service.yaml
+      - equal:
+          path: spec.ports
+          value:
+            - name: http
+              port: 80
+              targetPort: http
+              protocol: TCP
+        template: templates/service.yaml
+      - equal:
+          path: metadata.annotations.team
+          value: platform
+        template: templates/service.yaml
+
+  - it: does not render the Service when disabled
+    set:
+      service.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/service.yaml

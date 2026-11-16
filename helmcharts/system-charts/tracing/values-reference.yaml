@@ -1,0 +1,55 @@
+# Reference profile: 3-node RKE2 HA cluster. Trace blocks in S3-compatible object storage, the
+# write-ahead log and live-store data on a persistent volume mounted at /var/tempo.
+#
+# Replace the CHANGE_ME placeholders and s3.example.com before use.
+# S3 credentials come from Secret tempo-s3-credentials (keys AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY),
+# never from these values. See README.md.
+
+tempo:
+  tempo:
+    retention: 168h
+    storage:
+      trace:
+        backend: s3
+        # Removes the upstream local backend block; it is unused with the s3 backend.
+        local: null
+        s3:
+          bucket: CHANGE_ME-tempo
+          # Host name only. TLS is used unless insecure is true.
+          endpoint: s3.example.com
+          region: CHANGE_ME
+          # Expanded by Tempo at start-up from the environment (-config.expand-env=true below).
+          # The ConfigMap only contains the variable names.
+          access_key: ${AWS_ACCESS_KEY_ID}
+          secret_key: ${AWS_SECRET_ACCESS_KEY}
+          # Path-style addressing (https://s3.example.com/<bucket>) is what most S3-compatible stores expect.
+          forcepathstyle: true
+          insecure: false
+        wal:
+          path: /var/tempo/wal
+    extraArgs:
+      config.expand-env: true
+    extraEnv:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: tempo-s3-credentials
+            key: AWS_ACCESS_KEY_ID
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: tempo-s3-credentials
+            key: AWS_SECRET_ACCESS_KEY
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        memory: 4Gi
+
+  # Persistent volume for the WAL and live-store data at /var/tempo. Uses the default StorageClass.
+  persistence:
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi

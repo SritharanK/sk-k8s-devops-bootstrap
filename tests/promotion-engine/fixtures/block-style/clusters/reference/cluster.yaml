@@ -1,0 +1,11 @@
+# Kargo on, block style, pipelines tuned but not switched off.
+---
+cluster:
+  name: reference
+toolchains:
+  kargo:
+    enabled: true
+    pipelines:
+      values:
+        stages:
+          stage: {autoPromote: false, pullRequest: true}

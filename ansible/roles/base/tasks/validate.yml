@@ -1,0 +1,52 @@
+---
+- name: Assert that every present admin user has at least one SSH key
+  ansible.builtin.assert:
+    that:
+      - item.ssh_public_keys | length > 0
+    fail_msg: >-
+      Admin user {{ item.name }} has no ssh_public_keys. Admin users are key-only (password locked), so a user without
+      keys cannot log in.
+    quiet: true
+  loop: "{{ base__admin_users_present }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Assert that admin user SSH keys use an allowed key type
+  ansible.builtin.assert:
+    that:
+      - (item.1 | split | first) in base_admin_users_allowed_key_types
+    fail_msg: >-
+      A key of admin user {{ item.0.name }} has type {{ item.1 | split | first }}, which is not in
+      base_admin_users_allowed_key_types ({{ base_admin_users_allowed_key_types | join(', ') }}).
+      Keys must have the form "<type> <base64> [comment]".
+    quiet: true
+  loop: "{{ base__admin_users_present | subelements('ssh_public_keys') }}"
+  loop_control:
+    label: "{{ item.0.name }}"
+
+# Lockout guard. The login user cannot be derived reliably from variables: it may come from ansible_user, the play
+# keyword remote_user, "-u" on the command line, ansible.cfg or the User directive of ~/.ssh/config. Running "id -un"
+# without privilege escalation returns the account the SSH session actually logged in as, whatever set it.
+- name: Read the SSH login user for the lockout guard
+  ansible.builtin.command:
+    cmd: id -un
+  become: false
+  register: base__ssh_login_user
+  changed_when: false
+  failed_when: base__ssh_login_user.rc != 0
+  check_mode: false
+  when:
+    - base_ssh_hardening
+    - base_ssh_permit_root_login == 'no'
+    - (ansible_connection | default('ssh')) in base__ssh_connection_types
+
+- name: Fail when the play logs in as root and root login would be disabled
+  ansible.builtin.assert:
+    that:
+      - base__ssh_login_user.stdout | trim != 'root'
+    fail_msg: >-
+      This play logs in over SSH as root and base_ssh_permit_root_login is "no": the next run could not log in.
+      Create an admin user first (base_admin_users) with base_ssh_permit_root_login set to "prohibit-password",
+      then switch ansible_user to that account and run again with the default.
+    quiet: true
+  when: base__ssh_login_user is not skipped

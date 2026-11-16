@@ -1,0 +1,119 @@
+# OpenAPI description of hello-api, referenced by the API entity in
+# catalog-info.yaml. Keep it in line with internal/server/server.go.
+---
+openapi: 3.1.0
+info:
+  title: hello-api
+  version: 0.1.0
+  summary: Sample HTTP service of the platform.
+  description: >-
+    Exercises the platform workload contract: probes, Prometheus metrics,
+    structured logs and optional tracing. It has no business logic. Every GET
+    route also answers HEAD. Unknown paths return 404, known paths with
+    another method return 405.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://localhost:8080
+    description: Local run (HTTP_ADDR defaults to :8080).
+paths:
+  /:
+    get:
+      operationId: getHello
+      summary: Greeting with the service version.
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: >-
+            Personalises the message. At most 64 characters, valid UTF-8,
+            no control characters. Surrounding white space is removed.
+          schema:
+            type: string
+            maxLength: 64
+      responses:
+        "200":
+          description: Greeting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Hello"
+        "400":
+          description: The name parameter is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /healthz:
+    get:
+      operationId: getHealthz
+      summary: Liveness probe.
+      responses:
+        "200":
+          description: The process runs.
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: ok
+  /readyz:
+    get:
+      operationId: getReadyz
+      summary: Readiness probe.
+      responses:
+        "200":
+          description: Ready to serve.
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: ok
+        "503":
+          description: Shutdown has started; the pod leaves the Service endpoints.
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: shutting down
+  /metrics:
+    get:
+      operationId: getMetrics
+      summary: Prometheus scrape target.
+      description: >-
+        Prometheus text exposition, or OpenMetrics when the Accept header asks
+        for it. Includes http_requests_total by handler and code, which the
+        success-rate analysis reads.
+      responses:
+        "200":
+          description: Metrics.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/openmetrics-text:
+              schema:
+                type: string
+components:
+  schemas:
+    Hello:
+      type: object
+      required: [service, version, message]
+      additionalProperties: false
+      properties:
+        service:
+          type: string
+          const: hello-api
+        version:
+          type: string
+          description: Build version, for example sha-<commit> or a release tag.
+        message:
+          type: string
+          examples: [Hello from hello-api]
+    Error:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: string

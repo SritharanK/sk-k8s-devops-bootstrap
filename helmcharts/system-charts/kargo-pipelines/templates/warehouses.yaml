@@ -1,0 +1,31 @@
+{{- /*
+One Warehouse per app: the release tags of <imageRegistry>/<app> that match
+the semver constraint. Every Freight records the tag and the digest; the
+promotion writes both, and the workload runs repository@digest.
+*/ -}}
+{{- range $app := .Values.apps }}
+{{- $project := include "kargo-pipelines.project" (list $ $app.name) }}
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: {{ $app.name }}
+  namespace: {{ $project }}
+  labels:
+    {{- include "kargo-pipelines.labels" $ | nindent 4 }}
+  annotations:
+    {{- include "kargo-pipelines.annotations" "1" | nindent 4 }}
+spec:
+  interval: {{ $.Values.warehouse.interval }}
+  freightCreationPolicy: Automatic
+  subscriptions:
+    - image:
+        repoURL: {{ printf "%s/%s" (trimSuffix "/" $.Values.imageRegistry) $app.name }}
+        imageSelectionStrategy: SemVer
+        constraint: {{ $.Values.warehouse.constraint | quote }}
+        strictSemvers: true
+        discoveryLimit: {{ $.Values.warehouse.discoveryLimit }}
+        {{- if $.Values.warehouse.insecureSkipTLSVerify }}
+        insecureSkipTLSVerify: true
+        {{- end }}
+{{- end }}

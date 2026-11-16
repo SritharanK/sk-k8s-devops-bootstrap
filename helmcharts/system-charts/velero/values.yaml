@@ -1,0 +1,186 @@
+# Common values for both profiles. Upstream chart values sit under `velero`.
+# The BackupStorageLocation is set per profile (values-lab.yaml, values-reference.yaml).
+velero:
+  image:
+    repository: docker.io/velero/velero
+    tag: v1.18.2
+    pullPolicy: IfNotPresent
+
+  # Object store plugin. It copies itself into the shared `plugins` volume and
+  # runs with the pod-level user of the Velero server, so the copied binary is
+  # owned by the same UID that executes it.
+  initContainers:
+    - name: velero-plugin-for-aws
+      image: docker.io/velero/velero-plugin-for-aws:v1.14.4
+      imagePullPolicy: IfNotPresent
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 128Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      volumeMounts:
+        - mountPath: /target
+          name: plugins
+
+  # Velero server: restricted-compliant. UID 1002 and GID 1000 are the `cnb`
+  # user of the upstream image (a numeric UID is needed for runAsNonRoot).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1002
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    seccompProfile:
+      type: RuntimeDefault
+  # Velero writes the Kopia repository configuration and cache below $HOME
+  # (/home/cnb). The chart adds /tmp itself when the root filesystem is read-only.
+  extraVolumes:
+    - name: home
+      emptyDir: {}
+  extraVolumeMounts:
+    - name: home
+      mountPath: /home/cnb
+
+  # Argo CD applies the CRDs from the chart's crds/ directory with server-side
+  # apply. The Helm workaround Job that upgrades CRDs is not needed, and the CRD
+  # cleanup Job must never run.
+  upgradeCRDs: false
+  cleanUpCRDs: false
+
+  # Cloud credentials only from an existing Secret: key `cloud`, AWS
+  # credentials file format. Mounted at /credentials/cloud in the server and
+  # the node agent. See README.md, section Secrets.
+  credentials:
+    useSecret: true
+    existingSecret: velero-s3-credentials
+
+  backupsEnabled: true
+  # No VolumeSnapshotLocation: volume data is backed up by the node agent (Kopia).
+  snapshotsEnabled: false
+
+  deployNodeAgent: true
+  nodeAgent:
+    # Runs on every node, including control-plane nodes and nodes with any taint,
+    # so every pod volume can be backed up.
+    tolerations:
+      - operator: Exists
+    # Resources for the backup and restore pods the node agent starts per volume.
+    extraArgs:
+      - --node-agent-configmap=velero-node-agent-config
+    # Upstream default kept: root without privileged mode, so it can read and
+    # restore files of any owner below /var/lib/kubelet/pods.
+    podSecurityContext:
+      runAsUser: 0
+    # Root keeps its default capabilities to read files of any owner; it gains
+    # no privileges beyond them and runs under the runtime seccomp profile.
+    containerSecurityContext:
+      privileged: false
+      allowPrivilegeEscalation: false
+      seccompProfile:
+        type: RuntimeDefault
+
+  # ConfigMap velero-node-agent-config, read by the node agent at start.
+  configMaps:
+    node-agent-config:
+      data:
+        node-agent-config.json: |
+          {
+            "podResources": {
+              "cpuRequest": "100m",
+              "memoryRequest": "256Mi",
+              "memoryLimit": "1Gi"
+            }
+          }
+
+  configuration:
+    uploaderType: kopia
+    # Back up every pod volume with Kopia unless the pod opts a volume out with
+    # the annotation backup.velero.io/backup-volumes-excludes.
+    defaultVolumesToFsBackup: true
+    defaultBackupTTL: 168h
+    logFormat: json
+    backupStorageLocation: []
+    volumeSnapshotLocation: []
+    repositoryMaintenanceJob:
+      repositoryConfigData:
+        name: velero-repo-maintenance
+        global:
+          keepLatestMaintenanceJobs: 3
+          podResources:
+            cpuRequest: 100m
+            memoryRequest: 256Mi
+            memoryLimit: 1Gi
+
+  metrics:
+    enabled: true
+    # Requires the monitoring toolchain (Prometheus selects `release: monitoring`).
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: monitoring
+    nodeAgentPodMonitor:
+      enabled: true
+      additionalLabels:
+        release: monitoring
+    # Velero alerts live in the monitoring chart (velero_backup_failure_total,
+    # velero_backup_last_successful_timestamp).
+    prometheusRule:
+      enabled: false
+
+  # Rendered as Schedules velero-platform-daily and velero-sealing-key.
+  # Cron times are UTC. skipImmediately: the first backup runs at the next
+  # scheduled time, not at install, so a custom Kopia repository password
+  # (velero-repo-credentials) is in place before the repository is created.
+  schedules:
+    platform-daily:
+      disabled: false
+      schedule: "0 2 * * *"
+      skipImmediately: true
+      useOwnerReferencesInBackup: false
+      template:
+        ttl: 168h
+        storageLocation: default
+        includedNamespaces:
+          - dev
+          - stage
+          - prod
+        snapshotVolumes: false
+        defaultVolumesToFsBackup: true
+    # Key escrow: the Sealed Secrets controller key pairs (active and retired).
+    # Set includedNamespaces to the controller namespace.
+    sealing-key:
+      disabled: false
+      schedule: "0 1 * * *"
+      skipImmediately: true
+      useOwnerReferencesInBackup: false
+      template:
+        ttl: 168h
+        storageLocation: default
+        includedNamespaces:
+          - kube-system
+        includedResources:
+          - secrets
+        includeClusterResources: false
+        labelSelector:
+          matchExpressions:
+            - key: sealedsecrets.bitnami.com/sealed-secrets-key
+              operator: Exists
+        snapshotVolumes: false
+        defaultVolumesToFsBackup: false

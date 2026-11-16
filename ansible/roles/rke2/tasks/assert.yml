@@ -1,0 +1,119 @@
+---
+- name: Assert that the release is pinned to an exact version
+  ansible.builtin.assert:
+    that:
+      - rke2_version is string
+      - rke2_version != 'CHANGE_ME'
+      - rke2_version is regex(rke2__version_regex)
+    fail_msg: >-
+      rke2_version must be an exact release such as v1.36.6+rke2r1 (got '{{ rke2_version }}').
+      Set rke2.version in clusters/<name>/cluster.yaml.
+    quiet: true
+
+- name: Assert that the channel is valid for this release
+  ansible.builtin.assert:
+    that:
+      - rke2_channel in ['stable', 'latest', 'testing'] or rke2_channel is regex('^v1\.[0-9]+$')
+      - >-
+        rke2_channel is not regex('^v1\.[0-9]+$')
+        or (rke2_channel | regex_replace('^v1\.', '') | int) == (rke2__version_minor | int)
+    fail_msg: >-
+      rke2_channel must be stable, latest, testing or v1.<minor> matching rke2_version
+      (got '{{ rke2_channel }}' for {{ rke2_version }}). RPM installs take the repository minor from a
+      v1.<minor> channel, so a mismatch would install from the wrong repository.
+    quiet: true
+
+- name: Assert that the cluster token is set
+  ansible.builtin.assert:
+    that:
+      - rke2_token | string | length > 0
+      - rke2_token | string != 'CHANGE_ME'
+      - rke2_agent_token | string != 'CHANGE_ME'
+    fail_msg: >-
+      rke2_token must be set and must not be CHANGE_ME; rke2_agent_token must be empty or a real secret.
+      Set vault_rke2_token in inventories/<name>/group_vars/all/vault.yml.
+    quiet: true
+  no_log: true
+
+- name: Assert that the inventory topology is usable
+  ansible.builtin.assert:
+    that:
+      - rke2__servers | length > 0
+      - rke2_bootstrap_host in rke2__servers
+      - rke2__node_type in ['server', 'agent']
+      - not (inventory_hostname in rke2__servers and inventory_hostname in rke2__agents)
+    fail_msg: >-
+      {{ inventory_hostname }} must be in exactly one of the groups {{ rke2_servers_group }} and
+      {{ rke2_agents_group }}, the servers group must not be empty and rke2_bootstrap_host
+      ('{{ rke2_bootstrap_host }}') must be one of its members.
+    quiet: true
+
+- name: Assert that a registration address exists for more than one server
+  ansible.builtin.assert:
+    that:
+      - rke2__servers | length == 1 or rke2_registration_address | length > 0
+      - rke2_registration_address != 'CHANGE_ME'
+    fail_msg: >-
+      {{ rke2__servers | length }} servers need a fixed registration address (VIP or load balancer)
+      in rke2_registration_address, and it must not be CHANGE_ME.
+    quiet: true
+
+- name: Assert that the selected components are supported
+  ansible.builtin.assert:
+    that:
+      - rke2_cni in ['canal', 'calico', 'cilium']
+      - rke2_ingress_controller in ['none', 'traefik', 'ingress-nginx']
+      - rke2_install_method in ['', 'tar', 'rpm']
+    fail_msg: >-
+      Unsupported value: rke2_cni '{{ rke2_cni }}' (canal, calico, cilium), rke2_ingress_controller
+      '{{ rke2_ingress_controller }}' (none, traefik, ingress-nginx) or rke2_install_method
+      '{{ rke2_install_method }}' ('', tar, rpm).
+    quiet: true
+
+- name: Assert that the tarball method is not used on an SELinux host
+  ansible.builtin.assert:
+    that:
+      - not (rke2__selinux_enabled | bool and rke2_install_method == 'tar')
+    fail_msg: >-
+      SELinux is enabled on {{ inventory_hostname }}. The tarball install does not install the
+      rke2-selinux policy (docs.rke2.io/security/selinux); leave rke2_install_method empty to use RPM.
+    quiet: true
+
+- name: Assert that kube-vip has a VIP and an interface
+  ansible.builtin.assert:
+    that:
+      - rke2_registration_address | length > 0
+      - rke2_kube_vip_interface | length > 0
+    fail_msg: >-
+      rke2_kube_vip_enabled needs rke2_registration_address (the VIP) and rke2_kube_vip_interface
+      (the interface that announces it).
+    quiet: true
+  when: rke2_kube_vip_enabled | bool
+
+- name: Assert that etcd S3 snapshots have a bucket
+  ansible.builtin.assert:
+    that:
+      - rke2_etcd_s3.bucket | default('') | length > 0
+      - rke2_etcd_s3.endpoint | default('') | length > 0
+    fail_msg: rke2_etcd_s3.enabled is true, so rke2_etcd_s3.endpoint and rke2_etcd_s3.bucket must be set.
+    quiet: true
+  when: rke2_etcd_s3.enabled | default(false) | bool
+
+- name: Assert that OIDC has an HTTPS issuer and a client ID
+  ansible.builtin.assert:
+    that:
+      - rke2_apiserver_oidc.issuer_url | default('') is regex('^https://')
+      - rke2_apiserver_oidc.client_id | default('') | length > 0
+    fail_msg: >-
+      rke2_apiserver_oidc.enabled is true, so issuer_url must be an https:// URL and client_id must be set.
+    quiet: true
+  when: rke2_apiserver_oidc.enabled | default(false) | bool
+
+- name: Assert that the facts this role needs were gathered
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['nodename'] is defined
+      - rke2_node_ip | length > 0 or ansible_facts['default_ipv4']['address'] is defined
+    fail_msg: >-
+      Gather facts before this role, and set rke2_node_ip when the host has no default IPv4 route.
+    quiet: true

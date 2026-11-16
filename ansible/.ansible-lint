@@ -1,0 +1,8 @@
+---
+# ansible-lint configuration. Run from the ansible/ directory: ansible-lint
+profile: production
+strict: true
+
+exclude_paths:
+  - collections/ansible_collections/
+  - .cache/

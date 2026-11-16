@@ -1,0 +1,125 @@
+# Render fixture: every optional object enabled. Used by the all_test suite
+# and for schema validation with kubeconform (see the chart README). The KEDA
+# ScaledObject is the exception: it is mutually exclusive with the HPA enabled
+# here and is covered by the keda_test suite.
+global:
+  environment: dev
+  domain: localtest.me
+  cluster: CHANGE_ME
+  profile: CHANGE_ME
+image:
+  repository: registry.example.com/team/app
+  tag: 1.2.3
+imagePullSecrets:
+  - regcred
+commonLabels:
+  team: platform
+podLabels:
+  tier: web
+podAnnotations:
+  example.com/owner: platform
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+priorityClassName: workload-default
+topologySpread:
+  enabled: true
+env:
+  - name: LOG_FORMAT
+    value: json
+  - name: DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: app-db
+        key: password
+envFrom:
+  - secretRef:
+      name: app-env
+configMaps:
+  app-settings:
+    data:
+      LOG_LEVEL: info
+      WORKERS: 4
+    asEnv: true
+  files:
+    data:
+      app.conf: |
+        listen 8080
+        mode strict
+    mountPath: /etc/app
+secretMounts:
+  db:
+    secretName: app-db
+    mountPath: /var/run/secrets/db
+    items:
+      - key: password
+        path: password
+    optional: false
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  failureThreshold: 30
+  periodSeconds: 2
+lifecycle:
+  preStop:
+    sleep:
+      seconds: 5
+route:
+  enabled: true
+  timeouts:
+    request: 30s
+trafficPolicy:
+  enabled: true
+  annotations:
+    example.com/owner: platform
+  # route.timeouts sets the request timeout, so the policy keeps only the
+  # connect timeout.
+  timeout:
+    http: null
+  rateLimit:
+    enabled: true
+autoscaling:
+  enabled: true
+  targetMemoryUtilizationPercentage: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+networkPolicy:
+  extraIngress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: CHANGE_ME
+      ports:
+        - port: 8080
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: CHANGE_ME
+      ports:
+        - port: 5432
+          protocol: TCP
+metrics:
+  serviceMonitor:
+    enabled: true
+    labels:
+      example.com/scrape: "true"
+otel:
+  enabled: true
+  samplerArg: "0.1"
+  resourceAttributes:
+    service.namespace: platform
+rollout:
+  enabled: true
+  analysis:
+    args:
+      - name: service-name
+        value: web-helm-common-test
+  trafficRouting:
+    gatewayAPI:
+      enabled: true

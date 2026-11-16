@@ -1,0 +1,426 @@
+# Promote an application image to the next environment through a pull request.
+#
+# The order is fixed: dev to stage, stage to prod, never dev to prod. The run
+# reads image.tag and image.digest from envs/<from>/<app>/values.yaml, can
+# check in Argo CD that <app>-<from> is Healthy, Synced and runs that digest,
+# commits the same two keys to envs/<to>/<app>/values.yaml on a new branch
+# through the GitHub REST API and opens a pull request. It never merges,
+# approves or enables auto-merge: a maintainer reviews and merges by hand.
+#
+# Optional configuration (repository Actions variables and secrets):
+#   ARGOCD_SERVER              variable  Argo CD host name without scheme, e.g. argocd.example.com
+#   ARGOCD_CI_TOKEN_DEV        secret    token of role ci in project apps-dev
+#   ARGOCD_CI_TOKEN_STAGE      secret    token of role ci in project apps-stage
+#                                        (argocd proj role create-token apps-<env> ci)
+#   GITOPS_APP_ID              variable  GitHub App client ID (the numeric app ID is also accepted)
+#   GITOPS_APP_PRIVATE_KEY     secret    private key of that App (Contents and Pull requests: write)
+#   PROMOTION_ENGINE           variable  workflows or kargo: which engine writes the
+#                                        environment files (docs/adr/0012-kargo-promotion.md).
+#                                        Unset: kargo when a cluster definition enables
+#                                        Kargo, else workflows (hack/promotion-engine.sh).
+#                                        With kargo this workflow refuses to run, so
+#                                        there is one writer.
+# Without the Argo CD pair the health check is skipped and the pull request says
+# so. With the App, the pull request starts the pull_request checks as usual.
+# Without it the pull request is opened with GITHUB_TOKEN, which needs "Allow
+# GitHub Actions to create and approve pull requests" and starts no
+# pull_request workflow; the run then dispatches validate.yml on the branch so
+# that ci-gate reports on the head commit.
+
+name: Promote
+
+run-name: Promote ${{ inputs.app }} from ${{ inputs.from }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Application name, as listed under apps in argocd-bootstrap/values.yaml
+        type: string
+        required: true
+      from:
+        description: Source environment (dev promotes to stage, stage promotes to prod)
+        type: choice
+        options: [dev, stage]
+        default: dev
+        required: true
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  promote:
+    name: Open promotion pull request
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write  # read the default branch; branch and commit when no GitHub App is configured
+      pull-requests: write  # open the pull request when no GitHub App is configured
+      actions: write  # dispatch validate.yml on the branch when no GitHub App is configured
+    concurrency:
+      group: promote-${{ inputs.app }}-${{ inputs.from }}
+      cancel-in-progress: false
+    env:
+      APP: ${{ inputs.app }}
+      FROM: ${{ inputs.from }}
+      REPO: ${{ github.repository }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      HAS_APP_KEY: ${{ secrets.GITOPS_APP_PRIVATE_KEY != '' }}
+      PROMOTION_ENGINE: ${{ vars.PROMOTION_ENGINE }}
+    steps:
+      - name: Check the request and resolve the base commit
+        id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$APP" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
+            echo "::error::Input app is not a valid name: use lowercase letters, digits and inner hyphens."
+            exit 1
+          fi
+          case "$FROM" in
+            dev) to=stage ;;
+            stage) to=prod ;;
+            *)
+              echo "::error::Input from must be dev or stage. Promotion goes dev to stage, then stage to prod."
+              exit 1
+              ;;
+          esac
+          if [[ "$GITHUB_REF" != "refs/heads/${DEFAULT_BRANCH}" ]]; then
+            echo "::error::Run this workflow from the default branch (${DEFAULT_BRANCH})."
+            exit 1
+          fi
+          base_sha=$(gh api "repos/${REPO}/git/ref/heads/${DEFAULT_BRANCH}" --jq '.object.sha')
+          if [[ ! "$base_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not resolve the head commit of ${DEFAULT_BRANCH}."
+            exit 1
+          fi
+          {
+            echo "to=${to}"
+            echo "sha=${base_sha}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Promoting ${APP} from ${FROM} to ${to}, based on ${DEFAULT_BRANCH} at ${base_sha}."
+
+      - name: Check out the base commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ steps.base.outputs.sha }}
+          persist-credentials: false
+
+      - name: Check the promotion engine
+        run: |
+          set -euo pipefail
+          engine=$(hack/promotion-engine.sh)
+          if [[ "$engine" != workflows ]]; then
+            echo "::error::Kargo writes the environment files, so this workflow does not promote."
+            echo "::error::Promote in Kargo, or set the repository variable PROMOTION_ENGINE=workflows (docs/adr/0012-kargo-promotion.md)."
+            exit 1
+          fi
+
+      - name: Read and validate the image to promote
+        id: image
+        env:
+          TO: ${{ steps.base.outputs.to }}
+        run: |
+          set -euo pipefail
+          if ! yq --version 2>/dev/null | grep -Eq 'mikefarah/yq.* version v?4\.'; then
+            echo "::error::mikefarah yq v4 is required on the runner (yq --version did not report it)."
+            exit 1
+          fi
+
+          inventory=argocd-bootstrap/values.yaml
+          matches=$(yq '[.apps[] | select(.name == strenv(APP))] | length' "$inventory")
+          if [[ "$matches" != 1 ]]; then
+            echo "::error::${APP} must be listed exactly once under apps in ${inventory} (found ${matches})."
+            exit 1
+          fi
+          environments=$(yq '.apps[] | select(.name == strenv(APP)) | .environments[]' "$inventory")
+          for required in "$FROM" "$TO"; do
+            if ! grep -Fxq -- "$required" <<<"$environments"; then
+              echo "::error::${APP} does not list ${required} in its environments in ${inventory}; it cannot be promoted from ${FROM} to ${TO}."
+              exit 1
+            fi
+          done
+
+          src="envs/${FROM}/${APP}/values.yaml"
+          dst="envs/${TO}/${APP}/values.yaml"
+          for file in "$src" "$dst"; do
+            if [[ ! -f "$file" ]]; then
+              echo "::error::${file} does not exist on ${DEFAULT_BRANCH}."
+              exit 1
+            fi
+          done
+
+          tag=$(yq '.image.tag // ""' "$src")
+          digest=$(yq '.image.digest // ""' "$src")
+          if [[ -z "$tag" || "$tag" == latest ]]; then
+            echo "::error::image.tag in ${src} is empty or latest; promote a fixed version tag."
+            exit 1
+          fi
+          if [[ ! "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; then
+            echo "::error::image.tag in ${src} is not a valid OCI tag."
+            exit 1
+          fi
+          if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::image.digest in ${src} must match sha256:<64 lowercase hex characters>."
+            exit 1
+          fi
+          if [[ "$(yq '.image.repository // ""' "$src")" != "$(yq '.image.repository // ""' "$dst")" ]]; then
+            echo "::error::image.repository differs between ${src} and ${dst}; align it in a reviewed change first."
+            exit 1
+          fi
+
+          noop=false
+          if [[ "$(yq '.image.tag // ""' "$dst")" == "$tag" && "$(yq '.image.digest // ""' "$dst")" == "$digest" ]]; then
+            noop=true
+            echo "::notice::${dst} already has tag ${tag} and digest ${digest}. Nothing to promote."
+            {
+              echo "## Nothing to promote"
+              echo
+              echo "\`${dst}\` already has tag \`${tag}\` and digest \`${digest}\`."
+              echo "No branch, commit or pull request was created."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          {
+            echo "src=${src}"
+            echo "dst=${dst}"
+            echo "tag=${tag}"
+            echo "digest=${digest}"
+            echo "noop=${noop}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify the source application in Argo CD
+        id: verify
+        if: steps.image.outputs.noop == 'false'
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+          ARGOCD_SERVER: ${{ vars.ARGOCD_SERVER }}
+          # Only the token of the source project reaches this step. The two
+          # conditions exclude each other, so an unset secret yields ''.
+          ARGOCD_TOKEN: ${{ (inputs.from == 'dev' && secrets.ARGOCD_CI_TOKEN_DEV) || (inputs.from == 'stage' && secrets.ARGOCD_CI_TOKEN_STAGE) || '' }}
+        run: |
+          set -euo pipefail
+          token_name="ARGOCD_CI_TOKEN_$(tr '[:lower:]' '[:upper:]' <<<"$FROM")"
+          application="${APP}-${FROM}"
+          if [[ -z "$ARGOCD_SERVER" || -z "$ARGOCD_TOKEN" ]]; then
+            if [[ -n "$ARGOCD_SERVER" || -n "$ARGOCD_TOKEN" ]]; then
+              echo "::warning::Only one of ARGOCD_SERVER and ${token_name} is set; both are needed for the health check."
+            fi
+            echo "::warning::Health of ${application} was not verified. The reviewer must check it in Argo CD."
+            echo "verified=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::add-mask::${ARGOCD_TOKEN}"
+          if [[ ! "$ARGOCD_SERVER" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$ ]]; then
+            echo "::error::ARGOCD_SERVER must be a host name with an optional port, without scheme or path."
+            exit 1
+          fi
+
+          response="$(mktemp -p "$RUNNER_TEMP")"
+          # The header is read from standard input so the token is never
+          # part of a command line. TLS certificates are always verified.
+          if ! status=$(curl --silent --show-error --proto '=https' --tlsv1.2 \
+            --connect-timeout 10 --max-time 30 --retry 3 \
+            --header @- --output "$response" --write-out '%{http_code}' \
+            "https://${ARGOCD_SERVER}/api/v1/applications/${application}" \
+            <<<"Authorization: Bearer ${ARGOCD_TOKEN}"); then
+            echo "::error::Could not reach https://${ARGOCD_SERVER} (see the curl error above)."
+            exit 1
+          fi
+          if [[ "$status" != 200 ]]; then
+            reason=$(jq -r '.message // .error // empty' "$response" 2>/dev/null | tr -cd '[:print:]' | cut -c1-200) || reason=""
+            echo "::error::Argo CD returned HTTP ${status} for ${application}: ${reason:-no message}."
+            echo "::error::On 401 renew ${token_name}. On 403 check that ${application} exists and the token is of role ci in apps-${FROM}."
+            exit 1
+          fi
+
+          health=$(jq -r '.status.health.status // "Unknown"' "$response")
+          sync=$(jq -r '.status.sync.status // "Unknown"' "$response")
+          problems=()
+          [[ "$health" == Healthy ]] || problems+=("health is ${health}, expected Healthy")
+          [[ "$sync" == Synced ]] || problems+=("sync status is ${sync}, expected Synced")
+          if ! jq -e --arg suffix "@${DIGEST}" 'any(.status.summary.images[]?; endswith($suffix))' "$response" >/dev/null; then
+            problems+=("no image in status.summary.images ends in @${DIGEST}")
+          fi
+          if (( ${#problems[@]} > 0 )); then
+            joined=$(printf '%s; ' "${problems[@]}")
+            echo "::error::${application} is not ready to promote: ${joined%; }."
+            exit 1
+          fi
+
+          echo "${application} is Healthy and Synced and runs ${DIGEST}."
+          {
+            echo "verified=true"
+            echo "checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create a GitHub App token
+        id: app-token
+        if: steps.image.outputs.noop == 'false' && vars.GITOPS_APP_ID != '' && env.HAS_APP_KEY == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
+        with:
+          client-id: ${{ vars.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Commit the promotion and open the pull request
+        if: steps.image.outputs.noop == 'false'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          TOKEN_SOURCE: ${{ steps.app-token.outputs.token != '' && 'app' || 'github-token' }}
+          APP_ID_SET: ${{ vars.GITOPS_APP_ID != '' }}
+          TO: ${{ steps.base.outputs.to }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          SRC: ${{ steps.image.outputs.src }}
+          DST: ${{ steps.image.outputs.dst }}
+          TAG: ${{ steps.image.outputs.tag }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+          VERIFIED: ${{ steps.verify.outputs.verified }}
+          CHECKED_AT: ${{ steps.verify.outputs.checked_at }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          branch="promote/${APP}/${TO}-${DIGEST:7:12}"
+          title="promote(${APP}): ${FROM} to ${TO} ${TAG}"
+          message="chore(promote): ${APP} ${FROM} to ${TO} (${TAG}, ${DIGEST:0:19})"
+
+          if [[ "$TOKEN_SOURCE" != app && ( "$APP_ID_SET" == true || "$HAS_APP_KEY" == true ) ]]; then
+            echo "::warning::Only one of GITOPS_APP_ID and GITOPS_APP_PRIVATE_KEY is set; using GITHUB_TOKEN."
+          fi
+          if gh api "repos/${REPO}/git/ref/heads/${branch}" --silent 2>/dev/null; then
+            echo "::error::Branch ${branch} already exists from an earlier promotion of this digest to ${TO}. Check its pull request first."
+            exit 1
+          fi
+
+          # yq -i would also re-indent sequences and change comment spacing on
+          # other lines, so yq only locates the two value lines, awk rewrites
+          # those lines in place, and yq then checks the result.
+          work="$(mktemp -d -p "$RUNNER_TEMP")"
+          new="${work}/values.yaml"
+          tag_line=$(yq '.image.tag | line' "$DST")
+          digest_line=$(yq '.image.digest | line' "$DST")
+          if [[ "$tag_line" == 0 || "$digest_line" == 0 || "$tag_line" == "$digest_line" ]]; then
+            echo "::error::${DST} must define image.tag and image.digest in block style, one key per line."
+            exit 1
+          fi
+          if ! awk -v tag_line="$tag_line" -v digest_line="$digest_line" -v tag="$TAG" -v digest="$DIGEST" '
+            function rewrite(text, key, value, plain_quote,    head, rest, q, sq, found) {
+              sq = "\047"
+              if (!match(text, "^[ \t]*" key ":[ \t]*")) { bad = 1; return text }
+              head = substr(text, 1, RLENGTH)
+              rest = substr(text, RLENGTH + 1)
+              q = substr(rest, 1, 1)
+              if (q == "\"") { found = match(rest, /^"[^"]*"/) }
+              else if (q == sq) { found = match(rest, "^" sq "[^" sq "]*" sq) }
+              else { q = plain_quote; found = match(rest, /^[^ \t#]+/) }
+              if (!found) { bad = 1; return text }
+              return head q value q substr(rest, RLENGTH + 1)
+            }
+            NR == tag_line { $0 = rewrite($0, "tag", tag, "\"") }
+            NR == digest_line { $0 = rewrite($0, "digest", digest, "") }
+            { print }
+            END { exit bad }
+          ' "$DST" > "$new"; then
+            echo "::error::Could not rewrite image.tag (line ${tag_line}) or image.digest (line ${digest_line}) in ${DST}."
+            exit 1
+          fi
+          strip='del(.image.tag) | del(.image.digest)'
+          if [[ "$(yq '.image.tag' "$new")" != "$TAG" || "$(yq '.image.tag | tag' "$new")" != '!!str' ||
+                "$(yq '.image.digest' "$new")" != "$DIGEST" ||
+                "$(yq -o=json "$strip" "$DST")" != "$(yq -o=json "$strip" "$new")" ]]; then
+            echo "::error::The rewritten ${DST} does not hold exactly the promoted tag and digest."
+            exit 1
+          fi
+          echo "Change to ${DST}:"
+          diff -u -- "$DST" "$new" || true
+          base64 < "$new" | tr -d '\n' > "${work}/content.b64"
+          blob_sha=$(gh api "repos/${REPO}/contents/${DST}?ref=${BASE_SHA}" --jq '.sha')
+
+          gh api --method POST "repos/${REPO}/git/refs" \
+            -f "ref=refs/heads/${branch}" -f "sha=${BASE_SHA}" --silent
+          commit_sha=$(jq -n --arg message "$message" --arg branch "$branch" --arg sha "$blob_sha" \
+            --rawfile content "${work}/content.b64" \
+            '{message: $message, branch: $branch, sha: $sha, content: $content}' \
+            | gh api --method PUT "repos/${REPO}/contents/${DST}" --input - --jq '.commit.sha')
+
+          if [[ "$VERIFIED" == true ]]; then
+            verification="Verified: Argo CD reported ${APP}-${FROM} Healthy and Synced, running ${DIGEST}, at ${CHECKED_AT}."
+          else
+            verification="Not verified: this workflow has no Argo CD access configured."
+            verification+=" Before merging, check in Argo CD that ${APP}-${FROM} is Healthy and Synced and runs ${DIGEST}."
+          fi
+          checks_note=""
+          if [[ "$TOKEN_SOURCE" != app ]]; then
+            checks_note="This pull request was opened with GITHUB_TOKEN, which starts no pull_request workflow."
+            checks_note+=" The promotion run dispatched validate.yml on ${branch}, so ci-gate reports on the head commit."
+          fi
+
+          {
+            echo "Promotes \`${APP}\` from \`${FROM}\` to \`${TO}\`."
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| App | \`${APP}\` |"
+            echo "| Source | \`${SRC}\` |"
+            echo "| Target | \`${DST}\` |"
+            echo "| Tag | \`${TAG}\` |"
+            echo "| Digest | \`${DIGEST}\` |"
+            echo "| Health check | ${verification} |"
+            echo
+            echo "Only \`image.tag\` and \`image.digest\` change in the target file."
+            echo
+            echo "Review and merge this pull request by hand: the promotion workflow never merges, approves or enables auto-merge."
+            echo "Merges to prod also need CODEOWNERS approval, and in the reference profile Argo CD syncs prod only inside its sync window."
+            if [[ -n "$checks_note" ]]; then
+              echo
+              echo "$checks_note"
+            fi
+            echo
+            echo "Opened by workflow run ${RUN_URL}."
+          } > "${work}/body.md"
+
+          if ! pr_url=$(gh pr create --repo "$REPO" --base "$DEFAULT_BRANCH" --head "$branch" \
+            --title "$title" --body-file "${work}/body.md"); then
+            echo "::error::Branch ${branch} and commit ${commit_sha} exist, but opening the pull request failed."
+            echo "::error::With GITHUB_TOKEN, enable \"Allow GitHub Actions to create and approve pull requests\", or configure the GitHub App."
+            exit 1
+          fi
+
+          dispatch_failed=false
+          if [[ "$TOKEN_SOURCE" != app ]]; then
+            if ! gh workflow run validate.yml --repo "$REPO" --ref "$branch"; then
+              dispatch_failed=true
+              checks_note="Dispatching validate.yml on ${branch} failed, so ci-gate has not reported."
+              checks_note+=" Check that validate.yml has a workflow_dispatch trigger, then run it on the branch by hand."
+              echo "::error::${checks_note}"
+            fi
+          fi
+
+          {
+            echo "## Promotion pull request opened"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Pull request | ${pr_url} |"
+            echo "| App | \`${APP}\` |"
+            echo "| From, to | \`${FROM}\` to \`${TO}\` |"
+            echo "| Target | \`${DST}\` |"
+            echo "| Tag | \`${TAG}\` |"
+            echo "| Digest | \`${DIGEST}\` |"
+            echo "| Commit | \`${commit_sha}\` on \`${branch}\` |"
+            echo "| Health check | ${verification} |"
+            if [[ -n "$checks_note" ]]; then
+              echo
+              echo "$checks_note"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Opened ${pr_url}"
+          if [[ "$dispatch_failed" == true ]]; then
+            exit 1
+          fi

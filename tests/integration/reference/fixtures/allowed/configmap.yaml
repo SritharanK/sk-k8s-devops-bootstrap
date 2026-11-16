@@ -1,0 +1,9 @@
+# Harmless object for the AppProject checks of run.sh: a test Application
+# points here, and the check is whether Argo CD lets the project use it.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: integration-reference-allowed
+data:
+  purpose: AppProject permission test fixture

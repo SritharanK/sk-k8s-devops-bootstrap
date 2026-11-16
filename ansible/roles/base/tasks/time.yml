@@ -1,0 +1,79 @@
+---
+# chrony is installed by packages.yml (base__os_packages).
+
+# Debian family: chrony.conf is a dpkg conffile. Editing it would turn every later conffile change into a prompt, and
+# unattended-upgrades holds such packages back. The distribution file reads /etc/chrony/sources.d, so the role adds
+# its servers there and leaves chrony.conf untouched.
+- name: Read the distribution chrony configuration (Debian family)
+  ansible.builtin.slurp:
+    src: "{{ base__chrony_config }}"
+  register: base__chrony_conf
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - base_chrony_servers | length > 0
+    - not base__check_mode_pending
+
+- name: Assert that chrony reads the sources directory (Debian family)
+  ansible.builtin.assert:
+    that:
+      - (base__chrony_conf.content | b64decode) is search(base__chrony_sourcedir_regex, multiline=true)
+    fail_msg: >-
+      {{ base__chrony_config }} has no "sourcedir {{ base__chrony_sources_dir }}" line, so the servers in
+      base_chrony_servers would be ignored.
+    quiet: true
+  when: base__chrony_conf is not skipped
+
+- name: Ensure the chrony sources directory exists (Debian family)
+  ansible.builtin.file:
+    path: "{{ base__chrony_sources_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Write the chrony sources file (Debian family)
+  ansible.builtin.template:
+    src: chrony.sources.j2
+    dest: "{{ base__chrony_sources_dir }}/base.sources"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - not base__check_mode_pending
+  notify: Restart chrony
+
+# RedHat family: /etc/chrony.conf is %config(noreplace) and has no local sources include, so the role templates the
+# full file when servers are set. An empty list leaves the file as it is.
+- name: Write the chrony configuration (RedHat family)
+  ansible.builtin.template:
+    src: chrony.conf.RedHat.j2
+    dest: "{{ base__chrony_config }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - base_chrony_servers | length > 0
+  notify: Restart chrony
+
+- name: Enable and start chrony
+  ansible.builtin.systemd_service:
+    name: "{{ base__chrony_service }}"
+    enabled: true
+    state: started
+  when: not base__check_mode_pending
+
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+# systemd-timesyncd and chronyd would both discipline the clock.
+- name: Stop and disable systemd-timesyncd
+  ansible.builtin.systemd_service:
+    name: systemd-timesyncd
+    enabled: false
+    state: stopped
+  when: >-
+    (ansible_facts['services']['systemd-timesyncd.service']['status'] | default('not-found'))
+    not in ['not-found', 'masked']

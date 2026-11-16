@@ -1,0 +1,93 @@
+# End-to-end test of the lab platform on a throwaway kind cluster.
+#
+# Runs the same scripts as `make demo` and `make e2e`: hack/e2e/run.sh creates
+# the cluster with hack/demo/up.sh, runs the Chainsaw suite in tests/e2e/,
+# collects diagnostics into _out/e2e/<cluster>/ on failure and deletes the
+# cluster (KEEP=0). The workflow only installs pinned tools and calls them.
+#
+# No secrets are used. Actions are pinned by commit SHA; Renovate proposes
+# the bumps.
+
+name: E2E (kind)
+
+# The per-PR gate is the e2e-kind job of validate.yml (make e2e, required
+# through ci-gate). This workflow adds the nightly run on main, which catches
+# drift from upstream images and charts, and a manual trigger with the
+# diagnostics upload.
+on:
+  schedule:
+    # Nightly, off the full hour to avoid the scheduler peak.
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+# Nothing at workflow level; the job requests what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Scheduled and manual runs on the same ref queue instead of cancelling
+  # each other.
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  e2e-kind:
+    name: Chainsaw e2e on kind
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      # Checkout only.
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Three kind nodes share the runner kernel and exhaust the default
+      # inotify limits ("too many open files" in pods). Values from
+      # https://kind.sigs.k8s.io/docs/user/known-issues/#pod-errors-due-to-too-many-open-files
+      - name: Raise inotify limits for multi-node kind
+        run: |
+          sudo sysctl -w fs.inotify.max_user_watches=524288
+          sudo sysctl -w fs.inotify.max_user_instances=512
+
+      - name: Install pinned tools
+        run: bash hack/e2e/install-tools.sh
+
+      - name: Print tool versions
+        run: |
+          docker version
+          kind version
+          chainsaw version
+          kubectl version --client
+          helm version
+          yq --version
+
+      - name: Run e2e suite
+        env:
+          DEMO_CLUSTER: e2e
+          KEEP: "0"
+        run: bash hack/e2e/run.sh
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-diagnostics-${{ github.run_attempt }}
+          path: _out/e2e/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # hack/e2e/run.sh writes it as _out/e2e/<cluster>/chainsaw-report.xml.
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-junit-${{ github.run_attempt }}
+          path: _out/e2e/*/chainsaw-report*.xml
+          retention-days: 7
+          if-no-files-found: ignore

@@ -1,0 +1,30 @@
+---
+# Install and configure a hardened Jenkins LTS controller.
+#
+# Order matters: the package is installed with the unit masked, plugins,
+# configuration as code and secrets are written next, and Jenkins starts
+# only in service.yml. Jenkins therefore never boots without its
+# configuration.
+
+- name: Validate the platform and the configuration
+  ansible.builtin.import_tasks: assert.yml
+
+- name: Load the operating system family settings
+  ansible.builtin.include_vars:
+    file: "{{ ansible_facts['os_family'] }}.yml"
+
+- name: Configure the Jenkins package repository
+  ansible.builtin.include_tasks:
+    file: "repository_{{ ansible_facts['os_family'] | lower }}.yml"
+
+- name: Install Java and the pinned Jenkins package
+  ansible.builtin.import_tasks: install.yml
+
+- name: Write directories, configuration as code, secrets and the systemd drop-in
+  ansible.builtin.import_tasks: configure.yml
+
+- name: Install the pinned plugins
+  ansible.builtin.import_tasks: plugins.yml
+
+- name: Start Jenkins and wait until it answers
+  ansible.builtin.import_tasks: service.yml

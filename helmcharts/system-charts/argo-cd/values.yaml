@@ -1,0 +1,292 @@
+# Argo CD wrapper chart: base values shared by every profile.
+#
+# Layering: values.yaml, then values-<profile>.yaml (lab or reference). The
+# self-managing Application (argocd-bootstrap/templates/toolchains/argo-cd.yaml)
+# adds global.domain, platform.groups and route.parentRefs from the cluster
+# definition (clusters/<name>/cluster.yaml), so those three are defaults here.
+#
+# Upstream chart values live under the `argo-cd:` key. `global:` is shared by
+# Helm between this wrapper and the upstream chart.
+
+global:
+  # Host name of the Argo CD UI and API. Also used for the HTTPRoute host, the
+  # `url` in argocd-cm and the OIDC redirect URL.
+  domain: argocd.example.com
+  logging:
+    format: text
+    level: info
+  networkPolicy:
+    # One ingress NetworkPolicy per component.
+    create: true
+    # Deny all ingress in the release namespace except what the component
+    # policies allow. Egress stays open: Argo CD reaches Git, OCI and Helm
+    # registries and the API servers of managed clusters.
+    defaultDenyIngress: true
+  affinity:
+    podAntiAffinity: soft
+
+# Identity provider groups (platform.groups in the cluster definition). The values are the
+# group identifiers as they appear in the OIDC `groups` claim. For Entra ID that
+# is the group object ID unless the app registration emits names.
+platform:
+  groups:
+    admins: platform-admins
+    deployers: deployers
+    viewers: viewers
+
+# RBAC policy rendered by templates/argocd-rbac-cm.yaml (upstream
+# configs.rbac.create is false so that the policy can be built from
+# platform.groups).
+rbac:
+  # Role for authenticated users that match no group. Empty means no access,
+  # which is stricter than role:readonly: an SSO login alone grants nothing.
+  defaultRole: ""
+  # OIDC claims that RBAC evaluates in addition to `sub`.
+  scopes: "[groups]"
+  matchMode: glob
+  # AppProjects the deployers group acts on. Pipelines do not
+  # use a local account: they use the read-only project role `ci` of each
+  # apps-<env> AppProject (argocd-bootstrap), with a project-scoped token.
+  appProjects:
+    - apps-dev
+    - apps-stage
+    - apps-prod
+  # Extra policy lines appended verbatim to policy.csv.
+  extraPolicy: ""
+
+# Gateway API route for the UI and API on the shared Gateway platform. TLS terminates at the
+# Gateway listener; argocd-server serves plain HTTP inside the cluster
+# (configs.params."server.insecure"). The route host is global.domain.
+route:
+  enabled: true
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: platform
+      namespace: envoy-gateway-system
+      sectionName: https
+  annotations:
+    # The Gateway API CRDs come from another Application.
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+
+argo-cd:
+  # Resource names stay argocd-server, argocd-repo-server and so on, whatever
+  # the release name.
+  fullnameOverride: argocd
+
+  crds:
+    install: true
+    # Keep the CRDs, and with them every Application and AppProject, when the
+    # release is uninstalled or the self-managing Application is deleted.
+    keep: true
+    annotations:
+      argocd.argoproj.io/sync-options: Prune=false,Delete=false,ServerSideApply=true
+
+  configs:
+    cm:
+      # Local admin is off by default. The lab profile enables it and uses the
+      # generated argocd-initial-admin-secret; no password hash is committed.
+      admin.enabled: false
+      users.anonymous.enabled: "false"
+      # Web terminal into pods stays off.
+      exec.enabled: false
+      statusbadge.enabled: false
+      # Default since 3.0, set explicitly so the tracking method is visible.
+      application.resourceTrackingMethod: annotation
+
+      # Application health check. Argo CD 1.8 removed the built-in health
+      # assessment of argoproj.io/Application, so a parent app treats a child
+      # Application as done once it is applied. With this check the root app
+      # waits for each wave of child Applications to become Healthy before it
+      # syncs the next wave.
+      # A child whose own sync is requested or still running counts as
+      # Progressing: between two of its chart waves its aggregated health can
+      # read Healthy before the later resources exist.
+      resource.customizations.health.argoproj.io_Application: |
+        hs = {}
+        hs.status = "Progressing"
+        hs.message = ""
+        if obj.status == nil or obj.status.health == nil then
+          return hs
+        end
+        if obj.operation ~= nil then
+          hs.message = "Sync requested"
+          return hs
+        end
+        if obj.status.operationState ~= nil and obj.status.operationState.phase == "Running" then
+          hs.message = "Sync running"
+          if obj.status.operationState.message ~= nil then
+            hs.message = "Sync running: " .. obj.status.operationState.message
+          end
+          return hs
+        end
+        hs.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+        return hs
+
+      # Appended to the upstream default exclusions (Endpoints, EndpointSlice,
+      # Lease, authn and authz reviews, CSRs, cert-manager CertificateRequest,
+      # Cilium identities, Kyverno reports). These kinds are high churn, never
+      # declared in Git and never needed in the resource tree.
+      resourceExclusionsAdditional:
+        - apiGroups:
+            - openreports.io
+          kinds:
+            - Report
+            - ClusterReport
+        - apiGroups:
+            - aquasecurity.github.io
+          kinds:
+            - VulnerabilityReport
+            - ConfigAuditReport
+            - ExposedSecretReport
+            - InfraAssessmentReport
+            - RbacAssessmentReport
+            - SbomReport
+            - ClusterConfigAuditReport
+            - ClusterInfraAssessmentReport
+            - ClusterRbacAssessmentReport
+            - ClusterSbomReport
+            - ClusterVulnerabilityReport
+
+    params:
+      # TLS terminates at the Gateway (see route above and README, Decisions).
+      server.insecure: true
+
+    # SSH host keys Argo CD trusts for Git over SSH. Only the hosts this
+    # platform uses: GitHub. The upstream default also trusts Bitbucket, GitLab
+    # and Azure DevOps. Fingerprints, checked against the list GitHub publishes
+    # (docs.github.com, "GitHub's SSH key fingerprints"):
+    #   RSA     SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s
+    #   ECDSA   SHA256:p2QAMXNIC1TJYWeIOttrVc98/R1BUFWu3/LiyKgUfQM
+    #   ED25519 SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU
+    # Add a private Git server with its keys in extraHosts, never with
+    # --insecure-skip-server-verification.
+    ssh:
+      # SSH host keys cannot be wrapped.
+      # yamllint disable rule:line-length
+      knownHosts: |
+        [ssh.github.com]:443 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
+        [ssh.github.com]:443 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+        [ssh.github.com]:443 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=
+        github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
+        github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+        github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=
+      extraHosts: ""
+      # yamllint enable rule:line-length
+
+    rbac:
+      create: false
+
+    secret:
+      createSecret: true
+
+  controller:
+    # One replica: sharding stays off until one controller cannot keep up.
+    replicas: 1
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+    pdb:
+      enabled: true
+      maxUnavailable: 1
+      unhealthyPodEvictionPolicy: AlwaysAllow
+
+  server:
+    replicas: 1
+    service:
+      type: ClusterIP
+    ingress:
+      enabled: false
+    # The wrapper renders its own HTTPRoute (templates/httproute.yaml).
+    httproute:
+      enabled: false
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+    pdb:
+      enabled: true
+      maxUnavailable: 1
+      unhealthyPodEvictionPolicy: AlwaysAllow
+
+  repoServer:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    pdb:
+      enabled: true
+      maxUnavailable: 1
+      unhealthyPodEvictionPolicy: AlwaysAllow
+
+  applicationSet:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    pdb:
+      enabled: true
+      maxUnavailable: 1
+      unhealthyPodEvictionPolicy: AlwaysAllow
+
+  notifications:
+    enabled: true
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 128Mi
+
+  # Direct OIDC is the reference SSO path; Dex stays off (see README).
+  dex:
+    enabled: false
+
+  commitServer:
+    enabled: false
+
+  # Single Redis for the lab profile. Authentication is on: the
+  # redis-secret-init Job generates the argocd-redis Secret and every component
+  # reads the password from it.
+  redis:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+
+  redisSecretInit:
+    enabled: true
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+
+  redis-ha:
+    enabled: false
+    auth: true
+    existingSecret: argocd-redis

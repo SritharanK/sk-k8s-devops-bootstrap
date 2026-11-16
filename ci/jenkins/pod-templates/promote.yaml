@@ -1,0 +1,141 @@
+---
+# Agent pod of ci/jenkins/pipelines/promote.Jenkinsfile.
+# See ci/jenkins/README.md.
+#
+# The Kubernetes plugin merges this manifest with its own settings: it adds
+# the workspace volume (an emptyDir mounted at /home/jenkins/agent in every
+# container) and the connection variables of the jnlp container.
+#
+# Containers and what they are for:
+#   jnlp    Jenkins agent: checkout, Git, the GitHub API and the optional
+#           Argo CD health gate (curl).
+#   cosign  signature and SBOM attestation verification.
+#   yq      reads and edits the environment values files, parses the Argo CD
+#           API response.
+#
+# Every container stays within the Pod Security "restricted" profile.
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app.kubernetes.io/part-of: jenkins-agents
+    app.kubernetes.io/component: promote
+spec:
+  serviceAccountName: jenkins-agent
+  automountServiceAccountToken: false
+  enableServiceLinks: false
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 30
+  nodeSelector:
+    kubernetes.io/os: linux
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: jnlp
+      image: jenkins/inbound-agent:3395.v6e5377b_0fb_3c-4-jdk21@sha256:0c5908a376ff73381f3617c8277b77559a9c8916fe0c22efd9b9e9ef326aeb27
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+          ephemeral-storage: 256Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+          ephemeral-storage: 2Gi
+      volumeMounts:
+        - name: jnlp-tmp
+          mountPath: /tmp
+        - name: jnlp-remoting
+          mountPath: /home/jenkins/.jenkins
+
+    - name: cosign
+      # The -dev variant ships BusyBox (/busybox/sh on PATH); the default
+      # variant has no shell and cannot run pipeline steps.
+      image: gcr.io/projectsigstore/cosign:v3.1.4-dev@sha256:8af1a2cf9fba903fdfc6bdafdc25f7b13ef34ad722095543ea787fb96f7240c1
+      imagePullPolicy: IfNotPresent
+      command: ["sleep"]
+      args: ["infinity"]
+      env:
+        # Also holds the Sigstore TUF cache when the transparency log is on.
+        - name: HOME
+          value: /tmp
+        - name: DOCKER_CONFIG
+          value: /run/registry-auth
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+          ephemeral-storage: 64Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+          ephemeral-storage: 512Mi
+      volumeMounts:
+        - name: cosign-tmp
+          mountPath: /tmp
+        - name: registry-auth
+          mountPath: /run/registry-auth
+
+    - name: yq
+      image: mikefarah/yq:4.54.2@sha256:5d56494617dce8311106e905aac5c080a2087c905a7f7de2984db2e2cc60ab2e
+      imagePullPolicy: IfNotPresent
+      command: ["sleep"]
+      args: ["infinity"]
+      env:
+        - name: HOME
+          value: /tmp
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+          ephemeral-storage: 64Mi
+        limits:
+          cpu: 250m
+          memory: 128Mi
+          ephemeral-storage: 256Mi
+      volumeMounts:
+        - name: yq-tmp
+          mountPath: /tmp
+
+  volumes:
+    - name: jnlp-tmp
+      emptyDir:
+        medium: Memory
+        sizeLimit: 128Mi
+    - name: jnlp-remoting
+      emptyDir:
+        sizeLimit: 256Mi
+    - name: cosign-tmp
+      emptyDir:
+        medium: Memory
+        sizeLimit: 64Mi
+    - name: yq-tmp
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Mi
+    # Registry login of cosign. Memory-backed, never part of the workspace.
+    - name: registry-auth
+      emptyDir:
+        medium: Memory
+        sizeLimit: 1Mi

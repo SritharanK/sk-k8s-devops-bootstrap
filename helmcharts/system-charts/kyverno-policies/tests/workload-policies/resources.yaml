@@ -1,0 +1,2824 @@
+# Fixtures for the workload policies.
+# good-*: compliant objects that must pass every policy.
+# bad-*: compliant objects with exactly one violation, unless the name says
+# otherwise. Objects in prod are checked by the *-enforce policies, objects in
+# dev by the *-audit policies.
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod-dev
+  namespace: dev
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod-digest
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      # yamllint disable-line rule:line-length
+      image: ghcr.io/your-org/hello-api@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod-level-non-root
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod-net-bind-service
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+          add:
+            - NET_BIND_SERVICE
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod-localhost-seccomp
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: Localhost
+      localhostProfile: profiles/app.json
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-non-root-unset
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-non-root-container-false
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: false
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-non-root-init-false
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: false
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-run-as-user-zero
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+        runAsUser: 0
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-non-root-dev
+  namespace: dev
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-privilege-escalation-unset
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-privilege-escalation-init
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: true
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-capabilities-not-dropped
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-capabilities-add
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+          add:
+            - NET_ADMIN
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-seccomp-unset
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-seccomp-unconfined
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+        seccompProfile:
+          type: Unconfined
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-writable-root-filesystem
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: false
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-writable-root-filesystem-init
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-requests-missing
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-limits-missing
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-init-resources-missing
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-readiness-missing
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-liveness-missing
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-tag-latest
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:latest
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-tag-missing
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-tag-missing-registry-port
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: localhost:5000/hello-api
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-tag-latest-init
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:latest
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-registry
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: docker.io/library/nginx:1.29.3
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-registry-short-name
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: nginx:1.29.3
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-registry-lookalike
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org-other/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-registry-dev
+  namespace: dev
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: docker.io/library/nginx:1.29.3
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-privileged
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+        privileged: true
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-host-network
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+  hostNetwork: true
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-host-pid
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+  hostPID: true
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-host-port
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+          hostPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-host-path
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+    - name: host
+      hostPath:
+        path: /var/run
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-tag-latest-ephemeral
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+      livenessProbe:
+        httpGet: {path: /healthz, port: http}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+  ephemeralContainers:
+    - name: debug
+      image: ghcr.io/your-org/debug:latest
+      targetContainerName: app
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: good-deployment
+  namespace: prod
+spec:
+  selector:
+    matchLabels:
+      app: hello-api
+  template:
+    metadata:
+      labels:
+        app: hello-api
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: init
+          image: ghcr.io/your-org/hello-api:1.0.0
+          command: [/hello-api, --check-config]
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 50m, memory: 32Mi}
+      containers:
+        - name: app
+          image: ghcr.io/your-org/hello-api:1.0.0
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: good-statefulset
+  namespace: prod
+spec:
+  selector:
+    matchLabels:
+      app: hello-api
+  template:
+    metadata:
+      labels:
+        app: hello-api
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: init
+          image: ghcr.io/your-org/hello-api:1.0.0
+          command: [/hello-api, --check-config]
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 50m, memory: 32Mi}
+      containers:
+        - name: app
+          image: ghcr.io/your-org/hello-api:1.0.0
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+  serviceName: hello-api
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: good-daemonset
+  namespace: prod
+spec:
+  selector:
+    matchLabels:
+      app: hello-api
+  template:
+    metadata:
+      labels:
+        app: hello-api
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: init
+          image: ghcr.io/your-org/hello-api:1.0.0
+          command: [/hello-api, --check-config]
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 50m, memory: 32Mi}
+      containers:
+        - name: app
+          image: ghcr.io/your-org/hello-api:1.0.0
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-deployment-run-as-root
+  namespace: prod
+spec:
+  selector:
+    matchLabels:
+      app: hello-api
+  template:
+    metadata:
+      labels:
+        app: hello-api
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 0
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: init
+          image: ghcr.io/your-org/hello-api:1.0.0
+          command: [/hello-api, --check-config]
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 50m, memory: 32Mi}
+      containers:
+        - name: app
+          image: ghcr.io/your-org/hello-api:1.0.0
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: bad-daemonset-host-network
+  namespace: prod
+spec:
+  selector:
+    matchLabels:
+      app: agent
+  template:
+    metadata:
+      labels:
+        app: agent
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: init
+          image: ghcr.io/your-org/hello-api:1.0.0
+          command: [/hello-api, --check-config]
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 50m, memory: 32Mi}
+      containers:
+        - name: app
+          image: ghcr.io/your-org/hello-api:1.0.0
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      hostNetwork: true
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: good-job-without-probes
+  namespace: prod
+spec:
+  template:
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: init
+          image: ghcr.io/your-org/hello-api:1.0.0
+          command: [/hello-api, --check-config]
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 50m, memory: 32Mi}
+      containers:
+        - name: app
+          image: ghcr.io/your-org/hello-api:1.0.0
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      restartPolicy: Never
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: good-cronjob-without-probes
+  namespace: prod
+spec:
+  schedule: 0 3 * * *
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: init
+              image: ghcr.io/your-org/hello-api:1.0.0
+              command: [/hello-api, --check-config]
+              securityContext:
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests: {cpu: 10m, memory: 16Mi}
+                limits: {cpu: 50m, memory: 32Mi}
+          containers:
+            - name: app
+              image: ghcr.io/your-org/hello-api:1.0.0
+              ports:
+                - name: http
+                  containerPort: 8080
+              securityContext:
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {cpu: 200m, memory: 128Mi}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi
+          restartPolicy: Never
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bad-cronjob-tag-latest
+  namespace: prod
+spec:
+  schedule: 0 3 * * *
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: init
+              image: ghcr.io/your-org/hello-api:1.0.0
+              command: [/hello-api, --check-config]
+              securityContext:
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests: {cpu: 10m, memory: 16Mi}
+                limits: {cpu: 50m, memory: 32Mi}
+          containers:
+            - name: app
+              image: ghcr.io/your-org/hello-api:latest
+              ports:
+                - name: http
+                  containerPort: 8080
+              securityContext:
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {cpu: 200m, memory: 128Mi}
+              readinessProbe:
+                httpGet: {path: /readyz, port: http}
+              livenessProbe:
+                httpGet: {path: /healthz, port: http}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi
+          restartPolicy: Never
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod-owned-by-job
+  namespace: prod
+  ownerReferences:
+    - apiVersion: batch/v1
+      kind: Job
+      name: migrate
+      uid: 00000000-0000-0000-0000-000000000001
+      controller: true
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: init
+      image: ghcr.io/your-org/hello-api:1.0.0
+      command: [/hello-api, --check-config]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+  containers:
+    - name: app
+      image: ghcr.io/your-org/hello-api:1.0.0
+      ports:
+        - name: http
+          containerPort: 8080
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi
+  restartPolicy: Never
+---
+# Services
+apiVersion: v1
+kind: Service
+metadata:
+  name: good-service
+  namespace: prod
+spec:
+  selector:
+    app: hello-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bad-service-external-ips
+  namespace: prod
+spec:
+  selector:
+    app: hello-api
+  externalIPs:
+    - 192.0.2.10
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# cert-manager ACME HTTP-01 solver pod as created by the controller: covered
+# by the acme-http01-solver PolicyException.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cm-acme-http-solver-abcde
+  namespace: prod
+  labels:
+    acme.cert-manager.io/http-domain: "1234567890"
+    acme.cert-manager.io/http-token: "1234567890"
+    acme.cert-manager.io/http01-solver: "true"
+  ownerReferences:
+    - apiVersion: acme.cert-manager.io/v1
+      kind: Challenge
+      name: hello-api-tls-1-2345678901-1234567890
+      uid: 00000000-0000-0000-0000-000000000002
+      controller: true
+      blockOwnerDeletion: true
+spec:
+  restartPolicy: OnFailure
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: acmesolver
+      image: quay.io/jetstack/cert-manager-acmesolver:v1.19.1
+      args:
+        - --listen-port=8089
+        - --domain=hello-api.prod.localtest.me
+        - --token=TOKEN
+        - --key=KEY
+      ports:
+        - name: http
+          containerPort: 8089
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests: {cpu: 10m, memory: 64Mi}
+        limits: {cpu: 100m, memory: 64Mi}
+---
+# A pod that copies the solver label but runs another image: not exempt.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-fake-acme-solver
+  namespace: prod
+  labels:
+    acme.cert-manager.io/http01-solver: "true"
+  ownerReferences:
+    - apiVersion: acme.cert-manager.io/v1
+      kind: Challenge
+      name: fake
+      uid: 00000000-0000-0000-0000-000000000003
+spec:
+  containers:
+    - name: app
+      image: docker.io/library/busybox:1.37.0
+---
+# Demo pods from the threat model: both are denied.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: threat-model-privileged
+  namespace: prod
+spec:
+  restartPolicy: Never
+  containers:
+    - name: bad
+      image: busybox
+      securityContext:
+        privileged: true
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: threat-model-no-probe
+  namespace: prod
+spec:
+  restartPolicy: Never
+  containers:
+    - name: app
+      image: nginx:alpine
+---
+# Namespaces outside dev, stage and prod are not matched.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unmanaged-namespace-pod
+  namespace: platform-tools
+spec:
+  containers:
+    - name: app
+      image: nginx:latest
+      securityContext:
+        privileged: true
+---
+# NetworkPolicies, checked by restrict-networkpolicy-broad-ingress-audit.
+# Per-app policy as rendered by the application chart: gateway to one app.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: good-netpol-gateway-to-app
+  namespace: prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: hello-api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# All namespaces, but to selected pods only: not reported.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: good-netpol-all-namespaces-to-one-app
+  namespace: prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: hello-api
+  ingress:
+    - from:
+        - namespaceSelector: {}
+---
+# Every pod, but from one named namespace: not reported.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: good-netpol-all-pods-from-monitoring
+  namespace: prod
+spec:
+  podSelector: {}
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+---
+# The platform baseline: deny all, and DNS egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: good-netpol-default-deny
+  namespace: prod
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: good-netpol-egress-only
+  namespace: prod
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bad-netpol-all-namespaces
+  namespace: prod
+spec:
+  podSelector: {}
+  ingress:
+    - from:
+        - namespaceSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bad-netpol-all-namespaces-selected-peers
+  namespace: prod
+spec:
+  podSelector: {}
+  ingress:
+    - from:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              role: client
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bad-netpol-any-source
+  namespace: prod
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bad-netpol-ipblock-any
+  namespace: prod
+spec:
+  podSelector: {}
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bad-netpol-all-namespaces-dev
+  namespace: dev
+spec:
+  podSelector: {}
+  ingress:
+    - from:
+        - namespaceSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: unmanaged-namespace-netpol
+  namespace: platform-tools
+spec:
+  podSelector: {}
+  ingress:
+    - {}

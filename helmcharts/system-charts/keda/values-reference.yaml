@@ -1,0 +1,54 @@
+# Reference profile: 3-node RKE2 HA cluster.
+# Two operator replicas (leader election: one active, one standby) and two
+# metrics API server replicas, each with a PodDisruptionBudget and spread over nodes.
+# The admission webhooks stay at one replica: their failurePolicy is Ignore,
+# so an unavailable webhook never blocks API requests.
+keda:
+  operator:
+    replicaCount: 2
+  metricsServer:
+    replicaCount: 2
+  webhooks:
+    replicaCount: 1
+
+  podDisruptionBudget:
+    operator:
+      minAvailable: 1
+    metricServer:
+      minAvailable: 1
+
+  topologySpreadConstraints:
+    operator:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: keda-operator
+    metricsServer:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: keda-operator-metrics-apiserver
+
+  resources:
+    operator:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+    metricServer:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+    webhooks:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 256Mi

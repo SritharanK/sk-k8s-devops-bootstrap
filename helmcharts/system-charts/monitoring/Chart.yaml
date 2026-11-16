@@ -1,0 +1,24 @@
+apiVersion: v2
+name: monitoring
+description: >-
+  Platform metrics and alerting. Prometheus Operator, Prometheus, Alertmanager
+  and Grafana from kube-prometheus-stack, with the Prometheus Operator CRDs
+  installed as a separate, prune-protected dependency.
+type: application
+version: 0.1.0
+appVersion: "v0.95.2"
+kubeVersion: ">=1.35.0-0"
+home: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
+sources:
+  - https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
+  - https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus-operator-crds
+  - https://github.com/prometheus-operator/prometheus-operator
+dependencies:
+  # The CRD chart appVersion must match the operator version shipped by kube-prometheus-stack.
+  # Bump both together (see README, Upgrade).
+  - name: prometheus-operator-crds
+    version: 33.0.2
+    repository: oci://ghcr.io/prometheus-community/charts
+  - name: kube-prometheus-stack
+    version: 93.3.0
+    repository: oci://ghcr.io/prometheus-community/charts

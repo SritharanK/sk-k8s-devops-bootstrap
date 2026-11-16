@@ -1,0 +1,76 @@
+suite: PodDisruptionBudget
+templates:
+  - templates/pdb.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: is not rendered with a single replica
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: is rendered with replicaCount 2 using maxUnavailable 1
+    set:
+      replicaCount: 2
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: apiVersion
+          value: policy/v1
+      - equal:
+          path: metadata.namespace
+          value: dev
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+      - notExists:
+          path: spec.minAvailable
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: helm-common-test
+            app.kubernetes.io/instance: web
+
+  - it: is rendered when autoscaling has minReplicas 2
+    set:
+      autoscaling.enabled: true
+      autoscaling.minReplicas: 2
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: uses autoscaling.minReplicas instead of replicaCount when autoscaling is enabled
+    set:
+      replicaCount: 3
+      autoscaling.enabled: true
+      autoscaling.minReplicas: 1
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: is not rendered when disabled
+    set:
+      replicaCount: 3
+      podDisruptionBudget.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders a percentage
+    set:
+      replicaCount: 4
+      podDisruptionBudget.maxUnavailable: 25%
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: 25%
+
+  - it: fails when maxUnavailable and minAvailable are both set
+    set:
+      replicaCount: 2
+      podDisruptionBudget.minAvailable: 1
+    asserts:
+      - failedTemplate:
+          errorPattern: "set either maxUnavailable or minAvailable, not both"

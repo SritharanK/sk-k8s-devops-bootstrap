@@ -1,0 +1,6 @@
+# Kargo switched off explicitly.
+---
+cluster:
+  name: lab
+toolchains:
+  kargo: {enabled: false}

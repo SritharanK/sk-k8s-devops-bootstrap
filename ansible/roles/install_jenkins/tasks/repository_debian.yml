@@ -1,0 +1,43 @@
+---
+# Jenkins LTS APT repository with a checksum-pinned signing key.
+
+- name: Install the packages needed to manage the APT repository
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - python3-debian
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure the APT keyring directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download the Jenkins repository signing key
+  ansible.builtin.get_url:
+    url: "{{ __jenkins_repo_key_url }}"
+    dest: /etc/apt/keyrings/jenkins.asc
+    checksum: "sha256:{{ install_jenkins_repo_key_sha256 }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure the Jenkins APT repository
+  ansible.builtin.deb822_repository:
+    name: jenkins
+    types:
+      - deb
+    uris:
+      - "{{ __jenkins_repo_url }}"
+    suites:
+      - binary/
+    signed_by: /etc/apt/keyrings/jenkins.asc
+    enabled: true
+    mode: "0644"
+    state: present
+  register: __jenkins_apt_repository

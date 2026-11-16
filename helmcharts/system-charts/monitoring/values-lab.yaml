@@ -1,0 +1,119 @@
+# monitoring: lab profile (kind or a single node).
+# One replica of everything, no persistent volumes, small requests, receivers without
+# integrations, control plane components that kind binds to localhost not scraped.
+
+datasources:
+  loki:
+    enabled: false
+  tempo:
+    enabled: false
+
+grafanaAdmin:
+  externalSecret:
+    enabled: false
+
+alertmanagerReceivers:
+  externalSecret:
+    enabled: false
+
+kube-prometheus-stack:
+  # kind binds kube-controller-manager, kube-scheduler, etcd metrics and kube-proxy
+  # metrics to 127.0.0.1, so Prometheus cannot reach them. Turn off the scrapes and the
+  # rule groups that would only report them as down.
+  kubeControllerManager:
+    enabled: false
+  kubeScheduler:
+    enabled: false
+  kubeEtcd:
+    enabled: false
+  kubeProxy:
+    enabled: false
+  defaultRules:
+    rules:
+      etcd: false
+      kubeControllerManager: false
+      kubeSchedulerAlerting: false
+      kubeSchedulerRecording: false
+      kubeProxy: false
+
+  alertmanager:
+    alertmanagerSpec:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 128Mi
+
+  grafana:
+    replicas: 1
+    # On a busy single-node cluster Grafana needs more than the upstream liveness
+    # window (60 s delay plus 10 failures) to migrate its database and provision the
+    # dashboards, and the kubelet restarts it in a loop. The startup probe allows up to
+    # five minutes for the first start; liveness and readiness begin after it passes.
+    startupProbe:
+      httpGet:
+        path: /api/health
+        port: grafana
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 30
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        memory: 768Mi
+    sidecar:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 64Mi
+        limits:
+          memory: 128Mi
+
+  prometheusOperator:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 192Mi
+    # Applied by the operator to the config-reloader sidecars of Prometheus and
+    # Alertmanager. No CPU limit (rendered as 0, which the operator treats as unset).
+    prometheusConfigReloader:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 24Mi
+        limits:
+          memory: 64Mi
+
+  prometheus:
+    prometheusSpec:
+      replicas: 1
+      retention: 2d
+      # No storageSpec: the operator uses an emptyDir. Data is lost when the pod moves.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          memory: 1536Mi
+
+  kube-state-metrics:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
+
+  prometheus-node-exporter:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 24Mi
+      limits:
+        memory: 64Mi

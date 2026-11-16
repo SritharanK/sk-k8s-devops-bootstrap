@@ -1,0 +1,11 @@
+apiVersion: v2
+name: system-upgrade-controller
+description: Rancher system-upgrade-controller from the pinned upstream release manifests, with optional RKE2 upgrade Plans.
+type: application
+version: 0.1.0
+appVersion: v0.21.1
+kubeVersion: ">=1.35.0-0"
+home: https://github.com/rancher/system-upgrade-controller
+sources:
+  - https://github.com/rancher/system-upgrade-controller
+  - https://github.com/rancher/rke2-upgrade

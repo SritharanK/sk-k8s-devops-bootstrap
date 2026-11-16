@@ -1,0 +1,45 @@
+---
+# Entry point "uninstall": removes RKE2 from this node with the upstream rke2-uninstall.sh. This destroys
+# the node's cluster state (etcd data and local snapshots on servers, containers and node-local volumes).
+- name: Assert that the uninstall is confirmed for a cluster node
+  ansible.builtin.assert:
+    that:
+      - rke2_uninstall_confirm | bool
+      - inventory_hostname in groups[rke2_cluster_group] | default([])
+    fail_msg: >-
+      Refusing to uninstall RKE2 from {{ inventory_hostname }}: set rke2_uninstall_confirm: true and make
+      sure the host is in the {{ rke2_cluster_group }} group.
+    quiet: true
+  tags: [rke2, rke2_uninstall]
+
+- name: Look for the RKE2 uninstall script
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: false
+  loop: "{{ rke2__uninstall_candidates }}"
+  register: rke2__uninstall_stat
+  tags: [rke2, rke2_uninstall]
+
+- name: Run the RKE2 uninstall script
+  ansible.builtin.command:
+    argv:
+      - "{{ rke2__uninstall_script }}"
+    removes: "{{ rke2__uninstall_script }}"
+  environment:
+    RKE2_DATA_DIR: "{{ rke2_data_dir }}"
+  vars:
+    rke2__uninstall_script: >-
+      {{ rke2__uninstall_stat.results | selectattr('stat.exists') | map(attribute='item') | first }}
+  register: rke2__uninstall_result
+  changed_when: true
+  failed_when: rke2__uninstall_result.rc != 0
+  when: rke2__uninstall_stat.results | selectattr('stat.exists') | list | length > 0
+  tags: [rke2, rke2_uninstall]
+
+- name: Report that RKE2 is not installed
+  ansible.builtin.debug:
+    msg: >-
+      RKE2 is not installed on {{ inventory_hostname }}; no uninstall script found in
+      {{ rke2__uninstall_candidates | join(', ') }}.
+  when: rke2__uninstall_stat.results | selectattr('stat.exists') | list | length == 0
+  tags: [rke2, rke2_uninstall]

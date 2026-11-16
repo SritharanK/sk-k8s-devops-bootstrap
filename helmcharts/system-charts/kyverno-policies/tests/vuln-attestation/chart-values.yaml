@@ -1,0 +1,14 @@
+# Chart values for this test. run.sh adds imageVerification.publicKey (an
+# ephemeral key) and imageVerification.registries (the local registry). The
+# vulnerability settings are the chart defaults (maxScanAge 168h, CRITICAL,
+# unfixed findings block) plus one accepted ID for the accepted-risk case.
+---
+imageVerification:
+  enabled: true
+  environments: [prod]
+  # The local registry has no transparency log. Test-only setting.
+  insecureIgnoreTlog: true
+  vulnerabilities:
+    enabled: true
+    ignoreVulnerabilityIDs:
+      - CVE-2099-0002

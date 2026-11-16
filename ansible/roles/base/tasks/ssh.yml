@@ -1,0 +1,49 @@
+---
+# openssh-server is installed by packages.yml. In check mode on a host where it would only now be installed, the
+# files below do not exist yet and the tasks that read them are skipped.
+- name: Read the main sshd configuration
+  ansible.builtin.slurp:
+    src: /etc/ssh/sshd_config
+  register: base__sshd_main_config
+  when: not base__check_mode_pending
+
+- name: Assert that sshd_config includes the sshd_config.d drop-in directory
+  ansible.builtin.assert:
+    that:
+      - >-
+        (base__sshd_main_config.content | b64decode)
+        is search(base__sshd_include_regex, multiline=true, ignorecase=true)
+    fail_msg: >-
+      /etc/ssh/sshd_config has no "Include /etc/ssh/sshd_config.d/*.conf" line, so {{ base__sshd_dropin }} would be
+      ignored.
+    quiet: true
+  when: base__sshd_main_config is not skipped
+
+- name: Ensure the sshd privilege separation directory exists
+  ansible.builtin.file:
+    path: "{{ base__ssh_privsep_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: base__ssh_privsep_dir | length > 0
+
+# sshd -t needs at least one host key. Rocky Linux generates them at the first start of sshd, which may not have
+# happened yet on a fresh image.
+- name: Generate missing SSH host keys
+  ansible.builtin.command:
+    cmd: ssh-keygen -A
+    creates: /etc/ssh/ssh_host_ed25519_key
+  register: base__ssh_keygen
+  changed_when: "'generating new host keys' in (base__ssh_keygen.stdout | default(''))"
+  failed_when: (base__ssh_keygen.rc | default(0)) != 0
+
+- name: Write the SSH hardening drop-in
+  ansible.builtin.template:
+    src: sshd-hardening.conf.j2
+    dest: "{{ base__sshd_dropin }}"
+    owner: root
+    group: root
+    mode: "0600"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload sshd

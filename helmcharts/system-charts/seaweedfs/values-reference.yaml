@@ -1,0 +1,6 @@
+# Reference profile: not used.
+# The reference cluster writes backups to the external S3 service
+# (https://s3.example.com, buckets CHANGE_ME-<purpose>), outside the failure
+# domain of the cluster. Keep toolchains.seaweedfs.enabled false there.
+# This file exists so the profile renders; it adds nothing to values.yaml.
+{}

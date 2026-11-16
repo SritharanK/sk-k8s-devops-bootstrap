@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  role_name: nfs_server
+  author: Sritharan K
+  description: NFSv4-only NFS server for lab clusters, with exports restricted to client networks.
+  license: MIT
+  min_ansible_version: "2.20"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: EL
+      versions:
+        - "9"
+  galaxy_tags:
+    - nfs
+    - storage
+    - kubernetes
+dependencies: []

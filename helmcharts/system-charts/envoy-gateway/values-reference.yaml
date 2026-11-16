@@ -1,0 +1,16 @@
+# reference: two control plane replicas with leader election (enabled by
+# default in Envoy Gateway), spread over nodes, one allowed disruption.
+gateway-helm:
+  deployment:
+    replicas: 2
+    pod:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              control-plane: envoy-gateway
+              app.kubernetes.io/instance: envoy-gateway
+  podDisruptionBudget:
+    minAvailable: 1

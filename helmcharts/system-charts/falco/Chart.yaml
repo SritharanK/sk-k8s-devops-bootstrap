@@ -1,0 +1,16 @@
+apiVersion: v2
+name: falco
+description: Falco runtime threat detection with the modern eBPF probe and the rules shipped in the Falco image.
+type: application
+version: 0.1.0
+appVersion: "0.45.2"
+kubeVersion: ">=1.35.0-0"
+home: https://falco.org
+sources:
+  - https://github.com/falcosecurity/falco
+  - https://github.com/falcosecurity/charts/tree/master/charts/falco
+  - https://github.com/falcosecurity/rules
+dependencies:
+  - name: falco
+    version: 9.2.2
+    repository: oci://ghcr.io/falcosecurity/charts

@@ -1,0 +1,315 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Dependency update policy. Every version in this repository is pinned exactly; Renovate proposes updates as pull requests and a maintainer merges them by hand.",
+    "No update is merged automatically (repository rule), every update waits seven days after its release, and updates without a verifiable release date are held."
+  ],
+  "extends": [
+    "config:best-practices",
+    ":semanticCommits"
+  ],
+  "ignorePresets": [
+    "security:minimumReleaseAgeNpm"
+  ],
+  "automerge": false,
+  "platformAutomerge": false,
+  "minimumReleaseAge": "7 days",
+  "minimumReleaseAgeBehaviour": "timestamp-required",
+  "internalChecksFilter": "strict",
+  "dependencyDashboard": {
+    "enabled": true,
+    "osvVulnerabilitySummary": "unresolved"
+  },
+  "labels": [
+    "dependencies"
+  ],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": [
+      "dependencies",
+      "security"
+    ],
+    "minimumReleaseAge": null,
+    "dependencyDashboardApproval": false,
+    "automerge": false
+  },
+  "lockFileMaintenance": {
+    "enabled": false
+  },
+  "github-actions": {
+    "pinDigests": true
+  },
+  "pre-commit": {
+    "enabled": true
+  },
+  "helm-values": {
+    "managerFilePatterns": [
+      "/(^|/)values-[^/]+\\.ya?ml$/",
+      "/(^|/)ci/[^/]+-values\\.ya?ml$/"
+    ]
+  },
+  "ansible-galaxy": {
+    "managerFilePatterns": [
+      "ansible/collections/requirements.yml",
+      "ansible/**/requirements.yml"
+    ]
+  },
+  "gomod": {
+    "postUpdateOptions": [
+      "gomodTidy"
+    ]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Versions annotated with '# renovate: datasource=<datasource> depName=<name> [packageName=<name>] [versioning=<scheme>]' on the line above a variable or key. The value is a version, optionally followed by @sha256:<digest>. Every shell script is scanned, because only annotated lines match.",
+      "managerFilePatterns": [
+        "**/*.sh",
+        "Makefile",
+        ".github/workflows/*.{yml,yaml}",
+        ".github/actions/**/action.{yml,yaml}",
+        "ansible/**/*.{yml,yaml}"
+      ],
+      "matchStrings": [
+        "#[ \\t]*[Rr]enovate:[ \\t]*datasource=(?<datasource>\\S+)[ \\t]+depName=(?<depName>\\S+)(?:[ \\t]+packageName=(?<packageName>\\S+))?(?:[ \\t]+versioning=(?<versioning>\\S+))?[ \\t]*\\r?\\n[ \\t]*(?:(?:export|readonly)[ \\t]+)?[A-Za-z_][A-Za-z0-9_.-]*[ \\t]*(?:\\?=|:=|\\+=|=|:)[ \\t]*[\"']?(?<currentValue>[^\\s\"'@#]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?[\"']?"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver-coerced{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Commits that track a branch: '# renovate: datasource=<datasource> depName=<name> [packageName=<name>] [versioning=<scheme>] currentValue=<branch>' above a variable or key that holds the commit SHA or image digest.",
+      "managerFilePatterns": [
+        "**/*.sh",
+        "Makefile",
+        ".github/workflows/*.{yml,yaml}",
+        ".github/actions/**/action.{yml,yaml}",
+        "ansible/**/*.{yml,yaml}"
+      ],
+      "matchStrings": [
+        "#[ \\t]*[Rr]enovate:[ \\t]*datasource=(?<datasource>\\S+)[ \\t]+depName=(?<depName>\\S+)(?:[ \\t]+packageName=(?<packageName>\\S+))?(?:[ \\t]+versioning=(?<versioning>\\S+))?[ \\t]+currentValue=(?<currentValue>\\S+)[ \\t]*\\r?\\n[ \\t]*(?:(?:export|readonly)[ \\t]+)?[A-Za-z_][A-Za-z0-9_.-]*[ \\t]*(?:\\?=|:=|\\+=|=|:)[ \\t]*[\"']?(?<currentDigest>[a-f0-9]{40}|sha256:[a-f0-9]{64})[\"']?"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver-coerced{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "kindest/node images in kind/node-images.yaml, pinned by tag and digest. One entry per Kubernetes minor.",
+      "managerFilePatterns": [
+        "kind/node-images.yaml"
+      ],
+      "matchStrings": [
+        "(?<depName>kindest/node):(?<currentValue>v\\d+\\.\\d+\\.\\d+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "regex:^v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "kind release that built the node images listed in kind/node-images.yaml.",
+      "managerFilePatterns": [
+        "kind/node-images.yaml"
+      ],
+      "matchStrings": [
+        "kindVersion:[ \\t]*[\"']?(?<currentValue>v\\d+\\.\\d+\\.\\d+)[\"']?"
+      ],
+      "depNameTemplate": "kubernetes-sigs/kind",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "RKE2 release of each cluster (rke2.version in clusters/<cluster>/cluster.yaml), for example v1.36.6+rke2r1.",
+      "managerFilePatterns": [
+        "clusters/*/cluster.yaml"
+      ],
+      "matchStrings": [
+        "\\n[ \\t]+version:[ \\t]*[\"']?(?<currentValue>v\\d+\\.\\d+\\.\\d+\\+rke2r\\d+)[\"']?"
+      ],
+      "depNameTemplate": "rancher/rke2",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "regex:^v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?<prerelease>-rc\\d+)?\\+rke2r(?<build>\\d+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Python packages pinned inside mise tool options, for example with = [\"ansible-core==2.22.0\"].",
+      "managerFilePatterns": [
+        "mise.toml"
+      ],
+      "matchStrings": [
+        "\"(?<depName>[A-Za-z0-9][A-Za-z0-9._-]*)(?:\\[[A-Za-z0-9,._-]+\\])?==(?<currentValue>[0-9][^\"]*)\""
+      ],
+      "datasourceTemplate": "pypi",
+      "versioningTemplate": "pep440"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Pinning freezes the version already in use, so there is no new release to age.",
+      "matchUpdateTypes": [
+        "pin",
+        "pinDigest"
+      ],
+      "minimumReleaseAge": null
+    },
+    {
+      "description": "These registries publish no release timestamps, so Renovate holds their updates as pending in the Dependency Dashboard. A maintainer requests one there after checking the upstream release date.",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "/^(ghcr\\.io|quay\\.io|mcr\\.microsoft\\.com|gcr\\.io|registry\\.k8s\\.io|public\\.ecr\\.aws)\\//"
+      ],
+      "prBodyNotes": [
+        "This registry does not publish release timestamps, so the 7-day minimum release age could not be checked automatically. Confirm the upstream release date before merging."
+      ]
+    },
+    {
+      "description": "Major updates are raised only after approval in the Dependency Dashboard.",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "A Kubernetes minor version is a platform upgrade (version skew, API removals), so it is treated like a major update.",
+      "matchDepNames": [
+        "aqua:kubernetes/kubernetes/kubectl",
+        "kubernetes/kubernetes",
+        "rancher/rke2"
+      ],
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Environment values change only through promotion pull requests from the release workflow, never through Renovate.",
+      "matchFileNames": [
+        "envs/**"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "kubectl is published from the kubernetes/kubernetes repository; the aqua package path is not a GitHub repository.",
+      "matchManagers": [
+        "mise"
+      ],
+      "matchDepNames": [
+        "aqua:kubernetes/kubernetes/kubectl"
+      ],
+      "overridePackageName": "kubernetes/kubernetes"
+    },
+    {
+      "description": "Group GitHub Actions minor, patch and digest updates into one pull request.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pinDigest"
+      ],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Kubernetes tooling moves together: kind, its node images and kubectl.",
+      "matchDepNames": [
+        "aqua:kubernetes/kubernetes/kubectl",
+        "kubernetes/kubernetes",
+        "aqua:kubernetes-sigs/kind",
+        "kubernetes-sigs/kind",
+        "kindest/node"
+      ],
+      "groupName": "Kubernetes tooling",
+      "prBodyNotes": [
+        "kindest/node images are built for one kind release. Check that every digest in kind/node-images.yaml matches the release notes of the kind version in this pull request."
+      ]
+    },
+    {
+      "description": "Each kindest/node entry stays on its Kubernetes minor; adding or dropping a minor is a manual change.",
+      "matchDepNames": [
+        "kindest/node"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "The Kyverno CLI used by make policy-test follows the Kyverno version that the chart deploys.",
+      "matchPackageNames": [
+        "/(^|/)kyverno/charts/kyverno$/",
+        "kyverno/kyverno"
+      ],
+      "groupName": "Kyverno",
+      "prBodyNotes": [
+        "Keep the Kyverno CLI (mise.toml) on the application version that this chart version deploys."
+      ]
+    },
+    {
+      "description": "gateway-crds-helm and gateway-helm are released together and must stay on the same version.",
+      "matchPackageNames": [
+        "/(^|/)envoyproxy/gateway-(crds-)?helm$/"
+      ],
+      "groupName": "Envoy Gateway"
+    },
+    {
+      "description": "ansible-core and the tools built on it are pinned in mise.toml and ansible/requirements-dev.txt and move together.",
+      "matchDatasources": [
+        "pypi"
+      ],
+      "matchPackageNames": [
+        "ansible-core",
+        "ansible-lint",
+        "molecule",
+        "molecule-plugins",
+        "docker"
+      ],
+      "groupName": "Ansible toolchain"
+    },
+    {
+      "description": "Wrapper charts repeat the upstream version in appVersion, the chart README and the generated support matrix.",
+      "matchManagers": [
+        "helmv3"
+      ],
+      "prBodyNotes": [
+        "Update appVersion in the wrapper Chart.yaml and the version table in the chart README, then run make support-matrix and commit docs/reference/support-matrix.md."
+      ]
+    },
+    {
+      "description": "The devcontainer installs mise from a pinned release with fixed checksums that Renovate cannot update.",
+      "matchPackageNames": [
+        "jdx/mise"
+      ],
+      "prBodyNotes": [
+        "Also update the mise version and both SHA-256 checksums in the onCreateCommand of .devcontainer/devcontainer.json, from SHASUMS256.txt of the same release."
+      ]
+    },
+    {
+      "description": "Trivy pins need a manual check of the signed release checksums before merge.",
+      "matchPackageNames": [
+        "aquasecurity/trivy",
+        "aquasecurity/trivy-action",
+        "aquasecurity/setup-trivy",
+        "/(^|/)aquasec/trivy$/"
+      ],
+      "groupName": "Trivy",
+      "addLabels": [
+        "security-review"
+      ],
+      "prBodyNotes": [
+        "Security review required before merge: verify the cosign signature of the release checksums file against the aquasecurity/trivy release workflow identity, confirm the version is not affected by a known supply-chain advisory (for example GHSA-69fq-xp46-6x23), and record the check in the review. CI passing is not sufficient."
+      ]
+    },
+    {
+      "description": "Repository rule: nothing is merged automatically, whatever a preset or an earlier rule sets.",
+      "matchPackageNames": [
+        "*"
+      ],
+      "automerge": false
+    }
+  ]
+}

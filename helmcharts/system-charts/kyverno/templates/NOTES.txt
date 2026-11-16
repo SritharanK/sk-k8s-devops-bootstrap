@@ -1,0 +1,2 @@
+Kyverno is installed in namespace {{ .Release.Namespace }}.
+Policies are delivered separately by the kyverno-policies chart.

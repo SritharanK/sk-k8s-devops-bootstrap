@@ -1,0 +1,13 @@
+---
+apiVersion: v2
+name: argocd-bootstrap
+description: Root chart of the app of apps for one cluster definition.
+type: application
+version: 0.2.0
+appVersion: "0.2.0"
+home: https://github.com/SritharanK/sk-k8s-devops-bootstrap
+sources:
+  - https://github.com/SritharanK/sk-k8s-devops-bootstrap/tree/main/argocd-bootstrap
+maintainers:
+  - name: Sritharan K
+    url: https://www.skengineer.be

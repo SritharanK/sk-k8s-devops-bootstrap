@@ -1,0 +1,23 @@
+{{- /* Application namespaces: DNS queries to the cluster DNS pods only. */}}
+{{- range $env, $ns := .Values.environments }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: {{ $ns }}
+  labels:
+    {{- include "network-policies.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        {{- include "network-policies.namespacePeer" $.Values.dns | nindent 8 }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}

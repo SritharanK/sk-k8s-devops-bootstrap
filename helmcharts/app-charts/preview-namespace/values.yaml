@@ -1,0 +1,59 @@
+# Values for the preview-namespace chart.
+#
+# Rendered by the previews-namespaces ApplicationSet
+# (argocd-bootstrap/templates/previews/) from git.targetRevision, never from
+# the pull request. The namespace is the release namespace: Argo CD passes the
+# destination namespace pr-<number>.
+#
+# Precedence, lowest first (Argo CD: valueFiles < valuesObject):
+#   1. this file;
+#   2. previews.namespace.values from argocd-bootstrap/values.yaml and the
+#      cluster file (toolchains.previews.values.namespace.values);
+#   3. pullRequest and podSecurity.version, set by the ApplicationSet.
+# Maps merge key by key: a quota or limitRange key set here applies unless a
+# later layer sets the same key.
+---
+# Pull request number. Adds the label pull-request: "<number>" to every
+# object; empty adds none.
+pullRequest: ""
+
+podSecurity:
+  # Pod Security Standards version for the restricted level (enforce, audit
+  # and warn): v<major>.<minor> or latest. The ApplicationSet sets
+  # v<cluster.kubernetesMinor>.
+  version: v1.36
+
+# ResourceQuota hard limits. The defaults fit a few small workloads and deny
+# Services of type LoadBalancer and NodePort.
+quota:
+  requests.cpu: "1"
+  requests.memory: 1Gi
+  limits.cpu: "2"
+  limits.memory: 2Gi
+  pods: 10
+  services: 5
+  services.loadbalancers: 0
+  services.nodeports: 0
+  persistentvolumeclaims: 2
+  requests.storage: 5Gi
+
+# LimitRange for containers: defaults for containers without requests or
+# limits, so they still fit the quota, and a per-container maximum.
+limitRange:
+  default:
+    cpu: 250m
+    memory: 256Mi
+  defaultRequest:
+    cpu: 25m
+    memory: 32Mi
+  max:
+    cpu: "1"
+    memory: 1Gi
+
+# Cluster DNS for the allow-dns policy, as in the network-policies chart:
+# CoreDNS pods carry k8s-app=kube-dns on kind and on RKE2.
+dns:
+  namespace: kube-system
+  podSelector:
+    matchLabels:
+      k8s-app: kube-dns

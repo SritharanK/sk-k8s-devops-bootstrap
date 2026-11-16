@@ -1,0 +1,7 @@
+# Python tooling for linting and testing the Ansible code. Install into a virtual environment:
+#   python3 -m venv .venv && .venv/bin/pip install -r ansible/requirements-dev.txt
+ansible-core==2.21.6
+ansible-lint==26.11.0
+molecule==26.11.0
+molecule-plugins[docker]==26.11.0
+docker==7.2.0

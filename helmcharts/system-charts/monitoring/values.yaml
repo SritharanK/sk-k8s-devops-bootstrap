@@ -1,0 +1,320 @@
+# monitoring: common values for every profile.
+# Argo CD passes values.yaml, then values-<profile>.yaml, then per-cluster values
+# (route.hostnames, Prometheus externalLabels.cluster, Grafana root_url).
+# Container sizing lives in the profile files.
+
+# ---------------------------------------------------------------------------
+# Wrapper resources (templates/ in this chart)
+# ---------------------------------------------------------------------------
+
+# Gateway API HTTPRoute for Grafana. Prometheus and Alertmanager are not exposed;
+# use kubectl port-forward for them.
+route:
+  enabled: true
+  parentRefs:
+    - name: platform
+      namespace: envoy-gateway-system
+      sectionName: https
+  # Overridden per cluster by the Argo CD Application (grafana.<cluster domain>).
+  hostnames:
+    - grafana.localtest.me
+  backend:
+    name: monitoring-grafana
+    port: 80
+
+# One ConfigMap per dashboards/*.json file, picked up by the Grafana sidecar.
+dashboards:
+  folder: Platform
+
+# Extra Grafana datasources rendered into ConfigMap monitoring-platform-datasources.
+# The default Prometheus datasource (uid prometheus) and the Alertmanager datasource
+# (uid alertmanager) come from kube-prometheus-stack.
+#
+# Correlation between the three signals (enable loki and tempo on a cluster that
+# runs the logging and tracing toolchains, through toolchains.monitoring.values):
+#   logs to traces     Loki derived field on trace_id, opens the trace in Tempo
+#   traces to logs     Tempo tracesToLogsV2, Loki query filtered by the trace ID
+#   metrics to traces  exemplars with label trace_id on the Prometheus datasource
+#                      (grafana.sidecar.datasources.exemplarTraceIdDestinations below);
+#                      Prometheus keeps exemplars only with exemplar storage enabled
+datasources:
+  loki:
+    enabled: false
+    uid: loki
+    url: http://loki-gateway.logging.svc:80
+    # Set when Loki runs with auth_enabled: true. Sent as X-Scope-OrgID.
+    tenant: ""
+  tempo:
+    enabled: false
+    uid: tempo
+    url: http://tempo.tracing.svc:3200
+
+# Grafana admin credentials. The Secret name and keys are set under
+# kube-prometheus-stack.grafana.admin. When externalSecret.enabled is true the chart
+# renders an ExternalSecret that creates that Secret from the platform secret store.
+grafanaAdmin:
+  externalSecret:
+    enabled: false
+    refreshInterval: 1h
+    secretStoreRef:
+      kind: ClusterSecretStore
+      name: openbao
+    remoteKey: platform/monitoring/grafana-admin
+
+# Alertmanager webhook URLs. Only used when the receivers read url_file from
+# /etc/alertmanager/secrets/alertmanager-receivers/ (reference profile).
+alertmanagerReceivers:
+  secretName: alertmanager-receivers
+  externalSecret:
+    enabled: false
+    refreshInterval: 1h
+    secretStoreRef:
+      kind: ClusterSecretStore
+      name: openbao
+    remoteKey: platform/monitoring/alertmanager-receivers
+
+# PrometheusRules for core platform components. Each group renders one PrometheusRule
+# labelled release: monitoring.
+platformRules:
+  argocd:
+    enabled: true
+  certManager:
+    enabled: true
+  kyverno:
+    enabled: true
+  velero:
+    enabled: true
+
+# ---------------------------------------------------------------------------
+# prometheus-operator-crds
+# ---------------------------------------------------------------------------
+# CRDs are owned by this dependency, not by kube-prometheus-stack (crds.enabled: false
+# below). The annotations stop Argo CD from pruning or deleting them, so removing the
+# Application does not cascade-delete every ServiceMonitor and PrometheusRule.
+prometheus-operator-crds:
+  crds:
+    annotations:
+      argocd.argoproj.io/sync-options: Prune=false,Delete=false
+      helm.sh/resource-policy: keep
+
+# ---------------------------------------------------------------------------
+# kube-prometheus-stack
+# ---------------------------------------------------------------------------
+kube-prometheus-stack:
+  # Service names: monitoring-prometheus, monitoring-alertmanager, monitoring-grafana,
+  # monitoring-operator.
+  fullnameOverride: monitoring
+
+  crds:
+    enabled: false
+
+  # Default alerting and recording rules stay on. The always-firing Watchdog alert is the
+  # end-to-end test alert (routed to the heartbeat receiver).
+  defaultRules:
+    create: true
+
+  alertmanager:
+    enabled: true
+    config:
+      global:
+        resolve_timeout: 5m
+      # Upstream defaults, stated here so the whole routing behaviour is visible in one place.
+      inhibit_rules:
+        - source_matchers:
+            - 'severity = critical'
+          target_matchers:
+            - 'severity =~ warning|info'
+          equal:
+            - namespace
+            - alertname
+        - source_matchers:
+            - 'severity = warning'
+          target_matchers:
+            - 'severity = info'
+          equal:
+            - namespace
+            - alertname
+        - source_matchers:
+            - 'alertname = InfoInhibitor'
+          target_matchers:
+            - 'severity = info'
+          equal:
+            - namespace
+        - target_matchers:
+            - 'alertname = InfoInhibitor'
+      route:
+        receiver: platform-default
+        group_by:
+          - alertname
+          - namespace
+          - severity
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 12h
+        routes:
+          # Dead man's switch: Watchdog always fires. The receiver must keep getting it;
+          # silence on that side means the alerting pipeline is broken.
+          - receiver: heartbeat
+            matchers:
+              - 'alertname = "Watchdog"'
+            group_wait: 0s
+            group_interval: 1m
+            repeat_interval: 5m
+          - receiver: "null"
+            matchers:
+              - 'alertname = "InfoInhibitor"'
+          - receiver: platform-critical
+            matchers:
+              - 'severity = "critical"'
+      # Placeholder receivers without integrations. Alerts are visible in the Alertmanager
+      # UI. The reference profile replaces this list with webhook receivers.
+      receivers:
+        - name: "null"
+        - name: heartbeat
+        - name: platform-critical
+        - name: platform-default
+      templates:
+        - /etc/alertmanager/config/*.tmpl
+    alertmanagerSpec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 2000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+
+  grafana:
+    enabled: true
+    # Credentials from Secret grafana-admin. Never set adminPassword in values.
+    admin:
+      existingSecret: grafana-admin
+      userKey: admin-user
+      passwordKey: admin-password
+    # Stateless: dashboards, datasources and settings come from Git. Grafana keeps its
+    # SQLite database in an emptyDir, so UI changes are lost on restart.
+    persistence:
+      enabled: false
+    initChownData:
+      enabled: false
+    # The bats test pod is a Helm test hook; Argo CD does not run it.
+    testFramework:
+      enabled: false
+    defaultDashboardsEditable: false
+    defaultDashboardsTimezone: utc
+    # The upstream ClusterRole grants get/list/watch on ConfigMaps and Secrets in every
+    # namespace. This chart renders a ClusterRole with this name that covers ConfigMaps
+    # only (templates/grafana-clusterrole.yaml); the sidecars watch ConfigMaps only.
+    rbac:
+      create: true
+      useExistingClusterRole: monitoring-grafana-configmaps
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 472
+      runAsGroup: 472
+      fsGroup: 472
+      seccompProfile:
+        type: RuntimeDefault
+    sidecar:
+      dashboards:
+        enabled: true
+        label: grafana_dashboard
+        labelValue: "1"
+        # Component charts in any namespace can ship dashboards as labelled ConfigMaps.
+        searchNamespace: ALL
+        resource: configmap
+        folderAnnotation: grafana_folder
+        # Folder for the dashboards bundled with kube-prometheus-stack.
+        annotations:
+          grafana_folder: Kubernetes
+        provider:
+          allowUiUpdates: false
+          foldersFromFilesStructure: true
+      datasources:
+        enabled: true
+        resource: configmap
+        label: grafana_datasource
+        labelValue: "1"
+        defaultDatasourceEnabled: true
+        isDefaultDatasource: true
+        name: Prometheus
+        uid: prometheus
+        # Exemplar links from Prometheus to Tempo (uid of datasources.tempo). Shown
+        # only for series that carry exemplars with this label, so the link is inert
+        # until the tracing datasource and exemplar storage are enabled.
+        exemplarTraceIdDestinations:
+          datasourceUid: tempo
+          traceIdLabelName: trace_id
+          urlDisplayLabel: View trace
+        alertmanager:
+          enabled: true
+          uid: alertmanager
+    grafana.ini:
+      server:
+        # Overridden per cluster by the Argo CD Application.
+        root_url: https://grafana.localtest.me
+      analytics:
+        reporting_enabled: false
+        check_for_updates: false
+        check_for_plugin_updates: false
+        feedback_links_enabled: false
+      news:
+        news_feed_enabled: false
+      users:
+        allow_sign_up: false
+        allow_org_create: false
+      auth.anonymous:
+        enabled: false
+      security:
+        cookie_secure: true
+        cookie_samesite: lax
+        disable_gravatar: true
+      snapshots:
+        external_enabled: false
+
+  # Nodes are Linux only; skip the AIX and Darwin node dashboards.
+  nodeExporter:
+    operatingSystems:
+      aix:
+        enabled: false
+      darwin:
+        enabled: false
+
+  prometheusOperator:
+    # cert-manager issues the admission webhook certificate and injects the CA bundle.
+    # This removes the kube-webhook-certgen Helm hook Jobs, which do not fit Argo CD.
+    admissionWebhooks:
+      certManager:
+        enabled: true
+
+  prometheus:
+    prometheusSpec:
+      scrapeInterval: 30s
+      evaluationInterval: 30s
+      # Contract: Prometheus selects every monitoring object labelled release: monitoring,
+      # in every namespace. Selectors are explicit; the NilUsesHelmValues shortcuts are off.
+      serviceMonitorSelectorNilUsesHelmValues: false
+      serviceMonitorSelector:
+        matchLabels:
+          release: monitoring
+      serviceMonitorNamespaceSelector: {}
+      podMonitorSelectorNilUsesHelmValues: false
+      podMonitorSelector:
+        matchLabels:
+          release: monitoring
+      podMonitorNamespaceSelector: {}
+      probeSelectorNilUsesHelmValues: false
+      probeSelector:
+        matchLabels:
+          release: monitoring
+      probeNamespaceSelector: {}
+      scrapeConfigSelectorNilUsesHelmValues: false
+      scrapeConfigSelector:
+        matchLabels:
+          release: monitoring
+      scrapeConfigNamespaceSelector: {}
+      ruleSelectorNilUsesHelmValues: false
+      ruleSelector:
+        matchLabels:
+          release: monitoring
+      ruleNamespaceSelector: {}

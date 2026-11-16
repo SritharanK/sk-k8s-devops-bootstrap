@@ -1,0 +1,11 @@
+---
+# SSH is open to any source here only because the instances are throwaway test containers.
+- name: Converge
+  hosts: all
+  gather_facts: true
+  vars:
+    firewall_node_cidrs: [10.10.0.0/24]
+    firewall_ssh_cidrs: [0.0.0.0/0, "::/0"]
+    firewall_cni: canal
+  roles:
+    - role: firewall

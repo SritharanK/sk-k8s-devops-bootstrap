@@ -1,0 +1,10 @@
+# hello-api in dev. Applied after helmcharts/app-charts/hello-api/values.yaml.
+# Holds only what differs per environment. The image build opens
+# a pull request that sets image.tag and image.digest here; promote.yml copies
+# both to stage after review.
+---
+image:
+  tag: "0.1.0"
+  # sha256:<64 hex> of the signed image. When set, the image renders as
+  # repository@digest and the tag is informational only.
+  digest: ""

@@ -1,0 +1,11 @@
+# Files that are not part of the rendered chart.
+.DS_Store
+.git/
+.gitignore
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+README.md
+keys/

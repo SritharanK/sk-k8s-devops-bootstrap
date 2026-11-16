@@ -1,0 +1,23 @@
+# Render check for the optional extras: OpenTelemetry export to Tempo, KEDA
+# scaling on the request rate (with the ServiceMonitor it reads from) instead
+# of the HPA, and the local rate limit of the BackendTrafficPolicy.
+image:
+  tag: "0.1.0"
+  digest: ""
+global:
+  environment: dev
+  domain: localtest.me
+  cluster: lab
+  profile: lab
+metrics:
+  serviceMonitor:
+    enabled: true
+otel:
+  enabled: true
+autoscaling:
+  enabled: false
+keda:
+  enabled: true
+trafficPolicy:
+  rateLimit:
+    enabled: true

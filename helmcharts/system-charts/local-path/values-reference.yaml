@@ -1,0 +1,21 @@
+# local-path reference profile. The reference cluster uses Longhorn as its default
+# StorageClass; this chart is not meant to run there. If it is enabled anyway, it only
+# offers node-local volumes for data that may be lost with its node, never as default.
+local-path-provisioner:
+  storageClass:
+    defaultClass: false
+
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+  helperPod:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        memory: 64Mi

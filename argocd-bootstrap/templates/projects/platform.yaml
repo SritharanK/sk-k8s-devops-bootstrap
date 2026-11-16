@@ -1,0 +1,48 @@
+{{- /*
+AppProject for the platform toolchains and the root Application.
+Admin-equivalent by nature (cluster-scoped kinds, the argocd namespace), so
+the source repositories, destinations and cluster-scoped kinds are enumerated.
+*/ -}}
+{{- $namespaces := list }}
+{{- range $k, $v := .Values.namespaces }}{{ $namespaces = append $namespaces $v }}{{ end }}
+{{- range .Values.projects.platform.extraDestinationNamespaces }}{{ $namespaces = append $namespaces . }}{{ end }}
+{{- /* Kargo Project namespaces (kargo-<app>), when Kargo pipelines are enabled. */}}
+{{- range include "argocd-bootstrap.kargoProjects" . | fromJsonArray }}{{ $namespaces = append $namespaces . }}{{ end }}
+{{- $project := include "argocd-bootstrap.platformProject" . }}
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ $project }}
+  namespace: {{ .Values.namespaces.argocd }}
+  labels:
+    {{- include "argocd-bootstrap.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Platform toolchains and the root Application of cluster {{ .Values.cluster.name }}.
+  sourceRepos:
+    {{- include "argocd-bootstrap.sourceRepos" . | fromJsonArray | toYaml | nindent 4 }}
+  destinations:
+    {{- range $ns := $namespaces | uniq | sortAlpha }}
+    - namespace: {{ $ns }}
+      {{- include "argocd-bootstrap.destination" $ | nindent 6 }}
+    {{- end }}
+  clusterResourceWhitelist:
+    {{- toYaml .Values.projects.platform.clusterResourceWhitelist | nindent 4 }}
+  roles:
+    - name: admins
+      description: Platform administrators.
+      groups:
+        - {{ .Values.platform.groups.admins }}
+      policies:
+        - p, proj:{{ $project }}:admins, applications, *, {{ $project }}/*, allow
+    - name: viewers
+      description: Read-only access to platform Applications.
+      groups:
+        - {{ .Values.platform.groups.viewers }}
+        - {{ .Values.platform.groups.deployers }}
+      policies:
+        - p, proj:{{ $project }}:viewers, applications, get, {{ $project }}/*, allow

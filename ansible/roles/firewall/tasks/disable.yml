@@ -1,0 +1,11 @@
+---
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+# Stopping the unit runs its ExecStop, which deletes the inet rke2_host table. The files stay on disk.
+- name: Stop and disable the firewall unit
+  ansible.builtin.systemd_service:
+    name: "{{ firewall__unit_name }}"
+    state: stopped
+    enabled: false
+  when: firewall__unit_name in ansible_facts['services']

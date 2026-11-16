@@ -1,0 +1,17 @@
+apiVersion: v2
+name: gateway-api
+description: Gateway API standard-channel CRDs and the Envoy Gateway extension CRDs, installed ahead of the controller
+type: application
+version: 0.1.0
+# Gateway API bundle version shipped by gateway-crds-helm 1.10.0
+appVersion: v1.6.1
+kubeVersion: ">=1.35.0-0"
+home: https://gateway-api.sigs.k8s.io/
+sources:
+  - https://github.com/kubernetes-sigs/gateway-api
+  - https://github.com/envoyproxy/gateway/tree/main/charts/gateway-crds-helm
+dependencies:
+  # Keep in lockstep with gateway-helm in ../envoy-gateway/Chart.yaml
+  - name: gateway-crds-helm
+    version: 1.10.0
+    repository: oci://docker.io/envoyproxy

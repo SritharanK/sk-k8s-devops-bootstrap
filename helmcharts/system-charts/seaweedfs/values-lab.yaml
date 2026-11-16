@@ -1,0 +1,13 @@
+# Lab profile: kind or a single node. One all-in-one pod, a 10Gi claim on the
+# default StorageClass, small requests.
+seaweedfs:
+  allInOne:
+    data:
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: null
+        memory: 512Mi

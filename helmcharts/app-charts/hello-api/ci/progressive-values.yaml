@@ -1,0 +1,25 @@
+# Render check for the optional integrations: Argo Rollouts canary through the
+# Gateway API plugin, Prometheus Operator ServiceMonitor and autoscaling.
+image:
+  tag: "0.1.0"
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+global:
+  environment: prod
+  domain: localtest.me
+  cluster: reference
+  profile: reference
+metrics:
+  serviceMonitor:
+    enabled: true
+rollout:
+  enabled: true
+  steps:
+    - setWeight: 10
+    - pause:
+        duration: 2m
+    - setWeight: 50
+    - pause:
+        duration: 2m
+  trafficRouting:
+    gatewayAPI:
+      enabled: true

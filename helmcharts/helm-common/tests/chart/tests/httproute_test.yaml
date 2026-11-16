@@ -1,0 +1,146 @@
+suite: HTTPRoute
+templates:
+  - templates/httproute.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: is not rendered by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails when enabled without hostnames and without globals
+    set:
+      route.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "set route.hostnames, or provide global.environment and global.domain"
+
+  - it: fails when only global.environment is set
+    set:
+      route.enabled: true
+      global.environment: dev
+    asserts:
+      - failedTemplate:
+          errorPattern: "set route.hostnames, or provide global.environment and global.domain"
+
+  - it: fails when global.domain is empty
+    set:
+      route.enabled: true
+      global.environment: dev
+      global.domain: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "set route.hostnames, or provide global.environment and global.domain"
+
+  - it: derives the hostname from global.environment and global.domain
+    set:
+      route.enabled: true
+      global.environment: dev
+      global.domain: localtest.me
+    asserts:
+      - equal:
+          path: spec.hostnames
+          value:
+            - web-helm-common-test.dev.localtest.me
+
+  - it: prefers explicit hostnames over the derived one
+    set:
+      route.enabled: true
+      route.hostnames:
+        - app.example.com
+      global.environment: dev
+      global.domain: localtest.me
+    asserts:
+      - equal:
+          path: spec.hostnames
+          value:
+            - app.example.com
+
+  - it: renders parentRefs, hostnames and the backendRef to the Service
+    set:
+      route.enabled: true
+      route.hostnames:
+        - hello-api.dev.localtest.me
+    asserts:
+      - isKind:
+          of: HTTPRoute
+      - equal:
+          path: apiVersion
+          value: gateway.networking.k8s.io/v1
+      - equal:
+          path: metadata.name
+          value: web-helm-common-test
+      - equal:
+          path: metadata.namespace
+          value: dev
+      - equal:
+          path: spec.parentRefs
+          value:
+            - name: platform
+              namespace: envoy-gateway-system
+              sectionName: https
+      - equal:
+          path: spec.hostnames
+          value:
+            - hello-api.dev.localtest.me
+      - equal:
+          path: spec.rules[0].matches
+          value:
+            - path:
+                type: PathPrefix
+                value: /
+      - equal:
+          path: spec.rules[0].backendRefs
+          value:
+            - name: web-helm-common-test
+              port: 80
+      - notExists:
+          path: spec.rules[0].timeouts
+
+  - it: renders timeouts and annotations when set
+    set:
+      route.enabled: true
+      route.hostnames:
+        - hello-api.dev.localtest.me
+      route.timeouts:
+        request: 30s
+      route.annotations:
+        team: platform
+    asserts:
+      - equal:
+          path: spec.rules[0].timeouts
+          value:
+            request: 30s
+      - equal:
+          path: metadata.annotations.team
+          value: platform
+
+  - it: renders weighted stable and canary backendRefs with Gateway API traffic routing
+    set:
+      route.enabled: true
+      route.hostnames:
+        - hello-api.dev.localtest.me
+      rollout.enabled: true
+      rollout.trafficRouting.gatewayAPI.enabled: true
+    asserts:
+      - equal:
+          path: spec.rules[0].backendRefs
+          value:
+            - name: web-helm-common-test
+              port: 80
+              weight: 100
+            - name: web-helm-common-test-canary
+              port: 80
+              weight: 0
+
+  - it: fails when the Service is disabled
+    set:
+      route.enabled: true
+      route.hostnames:
+        - hello-api.dev.localtest.me
+      service.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "route.enabled requires service.enabled"

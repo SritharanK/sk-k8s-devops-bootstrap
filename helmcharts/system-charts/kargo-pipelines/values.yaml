@@ -1,0 +1,96 @@
+# Kargo promotion pipelines (docs/adr/0012-kargo-promotion.md).
+#
+# Keys marked "injected" are set by argocd-bootstrap/templates/toolchains/kargo.yaml
+# from clusters/<name>/cluster.yaml and the app inventory (apps in
+# argocd-bootstrap/values.yaml). The defaults only serve local renders.
+# Tunables are overridden per cluster under
+# toolchains.kargo.pipelines.values in the cluster file.
+
+# Injected. Repository and branch that Kargo clones, commits to and that the
+# Argo CD Applications track (git.repoURL, git.targetRevision).
+git:
+  repoURL: https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap.git
+  branch: main
+
+# Injected. Namespace of the Argo CD Applications (namespaces.argocd).
+argocd:
+  namespace: argocd
+
+# Injected. Registry prefix of the application images (platform.imageRegistry).
+# The Warehouse of app <name> subscribes to <imageRegistry>/<name>.
+imageRegistry: ghcr.io/your-org
+
+# Injected. Identity provider groups (platform.groups). deployers get the
+# promoter role in every app Project.
+groups:
+  admins: platform-admins
+  deployers: deployers
+  viewers: viewers
+
+# Injected. One pipeline per app. Stages are promoted in list order: the first
+# takes Freight from the Warehouse, each later one from the stage before it.
+# application is the Argo CD Application of the stage (hub mode adds the
+# cluster prefix).
+apps:
+  - name: hello-api
+    stages:
+      - {name: dev, namespace: dev, application: hello-api-dev}
+      - {name: stage, namespace: stage, application: hello-api-stage}
+      - {name: prod, namespace: prod, application: hello-api-prod}
+
+# Kargo Project and namespace of app <name>: <projectPrefix><name>.
+projectPrefix: kargo-
+
+warehouse:
+  # Registry poll interval.
+  interval: 5m0s
+  # Semantic version constraint on the image tags. Release tags come from
+  # sample-services/<app>/VERSION through build-image.yml.
+  constraint: ">=0.1.0"
+  # Newest tags that are considered per discovery.
+  discoveryLimit: 20
+  # Test-only: skip TLS verification of the registry (self-signed local registry).
+  insecureSkipTLSVerify: false
+
+# Per stage name:
+#   autoPromote  promote new Freight automatically (ProjectConfig policy)
+#   pullRequest  push a branch and open a pull request, wait until it is
+#                merged; otherwise push to git.branch directly
+stages:
+  dev:
+    autoPromote: true
+    pullRequest: false
+  stage:
+    autoPromote: false
+    pullRequest: false
+  prod:
+    autoPromote: false
+    pullRequest: true
+
+pullRequest:
+  # Provider of git-open-pr and git-wait-for-pr: github, gitlab, gitea, azure
+  # or bitbucket. Empty lets Kargo infer it from the repository URL, which
+  # works for the public hosts.
+  provider: ""
+  # How long a promotion waits for its pull request to be merged before it
+  # fails. A Go duration.
+  timeout: 168h
+
+verification:
+  # Injected: true when the argo-rollouts and monitoring toolchains are both
+  # enabled, unless toolchains.kargo.pipelines.values.verification.enabled is
+  # set in the cluster file.
+  enabled: false
+  # Templates run after each promotion. The default is the canary analysis of
+  # the argo-rollouts toolchain, so promotion and canary share one definition
+  # of success.
+  analysisTemplates:
+    - name: success-rate
+      kind: ClusterAnalysisTemplate
+  # Arguments of the success-rate template. service-name (the app name) and
+  # namespace (the stage namespace) are set per stage.
+  threshold: "0.99"
+
+# Injected. Pod Security version label of the Project namespaces
+# (v<cluster.kubernetesMinor>).
+podSecurityVersion: v1.36

@@ -1,0 +1,26 @@
+---
+# Test values for hack/jenkins-lint.sh. None of them is a credential: the lint
+# controller runs on 127.0.0.1 for a few minutes and is then removed.
+install_jenkins_security_realm: local
+install_jenkins_local_admin_user: admin
+install_jenkins_url: "http://127.0.0.1:8080/"
+install_jenkins_registry_username: lint
+install_jenkins_argocd_server: "argocd.example.com"
+install_jenkins_argocd_tokens:
+  dev: lint-only-argocd-token-dev
+  stage: lint-only-argocd-token-stage
+install_jenkins_k8s_api_url: "https://kubernetes.example.com:6443"
+install_jenkins_services_file: "{{ playbook_dir }}/../services.yaml"
+install_jenkins_job_dsl_file: "{{ playbook_dir }}/../jobs/services.groovy"
+install_jenkins_casc_secrets_dir: /etc/jenkins/casc-secrets
+
+lint_secrets:
+  local_admin_password: lint-only-admin-password
+  local_build_user_password: lint-only-build-password
+  registry_password: lint-only-registry-password
+  github_token: lint-only-github-token
+  cosign_private_key: "lint-only-not-a-key\nsecond line\n"
+  cosign_password: lint-only-cosign-password
+  k8s_agent_token: lint-only-k8s-token
+  argocd_token_dev: lint-only-argocd-token-dev
+  argocd_token_stage: lint-only-argocd-token-stage

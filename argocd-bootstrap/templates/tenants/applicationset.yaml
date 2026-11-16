@@ -1,0 +1,174 @@
+{{- /*
+Tenant onboarding. One Application per tenants/<name>.yaml renders
+tenants/chart: per environment a namespace tenant-<name>-<env> with quota,
+limits, network policies and role bindings, plus the AppProject
+tenant-<name>. Off by default; enable with toolchains.tenants.enabled.
+
+Security: the tenants AppProject below may create AppProjects in the Argo CD
+namespace, and every tenant AppProject is built from a file under tenants/.
+A change to tenants/ is therefore a change to who may deploy what and where.
+Protect tenants/ with CODEOWNERS (platform team) and run the schema check
+(hack/validate-config.sh) as a required status check. tenants/chart also
+validates the merged values with values.schema.json on every render.
+
+Git files generator: Argo CD's default globbing is greedy, so tenants/*.yaml
+alone would also match the chart under tenants/chart/, whose templates are
+not YAML. The explicit exclude of tenants/chart/** (files exclude, available
+in the pinned Argo CD 3.x) keeps the generator on tenant definitions with
+either globbing mode.
+
+Hub mode: the tenant AppProject must live in the hub's Argo CD namespace and
+the namespaces on the remote cluster. One Application cannot target two
+clusters, so hub mode renders two ApplicationSets: <cluster>-tenants for the
+namespaced objects (remote) and <cluster>-tenant-projects for the AppProjects
+(hub). Without a remote destination one Application renders both.
+*/ -}}
+{{- if dig "tenants" "enabled" false .Values.toolchains }}
+{{- $remote := include "argocd-bootstrap.isRemote" . }}
+{{- $argocd := .Values.namespaces.argocd }}
+{{- $project := include "argocd-bootstrap.name" (list . "tenants") }}
+{{- $prefix := "" }}
+{{- if $remote }}
+{{- $prefix = printf "%s-" .Values.cluster.name }}
+{{- end }}
+{{- $parts := list (dict "name" $project "suffix" "" "namespaces" true "project" true "hub" false) }}
+{{- if $remote }}
+{{- $parts = list
+      (dict "name" $project "suffix" "" "namespaces" true "project" false "hub" false)
+      (dict "name" (include "argocd-bootstrap.name" (list . "tenant-projects")) "suffix" "-proj" "namespaces" false "project" true "hub" true) }}
+{{- end }}
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ $project }}
+  namespace: {{ $argocd }}
+  labels:
+    {{- include "argocd-bootstrap.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Tenant onboarding of cluster {{ .Values.cluster.name }}. Renders tenants/chart for every tenants/<name>.yaml.
+  sourceRepos:
+    - {{ .Values.git.repoURL }}
+  destinations:
+    - namespace: {{ $argocd }}
+      {{- include "argocd-bootstrap.destination" . | nindent 6 }}
+    - namespace: tenant-*
+      {{- include "argocd-bootstrap.destination" . | nindent 6 }}
+    {{- if $remote }}
+    - namespace: {{ $argocd }}
+      server: https://kubernetes.default.svc
+    {{- end }}
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: argoproj.io
+      kind: AppProject
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+  roles:
+    - name: admins
+      description: Platform administrators.
+      groups:
+        - {{ .Values.platform.groups.admins }}
+      policies:
+        - p, proj:{{ $project }}:admins, applications, *, {{ $project }}/*, allow
+    - name: viewers
+      description: Read-only access to tenant onboarding Applications.
+      groups:
+        - {{ .Values.platform.groups.viewers }}
+        - {{ .Values.platform.groups.deployers }}
+      policies:
+        - p, proj:{{ $project }}:viewers, applications, get, {{ $project }}/*, allow
+{{- range $part := $parts }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: {{ $part.name }}
+  namespace: {{ $argocd }}
+  labels:
+    {{- include "argocd-bootstrap.labels" $ | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: {{ $.Values.git.repoURL }}
+        revision: {{ $.Values.git.targetRevision | quote }}
+        files:
+          - path: tenants/*.yaml
+          - path: tenants/chart/**
+            exclude: true
+  syncPolicy:
+    # Deleting a tenant file or this ApplicationSet deletes the Application
+    # only. Namespaces, guardrails and the AppProject also carry
+    # Prune=false,Delete=false; offboarding is a manual, reviewed step.
+    preserveResourcesOnDeletion: true
+  template:
+    metadata:
+      name: '{{ $prefix }}tenant-{{`{{ .name }}`}}{{ $part.suffix }}'
+      labels:
+        app.kubernetes.io/part-of: tenants
+        tenant: '{{`{{ .name }}`}}'
+      annotations:
+        argocd.argoproj.io/manifest-generate-paths: '/tenants/chart;/{{`{{ .path.path }}/{{ .path.filename }}`}}'
+    spec:
+      project: {{ $project }}
+      source:
+        repoURL: {{ $.Values.git.repoURL }}
+        targetRevision: {{ $.Values.git.targetRevision | quote }}
+        path: tenants/chart
+        helm:
+          valueFiles:
+            - values.yaml
+            - '../{{`{{ .path.filename }}`}}'
+          # Platform-owned values. valuesObject overrides valueFiles, so a
+          # tenant file cannot change them.
+          valuesObject:
+            namespaces:
+              argocd: {{ $argocd }}
+              gateway: {{ $.Values.namespaces.gateway }}
+            cluster:
+              name: {{ $.Values.cluster.name }}
+              kubernetesMinor: {{ $.Values.cluster.kubernetesMinor | toString | quote }}
+              destination:
+                name: {{ dig "destination" "name" "" $.Values.cluster | default "in-cluster" }}
+            components:
+              namespaces: {{ $part.namespaces }}
+              project: {{ $part.project }}
+      destination:
+        {{- if $part.hub }}
+        server: https://kubernetes.default.svc
+        {{- else }}
+        {{- include "argocd-bootstrap.destination" $ | nindent 8 }}
+        {{- end }}
+        namespace: {{ $argocd }}
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 3m
+      revisionHistoryLimit: 10
+{{- end }}
+{{- end }}

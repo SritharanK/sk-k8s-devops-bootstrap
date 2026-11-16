@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/v0.2.15/.schemas/json/test-chainsaw-v1alpha1.json
+#
+# Runs on the host: curl connects to 127.0.0.1:${DEMO_HTTPS_PORT} (the kind
+# port mapping of the https listener) with SNI and Host set to the route host,
+# and verifies the certificate with the lab CA in DEMO_CA_FILE.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: gateway-hello-api
+spec:
+  description: hello-api answers 200 on /readyz over HTTPS through Gateway platform in every environment that has it, and Argo CD answers when it has a route.
+  concurrent: false
+  catch:
+    - script:
+        content: |
+          kubectl get gateways.gateway.networking.k8s.io -A
+          kubectl get httproutes.gateway.networking.k8s.io -A
+          kubectl get pods,services -n envoy-gateway-system
+  steps:
+    - name: https-through-gateway
+      try:
+        - script:
+            timeout: 5m
+            content: bash ../lib/gateway-check.sh

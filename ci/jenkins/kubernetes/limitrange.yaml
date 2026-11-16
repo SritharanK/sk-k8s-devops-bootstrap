@@ -1,0 +1,24 @@
+---
+# Defaults for containers that declare no resources (the pod templates in
+# ci/jenkins/pod-templates/ declare all of them) and a per-container ceiling.
+# The ceiling equals the largest container, buildkit in the build pod.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: jenkins-agents
+  namespace: jenkins-agents
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+        ephemeral-storage: 256Mi
+      default:
+        cpu: 500m
+        memory: 512Mi
+        ephemeral-storage: 1Gi
+      max:
+        cpu: "4"
+        memory: 8Gi
+        ephemeral-storage: 20Gi

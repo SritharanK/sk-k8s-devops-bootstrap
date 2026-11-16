@@ -1,0 +1,51 @@
+{{- /*
+ApplicationSet mode: one ApplicationSet per environment over the same
+inventory as the static Applications. Per environment so that prod can use
+applicationsSync create-update (the controller never deletes a prod
+Application) while dev and stage follow the inventory exactly.
+*/ -}}
+{{- if .Values.applicationSet.enabled }}
+{{- $instances := include "argocd-bootstrap.appInstances" . | fromYamlArray }}
+{{- range $env := include "argocd-bootstrap.environments" . | fromJsonArray }}
+{{- $elements := list }}
+{{- range $i := $instances }}
+{{- if eq $i.env $env }}
+{{- $elements = append $elements (pick $i "name" "app" "chart" "generatePaths") }}
+{{- end }}
+{{- end }}
+{{- if $elements }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: {{ include "argocd-bootstrap.appsProject" (list $ $env) }}
+  namespace: {{ $.Values.namespaces.argocd }}
+  labels:
+    {{- include "argocd-bootstrap.labels" $ | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          {{- toYaml $elements | nindent 10 }}
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+    {{- if eq $env "prod" }}
+    applicationsSync: create-update
+    {{- end }}
+  template:
+    {{- include "argocd-bootstrap.appBody" (dict
+          "root" $
+          "name" "{{ .name }}"
+          "app" "{{ .app }}"
+          "env" $env
+          "chart" "{{ .chart }}"
+          "namespace" (index $.Values.namespaces $env)
+          "project" (include "argocd-bootstrap.appsProject" (list $ $env))
+          "generatePaths" "{{ .generatePaths }}") | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

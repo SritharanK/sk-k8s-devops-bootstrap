@@ -1,0 +1,17 @@
+---
+# Red Hat family: Rocky Linux, AlmaLinux and RHEL 9. Loaded by tasks/main.yml.
+# Internal variables keep the role's jenkins_ namespace (see README.md).
+
+# Java 21 runtime (AppStream) and the font libraries Jenkins needs for
+# headless rendering.
+__jenkins_runtime_packages:  # noqa: var-naming[no-role-prefix]
+  - java-21-openjdk-headless
+  - fontconfig
+
+# dnf selects an exact version with name-version (the release is not pinned).
+__jenkins_package_spec: "jenkins-{{ install_jenkins_version }}"  # noqa: var-naming[no-role-prefix]
+
+# LTS repository and the signing key used since LTS 2.541.1. rpm_key imports
+# the key only when its fingerprint equals install_jenkins_repo_key_fingerprint.
+__jenkins_repo_url: https://pkg.jenkins.io/rpm-stable  # noqa: var-naming[no-role-prefix]
+__jenkins_repo_key_url: https://pkg.jenkins.io/rpm-stable/jenkins.io-2026.key  # noqa: var-naming[no-role-prefix]

@@ -1,0 +1,47 @@
+{{- /*
+HTTPRoute for the Argo CD UI and API on the shared Gateway platform.
+TLS terminates at the Gateway listener, so argocd-server must run with
+server.insecure and the route targets its plain HTTP port. The CLI connects
+through this route with --grpc-web.
+*/ -}}
+{{- if .Values.route.enabled -}}
+{{- $upstream := index .Values "argo-cd" -}}
+{{- if ne (toString (index $upstream.configs.params "server.insecure")) "true" -}}
+{{- fail "route.enabled requires argo-cd.configs.params.server.insecure=true: TLS terminates at the Gateway" -}}
+{{- end -}}
+{{- if not .Values.global.domain -}}
+{{- fail "route.enabled requires global.domain" -}}
+{{- end -}}
+{{- if not .Values.route.parentRefs -}}
+{{- fail "route.enabled requires route.parentRefs" -}}
+{{- end -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "argocd-wrapper.fullname" . }}-server
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "argocd-wrapper.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "argocd-wrapper.fullname" . }}-server
+    app.kubernetes.io/component: server
+  {{- with .Values.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    {{- toYaml .Values.route.parentRefs | nindent 4 }}
+  hostnames:
+    - {{ .Values.global.domain | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ include "argocd-wrapper.fullname" . }}-server
+          port: {{ $upstream.server.service.servicePortHttp | default 80 }}
+          weight: 1
+{{- end }}

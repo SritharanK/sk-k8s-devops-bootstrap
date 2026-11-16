@@ -1,0 +1,193 @@
+---
+# Host checks. Every failure here is fatal: nothing has changed on the host yet.
+
+- name: Gather the facts the host checks need
+  ansible.builtin.setup:
+    gather_subset:
+      - "!all"
+      - min
+      - hardware
+  when: >-
+    ansible_facts['distribution'] is not defined
+    or ansible_facts['kernel'] is not defined
+    or ansible_facts['memtotal_mb'] is not defined
+    or ansible_facts['processor_vcpus'] is not defined
+  tags: [preflight, preflight_host]
+
+- name: Reject placeholder values
+  ansible.builtin.import_tasks: placeholders.yml
+  tags: [preflight, preflight_host, preflight_placeholders]
+
+- name: Assert that the distribution is supported
+  ansible.builtin.assert:
+    that: preflight__platform_matches | length > 0
+    fail_msg: >-
+      {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }} is not supported. Supported:
+      {% for platform in preflight_supported_platforms %}{{ platform['distribution'] }}
+      {{ platform['versions'] | join('/') }}{{ ', ' if not loop.last else '' }}{% endfor %}.
+    quiet: true
+  vars:
+    preflight__platform_matches: >-
+      {{ preflight_supported_platforms
+         | selectattr('distribution', 'equalto', ansible_facts['distribution'])
+         | map(attribute='versions') | flatten | map('string')
+         | select('in', [ansible_facts['distribution_version'], ansible_facts['distribution_major_version']])
+         | list }}
+  tags: [preflight, preflight_host]
+
+- name: Assert that the architecture is supported
+  ansible.builtin.assert:
+    that: ansible_facts['architecture'] in preflight_supported_architectures
+    fail_msg: >-
+      Architecture {{ ansible_facts['architecture'] }} is not supported. Supported:
+      {{ preflight_supported_architectures | join(', ') }}.
+    quiet: true
+  tags: [preflight, preflight_host]
+
+- name: Assert the minimum kernel version
+  ansible.builtin.assert:
+    that: preflight__kernel_version is version(preflight_min_kernel_version, '>=')
+    fail_msg: >-
+      Kernel {{ ansible_facts['kernel'] }} is older than the required {{ preflight_min_kernel_version }}.
+    quiet: true
+  vars:
+    preflight__kernel_version: "{{ ansible_facts['kernel'] | split('-') | first }}"
+  tags: [preflight, preflight_host]
+
+- name: Assert the minimum CPU and memory
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['processor_vcpus'] | int >= preflight_min_vcpus | int
+      - ansible_facts['memtotal_mb'] | int >= preflight_min_memory_mb | int
+    fail_msg: >-
+      The host has {{ ansible_facts['processor_vcpus'] }} vCPU and {{ ansible_facts['memtotal_mb'] }} MB of memory.
+      Required: at least {{ preflight_min_vcpus }} vCPU and {{ preflight_min_memory_mb }} MB.
+    quiet: true
+  tags: [preflight, preflight_host]
+
+# Free space comes from df rather than ansible_facts['mounts']: the mount facts leave out file systems whose device
+# does not start with "/" (overlay in a container, ZFS datasets). df follows symlinks, and the path may not exist
+# yet, so df runs on its nearest existing ancestor.
+- name: Assert that the data path is absolute
+  ansible.builtin.assert:
+    that: preflight_disk_path is match('^/')
+    fail_msg: preflight_disk_path must be an absolute path, got '{{ preflight_disk_path }}'.
+    quiet: true
+  tags: [preflight, preflight_host]
+
+- name: Check which ancestors of the data path exist
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: false
+  loop: >-
+    {%- set ns = namespace(paths=['/']) -%}
+    {%- for part in preflight_disk_path.split('/') | select -%}
+    {%-   set ns.paths = ns.paths + [(ns.paths | last).rstrip('/') ~ '/' ~ part] -%}
+    {%- endfor -%}
+    {{ ns.paths | reverse | list }}
+  register: preflight__disk_path_stats
+  tags: [preflight, preflight_host]
+
+- name: Measure the free space of the file system that holds the data path
+  ansible.builtin.command:
+    argv:
+      - df
+      - --block-size=1
+      - --output=target,avail
+      - "{{ preflight__disk_path_stats.results | selectattr('stat.exists') | map(attribute='item') | first }}"
+  register: preflight__disk_df
+  changed_when: false
+  failed_when: preflight__disk_df.rc != 0
+  check_mode: false
+  tags: [preflight, preflight_host]
+
+- name: Assert the minimum free disk space
+  ansible.builtin.assert:
+    that: preflight__disk_available | int >= (preflight_min_disk_free_gb | float * 1073741824) | int
+    fail_msg: >-
+      {{ preflight__disk_mount_point }} (holding {{ preflight_disk_path }}) has
+      {{ (preflight__disk_available | int / 1073741824) | round(1) }} GiB free.
+      Required: {{ preflight_min_disk_free_gb }} GiB.
+    quiet: true
+  vars:
+    preflight__disk_fields: "{{ preflight__disk_df.stdout_lines | last | split }}"
+    preflight__disk_mount_point: "{{ preflight__disk_fields[:-1] | join(' ') }}"
+    preflight__disk_available: "{{ preflight__disk_fields | last }}"
+  tags: [preflight, preflight_host]
+
+- name: Check that the required ports are free
+  when: preflight_check_ports | bool
+  tags: [preflight, preflight_host, preflight_ports]
+  block:
+    - name: Collect the listening ports
+      community.general.listen_ports_facts:
+
+    - name: Assert that no other process holds a required port
+      ansible.builtin.assert:
+        that: preflight__port_conflicts | length == 0
+        fail_msg: >-
+          Required ports for a {{ preflight__node_role }} are held by processes outside
+          preflight_port_owner_allowlist:
+          {% for entry in preflight__port_conflicts %}{{ entry['port'] }}/tcp ({{ entry['name'] }},
+          pid {{ entry['pid'] }}){{ ', ' if not loop.last else '' }}{% endfor %}.
+        quiet: true
+      vars:
+        preflight__node_role: >-
+          {{ 'server' if inventory_hostname in groups[preflight_servers_group] | default([]) else 'agent' }}
+        preflight__required_ports: >-
+          {{ (preflight_server_ports if preflight__node_role == 'server' else preflight_agent_ports)
+             | map('int') | list }}
+        preflight__owner_pattern: >-
+          {{ ('(?:' ~ (preflight_port_owner_allowlist | join(')|(?:')) ~ ')')
+             if preflight_port_owner_allowlist | length > 0 else '(?!)' }}
+        preflight__port_conflicts: >-
+          {{ ansible_facts['tcp_listen'] | default([])
+             | selectattr('port', 'in', preflight__required_ports)
+             | rejectattr('name', 'search', preflight__owner_pattern)
+             | unique(attribute='port') | list }}
+
+- name: Check the cluster topology
+  when: preflight__topology_hosts | length > 0
+  run_once: true
+  vars:
+    preflight__servers: "{{ groups[preflight_servers_group] | default([]) }}"
+    preflight__topology_hosts: >-
+      {{ (groups[preflight_cluster_group] | default([]) + preflight__servers
+          + groups[preflight_agents_group] | default([])) | unique }}
+    preflight__hostnames: >-
+      {{ preflight__topology_hosts | map('extract', hostvars, 'ansible_facts')
+         | selectattr('hostname', 'defined') | map(attribute='hostname') | map('lower') | list }}
+  tags: [preflight, preflight_host, preflight_topology]
+  block:
+    - name: Assert that hostnames are unique across the cluster
+      ansible.builtin.assert:
+        that: preflight__duplicates | length == 0
+        fail_msg: >-
+          Hostnames must be unique across the cluster (they become Kubernetes node names). Duplicates:
+          {{ preflight__duplicates | join(', ') }}.
+        quiet: true
+      vars:
+        preflight__duplicates: >-
+          {{ preflight__hostnames | community.general.counter | dict2items
+             | selectattr('value', '>', 1) | map(attribute='key') | list }}
+
+    - name: Assert that the cluster has at least one server
+      ansible.builtin.assert:
+        that: preflight__servers | length > 0
+        fail_msg: The inventory group '{{ preflight_servers_group }}' has no hosts. A cluster needs at least one server.
+        quiet: true
+
+    - name: Assert that a registration address is set for more than one server
+      ansible.builtin.assert:
+        that: preflight__servers | length <= 1 or preflight_registration_address | length > 0
+        fail_msg: >-
+          The cluster has {{ preflight__servers | length }} servers but no registration address. Set a virtual IP
+          or load balancer address (rke2_registration_address) that reaches every server on 9345/tcp and 6443/tcp.
+        quiet: true
+
+    - name: Warn about an even number of servers
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: the cluster has {{ preflight__servers | length }} servers. etcd needs a majority to keep quorum,
+          so an even number tolerates no more failures than one server less. Use 1, 3 or 5 servers.
+      when: (preflight__servers | length) is even

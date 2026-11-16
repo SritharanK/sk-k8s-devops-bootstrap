@@ -1,0 +1,294 @@
+---
+# Fail before any change when the platform or the configuration is wrong.
+# Secret values are read only by the task marked no_log; the assertions see
+# variable names, never values.
+
+- name: Gather the facts the role depends on
+  ansible.builtin.setup:
+    gather_subset:
+      - min
+  when: ansible_facts['os_family'] is not defined
+
+- name: Validate the platform and the configuration
+  vars:
+    __jenkins_platform: >-
+      {{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_version'] if ansible_facts['distribution'] == 'Ubuntu'
+      else ansible_facts['distribution_major_version'] }}
+    __jenkins_supported_platforms:
+      - Ubuntu 24.04
+      - Debian 13
+      - Rocky 9
+      - AlmaLinux 9
+      - RedHat 9
+
+    # Settings that must be defined and not empty.
+    __jenkins_required_settings:
+      - install_jenkins_version
+      - install_jenkins_repo_key_fingerprint
+      - install_jenkins_repo_key_sha256
+      - install_jenkins_plugin_manager_version
+      - install_jenkins_plugin_manager_sha256
+      - install_jenkins_plugins_file
+      - install_jenkins_user
+      - install_jenkins_group
+      - install_jenkins_home
+      - install_jenkins_war_path
+      - install_jenkins_config_dir
+      - install_jenkins_casc_dir
+      - install_jenkins_casc_secrets_dir
+      - install_jenkins_http_listen_address
+      - install_jenkins_http_port
+      - install_jenkins_java_heap_min
+      - install_jenkins_java_heap_max
+      - install_jenkins_startup_timeout
+      - install_jenkins_url
+      - install_jenkins_admin_email
+      - install_jenkins_security_realm
+      - install_jenkins_build_run_as
+      - install_jenkins_build_user
+      - install_jenkins_k8s_api_url
+      - install_jenkins_k8s_namespace
+      - install_jenkins_k8s_container_cap
+      - install_jenkins_k8s_jenkins_url
+      - install_jenkins_git_repo_url
+      - install_jenkins_git_branch
+      - install_jenkins_github_repository
+      - install_jenkins_github_api_url
+      - install_jenkins_git_commit_name
+      - install_jenkins_git_commit_email
+      - install_jenkins_poll_scm_schedule
+      - install_jenkins_image_registry
+      - install_jenkins_registry_username
+      - install_jenkins_services_file
+      - install_jenkins_job_dsl_file
+    __jenkins_required_by_realm:
+      oidc:
+        - install_jenkins_oidc_client_id
+        - install_jenkins_oidc_well_known_url
+        - install_jenkins_oidc_user_name_field
+        - install_jenkins_oidc_groups_field
+      ldap:
+        - install_jenkins_ldap_server
+        - install_jenkins_ldap_root_dn
+        - install_jenkins_ldap_user_search
+        - install_jenkins_ldap_manager_dn
+      local:
+        - install_jenkins_local_admin_user
+
+    # Settings that may be empty but must not keep a placeholder.
+    __jenkins_optional_settings:
+      - install_jenkins_system_message
+      - install_jenkins_admin_groups
+      - install_jenkins_admin_users
+      - install_jenkins_developer_groups
+      - install_jenkins_viewer_groups
+      - install_jenkins_java_opts_extra
+      - install_jenkins_k8s_ca_certificate
+      - install_jenkins_git_known_hosts
+      - install_jenkins_argocd_server
+    __jenkins_optional_by_realm:
+      oidc:
+        - install_jenkins_oidc_full_name_field
+        - install_jenkins_oidc_email_field
+      ldap:
+        - install_jenkins_ldap_user_search_base
+        - install_jenkins_ldap_group_search_base
+      local: []
+
+    # Secret file name (read by configuration as code) to role variable.
+    __jenkins_secret_vars_common:
+      registry_password: install_jenkins_registry_password
+      github_token: install_jenkins_github_token
+      cosign_private_key: install_jenkins_cosign_private_key
+      cosign_password: install_jenkins_cosign_password
+      k8s_agent_token: install_jenkins_k8s_agent_token
+    __jenkins_secret_vars_by_realm:
+      oidc:
+        oidc_client_secret: install_jenkins_oidc_client_secret
+      ldap:
+        ldap_manager_password: install_jenkins_ldap_manager_password
+      local:
+        local_admin_password: install_jenkins_local_admin_password
+        local_build_user_password: install_jenkins_local_build_user_password
+  block:
+    - name: Fail on Debian 12, which provides Java 17 only
+      ansible.builtin.assert:
+        that:
+          - not (ansible_facts['distribution'] == 'Debian' and ansible_facts['distribution_major_version'] == '12')
+        fail_msg: >-
+          Debian 12 provides Java 17 only and Jenkins {{ install_jenkins_version }} needs Java 21.
+          Use Debian 13, Ubuntu 24.04 or Enterprise Linux 9.
+        quiet: true
+
+    - name: Assert that the operating system is supported
+      ansible.builtin.assert:
+        that:
+          - __jenkins_platform in __jenkins_supported_platforms
+          - ansible_facts['service_mgr'] == 'systemd'
+        fail_msg: >-
+          Unsupported platform {{ __jenkins_platform }} (service manager {{ ansible_facts['service_mgr'] }}).
+          Supported: {{ __jenkins_supported_platforms | join(', ') }}, all managed by systemd.
+        quiet: true
+
+    - name: Assert that the security realm and the build identity mode are valid
+      ansible.builtin.assert:
+        that:
+          - install_jenkins_security_realm in ['oidc', 'ldap', 'local']
+          - install_jenkins_build_run_as in ['user', 'system']
+        fail_msg: >-
+          install_jenkins_security_realm must be oidc, ldap or local (is {{ install_jenkins_security_realm | default('undefined') }}).
+          install_jenkins_build_run_as must be user or system (is {{ install_jenkins_build_run_as | default('undefined') }}).
+        quiet: true
+
+    - name: Assert that every required setting is defined and not empty
+      ansible.builtin.assert:
+        that:
+          - __jenkins_unset_settings | length == 0
+        fail_msg: "Define these variables with a non-empty value: {{ __jenkins_unset_settings | join(', ') }}"
+        quiet: true
+      vars:
+        __jenkins_checked_settings: "{{ __jenkins_required_settings + __jenkins_required_by_realm[install_jenkins_security_realm] }}"
+        __jenkins_unset_settings: >-
+          {{ __jenkins_checked_settings
+             | zip(query('ansible.builtin.vars', *__jenkins_checked_settings, default=''))
+             | rejectattr('1') | map(attribute='0') | list }}
+
+    - name: Assert that no active setting still holds a CHANGE_ME placeholder
+      ansible.builtin.assert:
+        that:
+          - __jenkins_placeholder_settings | length == 0
+        fail_msg: "Replace the CHANGE_ME placeholder in: {{ __jenkins_placeholder_settings | join(', ') }}"
+        quiet: true
+      vars:
+        __jenkins_checked_settings: >-
+          {{ __jenkins_required_settings + __jenkins_required_by_realm[install_jenkins_security_realm]
+             + __jenkins_optional_settings + __jenkins_optional_by_realm[install_jenkins_security_realm] }}
+        __jenkins_placeholder_settings: >-
+          {{ __jenkins_checked_settings
+             | zip(query('ansible.builtin.vars', *__jenkins_checked_settings, default='') | map('string'))
+             | selectattr('1', 'search', 'CHANGE_ME') | map(attribute='0') | list }}
+
+    - name: Assert that the public URL is well formed
+      ansible.builtin.assert:
+        that:
+          - install_jenkins_url is match('https://') or (install_jenkins_security_realm == 'local' and install_jenkins_url is match('http://'))
+          - install_jenkins_url is search('/$')
+        fail_msg: >-
+          install_jenkins_url must start with https:// (http:// is accepted only with the local lab realm)
+          and end with a slash. Current value: {{ install_jenkins_url }}
+        quiet: true
+
+    - name: Assert that pinned versions and checksums are well formed
+      ansible.builtin.assert:
+        that:
+          - install_jenkins_version is match('^[0-9]+[.][0-9]+[.][0-9]+$')
+          - install_jenkins_repo_key_fingerprint is match('^[0-9A-Fa-f]{40}$')
+          - install_jenkins_repo_key_sha256 is match('^[0-9a-f]{64}$')
+          - install_jenkins_plugin_manager_sha256 is match('^[0-9a-f]{64}$')
+        fail_msg: >-
+          install_jenkins_version must be an LTS version (for example 2.580.2), install_jenkins_repo_key_fingerprint
+          40 hexadecimal characters, and both SHA-256 checksums 64 lowercase hexadecimal characters.
+        quiet: true
+
+    # The options end up in one Environment= line of the systemd drop-in,
+    # which is split on whitespace and cannot hold quotes or backslashes.
+    - name: Assert that the extra JVM options fit in the systemd drop-in
+      ansible.builtin.assert:
+        that:
+          - install_jenkins_java_opts_extra is sequence
+          - install_jenkins_java_opts_extra is not string
+          - install_jenkins_java_opts_extra | map('string') | select('search', '["\\\\ \t\n]') | list | length == 0
+        fail_msg: install_jenkins_java_opts_extra must be a list of options without spaces, quotes or backslashes.
+        quiet: true
+
+    - name: Assert that at least one administrator is defined
+      ansible.builtin.assert:
+        that:
+          - >-
+            install_jenkins_security_realm == 'local'
+            or ((install_jenkins_admin_groups | length) + (install_jenkins_admin_users | length)) > 0
+        fail_msg: >-
+          install_jenkins_admin_groups and install_jenkins_admin_users are both empty. Nobody would be able to
+          administer Jenkins through the {{ install_jenkins_security_realm }} realm.
+        quiet: true
+
+    - name: Determine the secrets of the active configuration
+      ansible.builtin.set_fact:
+        __jenkins_secret_vars: >-
+          {{ __jenkins_secret_vars_common
+             | combine(__jenkins_secret_vars_by_realm[install_jenkins_security_realm]) }}
+
+    # Reads secret values, so no_log. The result holds variable names only.
+    - name: Find secrets that are missing, empty or still hold a placeholder
+      ansible.builtin.set_fact:
+        __jenkins_invalid_secrets: >-
+          {{ __jenkins_secret_names
+             | zip(query('ansible.builtin.vars', *__jenkins_secret_names, default='') | map('string') | map('trim'))
+             | selectattr('1', 'search', '^$|CHANGE_ME') | map(attribute='0') | list }}
+      vars:
+        __jenkins_secret_names: "{{ __jenkins_secret_vars.values() | list }}"
+      no_log: true
+
+    - name: Assert that every secret of the active configuration is set
+      ansible.builtin.assert:
+        that:
+          - __jenkins_invalid_secrets | length == 0
+        fail_msg: >-
+          Map these variables to encrypted vault_ variables (see examples/group_vars/jenkins/)
+          and replace CHANGE_ME: {{ __jenkins_invalid_secrets | join(', ') }}
+        quiet: true
+
+    # Argo CD health gate: one token per promotion source environment, each
+    # for the project role ci of apps-<env>. Reads secret values, so no_log;
+    # the result holds environment names only.
+    - name: Find Argo CD tokens that are missing, empty or still hold a placeholder
+      ansible.builtin.set_fact:
+        __jenkins_invalid_argocd_tokens: >-
+          {{ (install_jenkins_argocd_tokens | default({})) | dict2items
+             | selectattr('value', 'string') | rejectattr('value', 'search', '^\\s*$|CHANGE_ME')
+             | map(attribute='key') | list
+             | symmetric_difference((install_jenkins_argocd_tokens | default({})).keys() | list) }}
+      when: install_jenkins_argocd_server | length > 0
+      no_log: true
+
+    - name: Assert that the Argo CD health gate has a token per environment
+      ansible.builtin.assert:
+        that:
+          - install_jenkins_argocd_tokens is defined
+          - install_jenkins_argocd_tokens is mapping
+          - install_jenkins_argocd_tokens | length > 0
+          - >-
+            install_jenkins_argocd_tokens.keys() | select('match', '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$') | list | length
+            == install_jenkins_argocd_tokens | length
+          - __jenkins_invalid_argocd_tokens | length == 0
+        fail_msg: >-
+          install_jenkins_argocd_server is set, so install_jenkins_argocd_tokens must map each promotion source
+          environment (for example dev and stage) to a read-only token from the encrypted vault.
+          Invalid or missing: {{ __jenkins_invalid_argocd_tokens | default([]) | join(', ') }}
+        quiet: true
+      when: install_jenkins_argocd_server | length > 0
+
+    - name: Check the plugin list and the job definitions on the control node
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        get_checksum: false
+      loop:
+        - "{{ install_jenkins_plugins_file }}"
+        - "{{ install_jenkins_services_file }}"
+        - "{{ install_jenkins_job_dsl_file }}"
+      register: __jenkins_control_files
+      delegate_to: localhost
+      become: false
+      run_once: true
+
+    - name: Assert that the plugin list and the job definitions exist on the control node
+      ansible.builtin.assert:
+        that:
+          - __jenkins_missing_control_files | length == 0
+        fail_msg: "Missing on the control node: {{ __jenkins_missing_control_files | join(', ') }}"
+        quiet: true
+      vars:
+        __jenkins_missing_control_files: >-
+          {{ __jenkins_control_files.results | rejectattr('stat.exists') | map(attribute='item') | list }}
+      run_once: true

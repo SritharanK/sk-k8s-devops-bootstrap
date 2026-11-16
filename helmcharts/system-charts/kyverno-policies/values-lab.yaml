@@ -1,0 +1,9 @@
+# Lab profile (kind or a single RKE2 node). Same Audit and Enforce split as the
+# reference profile. Signature verification stays off: the kind demo loads a
+# locally built image that carries no signature. Locally built
+# images must still use the "<platform.imageRegistry>/<name>:<tag>" reference
+# to pass the registry allowlist.
+
+---
+imageVerification:
+  enabled: false

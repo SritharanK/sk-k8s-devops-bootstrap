@@ -1,0 +1,146 @@
+# Common values for the kargo wrapper chart.
+# Profile deltas: values-lab.yaml and values-reference.yaml.
+# Keys marked "injected" are set by argocd-bootstrap/templates/toolchains/kargo.yaml
+# from clusters/<name>/cluster.yaml; the defaults here only serve local renders.
+# Upstream chart values are nested under `kargo`:
+# https://github.com/akuity/kargo/blob/v1.12.5/charts/kargo/values.yaml
+
+# HTTPRoute for the API and UI on the shared Gateway (templates/httproute.yaml).
+# TLS terminates at the Gateway listener, so the API serves plain HTTP
+# (kargo.api.tls.enabled: false, terminatedUpstream: true). The host name is
+# kargo.api.host.
+route:
+  enabled: true
+  parentRefs:
+    - name: platform
+      namespace: envoy-gateway-system
+      sectionName: https
+  annotations: {}
+
+# Repository credentials. Kargo looks them up in the Project namespace, then
+# in kargo.global.sharedResources.namespace; this chart only delivers them
+# to the shared namespace, so every pipeline of this repository uses one Git
+# credential. A credential is a Secret labelled
+# kargo.akuity.io/cred-type: git | image with the keys repoURL, username and
+# password (and repoURLIsRegex: "true" for a pattern).
+#   lab        a SealedSecret under clusters/<name>/secrets/kargo-shared-resources/
+#              (hack/seal.sh), see docs/how-to/promote-with-kargo.md
+#   reference  ExternalSecrets from the platform secret store (below)
+credentials:
+  externalSecret:
+    enabled: false
+    secretStoreRef:
+      kind: ClusterSecretStore
+      name: openbao
+    refreshInterval: 1h
+  git:
+    # Injected: git.repoURL. The secret store entry holds the properties
+    # username and password (a token with contents write and pull requests
+    # write on this repository only).
+    repoURL: https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap.git
+    remoteKey: platform/kargo/git
+  image:
+    # Only for a private registry. repoURL is a regular expression over the
+    # image repositories, for example ^ghcr\.io/your-org/.
+    enabled: false
+    repoURL: ^ghcr\.io/your-org/
+    remoteKey: platform/kargo/registry
+
+kargo:
+  # CRDs are part of the chart templates and carry helm.sh/resource-policy:
+  # keep; Argo CD neither prunes nor deletes them (see the toolchain file).
+  crds:
+    install: true
+    keep: true
+
+  global:
+    # Container security context of every Kargo pod. The upstream default is
+    # empty and does not meet Pod Security restricted; the image runs as
+    # UID 65532.
+    securityContext:
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+    sharedResources:
+      namespace: kargo-shared-resources
+    systemResources:
+      namespace: kargo-system-resources
+
+  api:
+    # Injected: kargo.<cluster.domain>.
+    host: kargo.localtest.me
+    tls:
+      enabled: false
+      terminatedUpstream: true
+    # OIDC with PKCE, no client secret. Injected: the claims below from
+    # platform.groups. issuerURL, clientID and cliClientID per profile.
+    oidc:
+      enabled: false
+      additionalScopes: [groups]
+      admins:
+        claims:
+          groups: [platform-admins]
+      viewers:
+        claims:
+          groups: [viewers, deployers]
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+  controller:
+    argocd:
+      # Injected: namespaces.argocd. The controller may read and patch
+      # Applications in this namespace only (a Role, not a ClusterRole).
+      namespace: argocd
+      watchArgocdNamespaceOnly: true
+    rollouts:
+      # Verification creates Argo Rollouts AnalysisRuns; the Rollouts
+      # controller of the argo-rollouts toolchain runs them. Without the
+      # Rollouts CRDs Kargo disables verification at start.
+      integrationEnabled: true
+    # Author of promotion commits.
+    gitClient:
+      name: Kargo
+      email: kargo@example.com
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+
+  managementController:
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+
+  webhooksServer:
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+
+  # Inbound webhooks from Git hosts and registries. Off: Warehouses poll
+  # (interval in the pipelines chart), and no public endpoint is exposed.
+  externalWebhooksServer:
+    enabled: false
+
+  garbageCollector:
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 256Mi

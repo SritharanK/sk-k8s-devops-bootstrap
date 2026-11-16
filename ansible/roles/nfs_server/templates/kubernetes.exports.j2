@@ -1,0 +1,6 @@
+{{ ansible_managed | comment }}
+# NFS exports for Kubernetes. exportfs reads every file ending in .exports in /etc/exports.d.
+{% for export in nfs_server_exports %}
+{% set options = export['options'] | default(nfs_server_export_options, true) %}
+{{ export['path'] }} {{ export['clients'] | map('regex_replace', '$', '(' ~ options ~ ')') | join(' ') }}
+{% endfor %}

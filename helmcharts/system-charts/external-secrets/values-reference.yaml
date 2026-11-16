@@ -1,0 +1,28 @@
+# reference: two replicas per component with disruption budgets.
+external-secrets:
+  replicaCount: 2
+  # Required with more than one controller or cert-controller replica. The
+  # webhook is stateless and does not take part in leader election.
+  leaderElect: true
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  webhook:
+    replicaCount: 2
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+  certController:
+    replicaCount: 2
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+  global:
+    # Prefer spreading replicas over nodes without blocking scheduling on
+    # small clusters. The upstream chart adds each component's selector.
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        matchLabelKeys:
+          - pod-template-hash

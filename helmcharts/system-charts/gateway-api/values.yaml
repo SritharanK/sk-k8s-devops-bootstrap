@@ -1,0 +1,16 @@
+# CRDs only. The Argo CD Application sets Prune=false and Delete=false for the
+# whole Application, so neither a sync nor removing the Application deletes a
+# CRD (and with it every Gateway and route in the cluster).
+gateway-crds-helm:
+  crds:
+    gatewayAPI:
+      enabled: true
+      # The standard channel is the supported API surface. The bundle also
+      # installs the upstream safe-upgrades ValidatingAdmissionPolicy, which
+      # rejects experimental CRDs on top of standard ones and downgrades.
+      channel: standard
+    # Envoy Gateway's own CRDs (EnvoyProxy, ClientTrafficPolicy and others).
+    # Installed here so every CRD of the gateway stack lands in sync wave 0;
+    # the envoy-gateway chart runs with crds.enabled=false.
+    envoyGateway:
+      enabled: true

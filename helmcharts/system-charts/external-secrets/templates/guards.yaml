@@ -1,0 +1,9 @@
+{{- /*
+Renders nothing. The CRDs are templates of this release: with installCRDs
+false they drop out of the render, Argo CD prunes them and Kubernetes garbage
+collects every ExternalSecret, SecretStore and PushSecret in the cluster.
+*/ -}}
+{{- $eso := index .Values "external-secrets" -}}
+{{- if not $eso.installCRDs -}}
+{{- fail "external-secrets: installCRDs must stay true; disabling it lets Argo CD prune the CRDs and garbage-collect every ExternalSecret" -}}
+{{- end -}}

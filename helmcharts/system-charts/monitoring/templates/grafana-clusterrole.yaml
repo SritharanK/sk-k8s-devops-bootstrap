@@ -1,0 +1,18 @@
+{{- /*
+ClusterRole for the Grafana sidecars, limited to ConfigMaps. kube-prometheus-stack
+binds Grafana to it through grafana.rbac.useExistingClusterRole, which replaces the
+upstream ClusterRole that also grants read access to Secrets in every namespace.
+*/}}
+{{- $grafana := index .Values "kube-prometheus-stack" "grafana" }}
+{{- if and $grafana.enabled $grafana.rbac.create $grafana.rbac.useExistingClusterRole }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $grafana.rbac.useExistingClusterRole }}
+  labels:
+    {{- include "monitoring.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+{{- end }}

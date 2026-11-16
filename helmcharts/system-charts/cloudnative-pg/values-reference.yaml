@@ -1,0 +1,51 @@
+# cloudnative-pg reference profile: 3-node RKE2 HA cluster.
+cloudnative-pg:
+  # Two replicas with leader election; both serve the admission webhooks.
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: cloudnative-pg
+          app.kubernetes.io/instance: cloudnative-pg
+
+# The plugin Deployment uses the Recreate strategy upstream, so it stays at one replica.
+plugin-barman-cloud:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+operatorPodDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+exampleCluster:
+  instances: 3
+  storage:
+    size: 20Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+  objectStore:
+    destinationPath: s3://CHANGE_ME-cnpg/
+    endpointURL: https://s3.example.com
+    sidecarResources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi

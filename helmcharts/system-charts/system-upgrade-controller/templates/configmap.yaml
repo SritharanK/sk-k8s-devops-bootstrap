@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: default-controller-env
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "suc.labels" . | nindent 4 }}
+data:
+  {{- range $key, $value := .Values.controllerEnv }}
+  {{ $key }}: {{ toString $value | quote }}
+  {{- end }}

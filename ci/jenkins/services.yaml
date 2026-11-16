@@ -1,0 +1,36 @@
+---
+# Services built and promoted by the Jenkins adapter (see ci/jenkins/README.md).
+#
+# The install_jenkins role applies ci/jenkins/jobs/services.groovy to this file
+# through configuration as code: one folder per service with a build job and a
+# promote job. The pipelines read this file again at build time, from the same
+# commit as the code they build.
+#
+# Keep one entry per directory under sample-services/. hack/jenkins-lint.sh
+# fails when a service directory has no entry here.
+
+# Promotion order. The build job opens the change for the first environment;
+# the promote job copies the digest from one environment to the next.
+environments:
+  - dev
+  - stage
+  - prod
+
+# Environment values file changed by promotion. Only .image.tag and
+# .image.digest are written. {env} and {service} are substituted.
+valuesFile: "envs/{env}/{service}/values.yaml"
+
+# Argo CD Application checked by the optional promotion health gate.
+argocdApplication: "{service}-{env}"
+
+services:
+  - name: hello-api
+    # Build context.
+    path: sample-services/hello-api
+    # Relative to path.
+    dockerfile: Dockerfile
+    # Repository name under IMAGE_REGISTRY (ghcr.io/your-org/hello-api).
+    image: hello-api
+    # Dockerfile stage that runs the unit tests. The build fails without it.
+    testTarget: test
+    platform: linux/amd64

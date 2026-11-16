@@ -1,0 +1,3 @@
+local-path-provisioner {{ index .Values "local-path-provisioner" "image" "tag" }} runs in namespace {{ .Release.Namespace }}.
+StorageClass: {{ index .Values "local-path-provisioner" "storageClass" "name" }} (default class: {{ index .Values "local-path-provisioner" "storageClass" "defaultClass" }}).
+Volume data on each node: {{ (index (index .Values "local-path-provisioner" "nodePathMap") 0).paths | join ", " }}.

@@ -1,0 +1,19 @@
+# Test-only Argo CD values for tests/integration/sso, applied after
+# values.yaml and values-lab.yaml of the wrapper. Never used by a profile.
+#
+# run.sh adds one more generated file with configs.cm."oidc.config", taken
+# from values-reference.yaml with the CHANGE_ME issuer and client ID replaced
+# by the test Dex, so the reference OIDC block itself is under test.
+
+global:
+  domain: argocd.localtest.me
+
+# No Gateway in this test cluster.
+route:
+  enabled: false
+
+argo-cd:
+  configs:
+    cm:
+      # As in the reference profile: SSO only, no local admin.
+      admin.enabled: false

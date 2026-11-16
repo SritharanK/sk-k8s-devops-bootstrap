@@ -1,0 +1,557 @@
+# Build image: test, build, scan, sign and attest every sample service.
+#
+# One matrix entry per sample-services/<service>/Dockerfile.
+#   - Pull requests: unit tests, a single-platform build loaded into the
+#     runner, and a Trivy scan that fails on fixable CRITICAL or HIGH
+#     vulnerabilities. Nothing is pushed.
+#   - main: a multi-platform build pushed to ghcr.io/<owner>/<service> with
+#     BuildKit SBOM and max-mode provenance, a Trivy scan of the pushed
+#     digest, a keyless cosign signature, a cosign vulnerability attestation
+#     from Trivy, GitHub artifact attestations for SLSA build provenance and
+#     the SBOM, and the digest as a job output.
+#     Admission policies verify the signature identity (docs/adr/0008-keyless-image-signing.md):
+#       issuer  https://token.actions.githubusercontent.com
+#       subject https://github.com/<owner>/sk-k8s-devops-bootstrap/.github/workflows/build-image.yml@refs/heads/main
+#     An image that fails the scan is pushed but never signed, so stage and
+#     prod admission rejects it.
+#   - main, release tag: when sample-services/<service>/VERSION holds a
+#     semantic version (for example 0.1.1) that is not yet a tag of the image,
+#     the signed and attested digest also gets that tag. A release is a
+#     reviewed change to VERSION. Existing version tags are never moved. Kargo
+#     Warehouses subscribe to these tags (docs/adr/0012-kargo-promotion.md).
+#   - main, then: a pull request that sets image.tag and image.digest in
+#     envs/dev/<service>/values.yaml and nothing else. It is merged by hand once
+#     ci-gate is green; promotion to stage and prod is promote.yml. When the
+#     promotion engine is kargo, this job is skipped with a notice: Kargo
+#     writes the environment files, and two writers would race. The engine is
+#     the repository variable PROMOTION_ENGINE (workflows or kargo); unset, it
+#     is kargo when a cluster definition enables Kargo (hack/promotion-engine.sh).
+#   - schedule (daily) or dispatch with rescan: every digest referenced in
+#     envs/{dev,stage,prod}/<service>/values.yaml is scanned again and gets a
+#     fresh vulnerability attestation, so the admission check on the scan age
+#     keeps admitting images that still have no CRITICAL finding.
+#
+# Bump pull requests: a pull request created with GITHUB_TOKEN
+# does not trigger other workflows, so ci-gate would never report. When the
+# repository variable GITOPS_APP_ID and the secret GITOPS_APP_PRIVATE_KEY
+# exist, a GitHub App token creates the branch, commit and pull request.
+# Otherwise GITHUB_TOKEN does, and validate.yml is dispatched on the branch so
+# ci-gate reports on its head commit.
+#
+# No caches are used, because this workflow publishes artifacts.
+
+name: Build image
+
+on:
+  pull_request:
+    paths:
+      - sample-services/**
+      - .github/workflows/build-image.yml
+      - .github/actions/**
+  push:
+    branches: [main]
+    paths:
+      - sample-services/**
+      - .github/workflows/build-image.yml
+      - .github/actions/**
+  schedule:
+    # Daily re-scan of the deployed digests (job rescan).
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      rescan:
+        description: Only re-scan and re-attest the digests in envs/ (no build)
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: build-image-${{ github.event_name == 'schedule' && 'rescan' || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  discover:
+    name: discover
+    if: github.event_name != 'schedule' && !inputs.rescan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      services: ${{ steps.find.outputs.services }}
+      engine: ${{ steps.engine.outputs.engine }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: List services with a Dockerfile
+        id: find
+        run: |
+          services="$(find sample-services -mindepth 2 -maxdepth 2 -name Dockerfile -printf '%h\n' \
+            | xargs -r -n1 basename | sort | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+          echo "services=${services}" >> "${GITHUB_OUTPUT}"
+          echo "Services: ${services}"
+      - name: Determine the promotion engine
+        id: engine
+        env:
+          PROMOTION_ENGINE: ${{ vars.PROMOTION_ENGINE }}
+        run: hack/promotion-engine.sh
+
+  build:
+    name: build (${{ matrix.service }})
+    needs: discover
+    if: needs.discover.outputs.services != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.discover.outputs.services) }}
+    permissions:
+      contents: read
+      packages: write # Push to ghcr.io (main only).
+      id-token: write # OIDC token for keyless signing and attestations.
+      attestations: write # Store artifact attestations.
+    env:
+      SERVICE: ${{ matrix.service }}
+      PUBLISH: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+      PLATFORMS: linux/amd64,linux/arm64
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Image name
+        id: name
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          # Registry paths must be lowercase.
+          echo "image=ghcr.io/${OWNER,,}/${SERVICE}" >> "${GITHUB_OUTPUT}"
+          echo "context=sample-services/${SERVICE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: go
+          cache: "false"
+
+      - name: Unit tests
+        working-directory: ${{ steps.name.outputs.context }}
+        run: |
+          if [ -f go.mod ]; then
+            go test -race -count=1 ./...
+          else
+            echo "::error::no test command defined for ${SERVICE} (expected go.mod)"
+            exit 1
+          fi
+
+      - name: Install Trivy
+        id: trivy
+        uses: ./.github/actions/install-trivy
+
+      - name: Set up QEMU
+        if: env.PUBLISH == 'true'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.name.outputs.image }}
+          tags: |
+            type=sha,format=long
+          labels: |
+            org.opencontainers.image.title=${{ matrix.service }}
+
+      # Pull requests: build for the runner platform, load, scan.
+      - name: Build (pull request)
+        if: env.PUBLISH != 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ steps.name.outputs.context }}
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          tags: local/${{ matrix.service }}:scan
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Scan (pull request)
+        if: env.PUBLISH != 'true'
+        env:
+          TRIVY: ${{ steps.trivy.outputs.path }}
+        run: |
+          "${TRIVY}" image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed \
+            --no-progress "local/${SERVICE}:scan"
+
+      # main: build all platforms, push, scan the pushed digest, sign, attest.
+      - name: Log in to ghcr.io
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: push
+        if: env.PUBLISH == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ steps.name.outputs.context }}
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          provenance: mode=max
+          sbom: true
+          # Baked into the binary (GET /, logs, build info metric) and the OCI labels.
+          build-args: |
+            VERSION=sha-${{ github.sha }}
+            REVISION=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Scan the pushed image
+        if: env.PUBLISH == 'true'
+        env:
+          REF: ${{ steps.name.outputs.image }}@${{ steps.push.outputs.digest }}
+          TRIVY: ${{ steps.trivy.outputs.path }}
+        run: |
+          "${TRIVY}" image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed --no-progress "${REF}"
+          "${TRIVY}" image --format spdx-json --output "${RUNNER_TEMP}/sbom.spdx.json" --no-progress "${REF}"
+
+      - name: Install cosign
+        if: env.PUBLISH == 'true'
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: v3.1.4
+
+      - name: Sign (keyless)
+        if: env.PUBLISH == 'true'
+        env:
+          REF: ${{ steps.name.outputs.image }}@${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "${REF}"
+
+      # The predicate holds the full Trivy report (every severity, fixed or
+      # not) and the scan time. Admission in stage and prod rejects CRITICAL
+      # findings and scans older than its maximum age; the rescan job renews
+      # the attestation for deployed digests.
+      - name: Attest the vulnerability scan (keyless)
+        if: env.PUBLISH == 'true'
+        env:
+          REF: ${{ steps.name.outputs.image }}@${{ steps.push.outputs.digest }}
+          TRIVY: ${{ steps.trivy.outputs.path }}
+        run: |
+          "${TRIVY}" image --format cosign-vuln --output "${RUNNER_TEMP}/vuln.json" --no-progress "${REF}"
+          cosign attest --yes --type vuln --predicate "${RUNNER_TEMP}/vuln.json" "${REF}"
+
+      - name: Attest build provenance
+        if: env.PUBLISH == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.name.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest SBOM
+        if: env.PUBLISH == 'true'
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ steps.name.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: ${{ runner.temp }}/sbom.spdx.json
+          push-to-registry: true
+
+      - name: Verify the signature
+        if: env.PUBLISH == 'true'
+        env:
+          REF: ${{ steps.name.outputs.image }}@${{ steps.push.outputs.digest }}
+          IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/build-image.yml@refs/heads/main
+        run: |
+          cosign verify "${REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "${IDENTITY}" >/dev/null
+          cosign verify-attestation "${REF}" --type vuln \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "${IDENTITY}" >/dev/null
+          echo "Signature and vulnerability attestation verified for ${REF}"
+
+      # Only now, after scan, signature and attestations, may the image carry
+      # a release tag: Kargo discovers images by these tags. --prefer-index=false
+      # makes a carbon copy, so the tag resolves to the signed digest.
+      - name: Tag the release version
+        id: release
+        if: env.PUBLISH == 'true'
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          VERSION_FILE: ${{ steps.name.outputs.context }}/VERSION
+        run: |
+          if [ ! -f "${VERSION_FILE}" ]; then
+            echo "No ${VERSION_FILE}; the image keeps its sha- tag only."
+            exit 0
+          fi
+          version="$(tr -d '[:space:]' < "${VERSION_FILE}")"
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'
+          if [[ ! "${version}" =~ ${semver} ]]; then
+            echo "::error::${VERSION_FILE} must hold a semantic version such as 0.1.1, found '${version}'."
+            exit 1
+          fi
+          if out="$(docker buildx imagetools inspect "${IMAGE}:${version}" 2>&1)"; then
+            echo "::notice::${IMAGE}:${version} exists and is not moved. Raise ${VERSION_FILE} to release this build."
+            exit 0
+          elif ! grep -qi 'not found' <<<"${out}"; then
+            echo "::error::Could not check whether ${IMAGE}:${version} exists: ${out}"
+            exit 1
+          fi
+          docker buildx imagetools create --prefer-index=false --tag "${IMAGE}:${version}" "${IMAGE}@${DIGEST}"
+          tagged="$(docker buildx imagetools inspect "${IMAGE}:${version}" --format '{{json .Manifest}}' | jq -r .digest)"
+          if [ "${tagged}" != "${DIGEST}" ]; then
+            echo "::error::${IMAGE}:${version} resolves to ${tagged}, expected ${DIGEST}."
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "Tagged ${IMAGE}@${DIGEST} as ${version}."
+
+      - name: Record the published image
+        if: env.PUBLISH == 'true'
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          jq -n --arg service "${SERVICE}" --arg image "${IMAGE}" --arg digest "${DIGEST}" \
+            --arg tag "sha-${GITHUB_SHA}" '{service: $service, image: $image, digest: $digest, tag: $tag}' \
+            > "${RUNNER_TEMP}/image.json"
+          {
+            echo "### ${SERVICE}"
+            echo
+            echo "Image: \`${IMAGE}@${DIGEST}\`"
+            echo
+            echo "Signed with cosign (keyless); vulnerability scan, build provenance and SBOM attested."
+            if [ -n "${VERSION}" ]; then
+              echo
+              echo "Release tag: \`${VERSION}\`"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Keep the image reference for the dev bump
+        if: env.PUBLISH == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-${{ matrix.service }}
+          path: ${{ runner.temp }}/image.json
+          retention-days: 7
+          if-no-files-found: error
+
+  bump-dev:
+    name: bump-dev (${{ matrix.service }})
+    needs: [discover, build]
+    # One writer per environment file: with the kargo engine the Kargo
+    # Warehouse picks up the release tag and Kargo writes envs/dev. The
+    # discover job prints the reason as a notice.
+    if: >-
+      needs.discover.outputs.services != '[]' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.discover.outputs.engine == 'workflows'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Scopes the GitHub App key (secret GITOPS_APP_PRIVATE_KEY) to this job;
+    # protection rules on the environment can restrict it to main.
+    environment: gitops-bump
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.discover.outputs.services) }}
+    permissions:
+      contents: write # Branch and commit through the contents API (GITHUB_TOKEN fallback).
+      pull-requests: write # Open the pull request (GITHUB_TOKEN fallback).
+      actions: write # Dispatch validate.yml on the bump branch (GITHUB_TOKEN fallback).
+    env:
+      SERVICE: ${{ matrix.service }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Get the published image reference
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image-${{ matrix.service }}
+          path: ${{ runner.temp }}/image
+
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:mikefarah/yq
+          cache: "false"
+
+      - name: GitHub App token
+        id: app-token
+        if: vars.GITOPS_APP_ID != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          # GitHub accepts the App ID or the client ID as the token issuer.
+          client-id: ${{ vars.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Open the dev bump pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          USING_APP: ${{ steps.app-token.outputs.token != '' }}
+          REPO: ${{ github.repository }}
+        run: |
+          meta="${RUNNER_TEMP}/image/image.json"
+          image="$(jq -r .image "${meta}")"
+          digest="$(jq -r .digest "${meta}")"
+          tag="$(jq -r .tag "${meta}")"
+          file="envs/dev/${SERVICE}/values.yaml"
+          if [ ! -f "${file}" ]; then
+            echo "::notice::${file} does not exist; ${SERVICE} is not deployed through GitOps"
+            exit 0
+          fi
+          TAG="${tag}" DIGEST="${digest}" yq -i '.image.tag = strenv(TAG) | .image.digest = strenv(DIGEST)' "${file}"
+          if git diff --quiet -- "${file}"; then
+            echo "::notice::${file} already points at ${digest}"
+            exit 0
+          fi
+          branch="bump/dev/${SERVICE}-${digest#sha256:}"
+          branch="${branch:0:40}"
+          title="chore(dev): deploy ${SERVICE} ${digest:0:19}"
+          if gh api "repos/${REPO}/git/ref/heads/${branch}" >/dev/null 2>&1; then
+            echo "::notice::branch ${branch} exists; a bump pull request for this digest is open or merged"
+            exit 0
+          fi
+          gh api "repos/${REPO}/git/refs" -f ref="refs/heads/${branch}" -f sha="${GITHUB_SHA}" >/dev/null
+          blob="$(gh api "repos/${REPO}/contents/${file}?ref=${GITHUB_SHA}" --jq .sha)"
+          gh api -X PUT "repos/${REPO}/contents/${file}" \
+            -f message="${title}" -f branch="${branch}" -f sha="${blob}" \
+            -f content="$(base64 -w0 < "${file}")" >/dev/null
+          body="$(printf '%s\n' \
+            "Deploys ${SERVICE} to dev." \
+            "" \
+            "- Image: \`${image}@${digest}\`" \
+            "- Tag: \`${tag}\`" \
+            "- Built from ${GITHUB_SHA}" \
+            "" \
+            "The image is signed (cosign keyless) and carries build provenance and SBOM attestations." \
+            "Merge by hand once ci-gate is green.")"
+          gh pr create --repo "${REPO}" --base main --head "${branch}" --title "${title}" --body "${body}"
+          if [ "${USING_APP}" != true ]; then
+            gh workflow run validate.yml --repo "${REPO}" --ref "${branch}"
+            echo "Dispatched validate.yml on ${branch} so ci-gate reports on the bump commit."
+          fi
+
+  # Renews the vulnerability attestation of every deployed digest. A scheduled
+  # run executes this workflow file on the default branch, so the attestation
+  # carries the same signing identity as the build and admission accepts it.
+  # A digest with a new CRITICAL finding gets an attestation that says so,
+  # and stage and prod stop admitting new pods of it.
+  rescan:
+    name: rescan
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.rescan)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write # Push the attestation to ghcr.io.
+      id-token: write # OIDC token for keyless attestation.
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Refuse other branches
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run the rescan from main; attestations from other refs do not match the admission identity."
+          exit 1
+
+      - name: Set up tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:mikefarah/yq
+          cache: "false"
+
+      - name: Install Trivy
+        id: trivy
+        uses: ./.github/actions/install-trivy
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: v3.1.4
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan and attest the deployed digests
+        env:
+          OWNER: ${{ github.repository_owner }}
+          TRIVY: ${{ steps.trivy.outputs.path }}
+          IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/build-image.yml@refs/heads/main
+        run: |
+          refs="${RUNNER_TEMP}/refs.txt"
+          : > "${refs}"
+          for file in envs/dev/*/values.yaml envs/stage/*/values.yaml envs/prod/*/values.yaml; do
+            [ -f "${file}" ] || continue
+            service="$(basename "$(dirname "${file}")")"
+            [ -f "sample-services/${service}/Dockerfile" ] || continue
+            digest="$(yq '.image.digest // ""' "${file}")"
+            [ -n "${digest}" ] || continue
+            if [[ ! "${digest}" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+              echo "::error::${file}: image.digest is not sha256:<64 hex>."
+              exit 1
+            fi
+            echo "ghcr.io/${OWNER,,}/${service}@${digest}" >> "${refs}"
+          done
+          sort -u -o "${refs}" "${refs}"
+          if [ ! -s "${refs}" ]; then
+            echo "::notice::No digest is pinned in envs/; nothing to re-scan."
+            exit 0
+          fi
+          failed=0
+          while IFS= read -r ref; do
+            echo "::group::${ref}"
+            if "${TRIVY}" image --format cosign-vuln --output "${RUNNER_TEMP}/vuln.json" --no-progress "${ref}" &&
+              cosign attest --yes --type vuln --predicate "${RUNNER_TEMP}/vuln.json" "${ref}" &&
+              cosign verify-attestation "${ref}" --type vuln \
+                --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+                --certificate-identity "${IDENTITY}" >/dev/null; then
+              critical="$(jq '[.scanner.result.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "${RUNNER_TEMP}/vuln.json")"
+              echo "| \`${ref}\` | ${critical} |" >> "${RUNNER_TEMP}/summary.md"
+            else
+              echo "::error::Re-scan or attestation failed for ${ref}."
+              failed=1
+            fi
+            echo "::endgroup::"
+          done < "${refs}"
+          {
+            echo "### Re-scanned digests"
+            echo
+            echo "| Image | CRITICAL findings |"
+            echo "| --- | --- |"
+            cat "${RUNNER_TEMP}/summary.md" 2>/dev/null || true
+          } >> "${GITHUB_STEP_SUMMARY}"
+          exit "${failed}"

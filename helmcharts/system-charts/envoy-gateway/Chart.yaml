@@ -1,0 +1,15 @@
+apiVersion: v2
+name: envoy-gateway
+description: Envoy Gateway control plane, the Gateway API implementation of the platform
+type: application
+version: 0.1.0
+appVersion: v1.10.0
+kubeVersion: ">=1.35.0-0"
+home: https://gateway.envoyproxy.io/
+sources:
+  - https://github.com/envoyproxy/gateway
+dependencies:
+  # Keep in lockstep with gateway-crds-helm in ../gateway-api/Chart.yaml
+  - name: gateway-helm
+    version: 1.10.0
+    repository: oci://docker.io/envoyproxy

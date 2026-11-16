@@ -1,0 +1,6 @@
+Trivy Operator is installed in namespace {{ .Release.Namespace }} with the built-in Trivy server (ClientServer mode).
+
+Reports:
+  kubectl get vulnerabilityreports -A
+  kubectl get configauditreports -A
+  kubectl get clustercompliancereports

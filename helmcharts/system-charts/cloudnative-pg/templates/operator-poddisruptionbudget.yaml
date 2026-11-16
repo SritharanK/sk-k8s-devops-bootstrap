@@ -1,0 +1,15 @@
+{{- if .Values.operatorPodDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cloudnative-pg
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cnpg-wrapper.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.operatorPodDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudnative-pg
+      app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

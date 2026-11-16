@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=../../../clusters/schema.json
+#
+# Test-only cluster definition for tests/integration/kargo/run.sh.
+# Not a real cluster: run.sh copies it to clusters/kargo-test/cluster.yaml in
+# a throwaway clone that it pushes to the in-cluster Git server of the kind
+# cluster it-kargo.
+#
+# It is clusters/lab/cluster.yaml with Kargo on and the deltas a laptop
+# needs. Every delta is marked "test-only" and listed in the README.
+---
+cluster:
+  name: kargo-test
+  profile: lab
+  domain: localtest.me
+  kubernetesMinor: "1.36"
+  environments: [dev, stage, prod]
+
+git:
+  # run.sh overrides this with the in-cluster Git server (REPO_URL).
+  repoURL: https://github.com/YOUR_ORG/sk-k8s-devops-bootstrap.git
+  targetRevision: main
+
+rke2:  # read by Ansible only; unused on kind
+  version: v1.36.6+rke2r1
+  channel: stable
+  cni: canal
+  podCidr: 10.42.0.0/16
+  serviceCidr: 10.43.0.0/16
+  registrationAddress: ""
+  cisProfile: false
+  etcdSnapshots:
+    schedule: "0 */6 * * *"
+    retention: 10
+    s3: {enabled: false, endpoint: "", bucket: "", folder: "", region: ""}
+
+namespaces:
+  argocd: argocd
+  dev: dev
+  stage: stage
+  prod: prod
+  gateway: envoy-gateway-system
+  certManager: cert-manager
+  kyverno: kyverno
+  monitoring: monitoring
+
+platform:
+  certManagerEmail: platform@example.com
+  issuer: selfsigned
+  # test-only: the local registry container on the kind network (self-signed TLS)
+  imageRegistry: it-kargo-registry:5000/your-org
+  groups:
+    admins: platform-admins
+    deployers: deployers
+    viewers: viewers
+
+toolchains:
+  # test-only: the policy engine is not needed for promotion and costs memory.
+  kyverno: {enabled: false}
+  kyverno-policies: {enabled: false}
+  # Runs the AnalysisRuns that Kargo creates.
+  argo-rollouts:
+    enabled: true
+    values:  # test-only: Prometheus stand-in (manifests/prometheus-stub.yaml), no ServiceMonitor without the monitoring CRDs
+      analysis:
+        prometheusAddress: http://prometheus-stub.prometheus-stub.svc:9090
+      argo-rollouts:
+        controller:
+          metrics:
+            serviceMonitor: {enabled: false}
+  kargo:
+    enabled: true
+    values:  # test-only: the in-cluster Git server speaks plain HTTP; Kargo refuses credentials over HTTP by default
+      kargo:
+        controller:
+          allowCredentialsOverHTTP: true
+    pipelines:
+      values:
+        warehouse:
+          interval: 1m0s  # test-only: shorter poll
+          insecureSkipTLSVerify: true  # test-only: self-signed registry
+        pullRequest:
+          provider: gitea  # the in-cluster Git server
+          timeout: 30m
+        verification:
+          enabled: true  # test-only: on without the monitoring toolchain

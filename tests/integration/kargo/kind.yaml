@@ -1,0 +1,21 @@
+# Single-node kind cluster for tests/integration/kargo/run.sh. containerd
+# reads registry hosts from /etc/containerd/certs.d, where run.sh writes the
+# entry for the local registry kind-registry:5000 (self-signed TLS, test-only).
+# kindnet stays the CNI (it enforces NetworkPolicy). The node image is the
+# kind v0.33.0 image for Kubernetes 1.36, pinned by digest.
+---
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: it-kargo
+# containerd 2 pulls through its transfer service, so both plugins read the
+# registry host directory.
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.cri.v1.images".registry]
+      config_path = "/etc/containerd/certs.d"
+  - |-
+    [plugins."io.containerd.transfer.v1.local"]
+      config_path = "/etc/containerd/certs.d"
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed

@@ -1,0 +1,332 @@
+suite: OpenTelemetry environment
+templates:
+  - templates/deployment.yaml
+  - templates/networkpolicy.yaml
+release:
+  name: web
+  namespace: dev
+tests:
+  - it: adds nothing by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env
+        template: templates/deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/networkpolicy.yaml
+
+  - it: renders the OTEL variables in order, with the downward API first
+    set:
+      otel.enabled: true
+      image.tag: 2.3.4
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: OTEL_K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: OTEL_K8S_NAMESPACE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            - name: OTEL_K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: OTEL_SERVICE_NAME
+              value: web-helm-common-test
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://tempo.tracing.svc:4318
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_TRACES_EXPORTER
+              value: otlp
+            - name: OTEL_METRICS_EXPORTER
+              value: none
+            - name: OTEL_LOGS_EXPORTER
+              value: none
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_traceidratio
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "1.0"
+            - name: OTEL_PROPAGATORS
+              value: tracecontext,baggage
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: k8s.namespace.name=$(OTEL_K8S_NAMESPACE_NAME),k8s.pod.name=$(OTEL_K8S_POD_NAME),k8s.node.name=$(OTEL_K8S_NODE_NAME),k8s.deployment.name=web-helm-common-test,service.version=2.3.4
+        template: templates/deployment.yaml
+
+  - it: appends the OTEL variables after env
+    set:
+      otel.enabled: true
+      env:
+        - name: LOG_LEVEL
+          value: debug
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0]
+          value:
+            name: LOG_LEVEL
+            value: debug
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[1].name
+          value: OTEL_K8S_POD_NAME
+        template: templates/deployment.yaml
+      - lengthEqual:
+          path: spec.template.spec.containers[0].env
+          count: 14
+        template: templates/deployment.yaml
+
+  - it: never emits a variable whose name is already in env
+    set:
+      otel.enabled: true
+      env:
+        - name: OTEL_SERVICE_NAME
+          value: checkout
+        - name: OTEL_TRACES_SAMPLER_ARG
+          value: "0.1"
+        - name: OTEL_K8S_NODE_NAME
+          value: fixed
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_SERVICE_NAME
+            value: checkout
+          count: 1
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_TRACES_SAMPLER_ARG
+            value: "0.1"
+          count: 1
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_K8S_NODE_NAME
+            value: fixed
+          count: 1
+        template: templates/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_SERVICE_NAME
+            value: web-helm-common-test
+        template: templates/deployment.yaml
+      - lengthEqual:
+          path: spec.template.spec.containers[0].env
+          count: 13
+        template: templates/deployment.yaml
+
+  - it: uses serviceName, the sampler settings and the chart appVersion
+    set:
+      otel.enabled: true
+      otel.serviceName: checkout
+      otel.sampler: traceidratio
+      otel.samplerArg: "0.25"
+      otel.protocol: grpc
+      otel.endpoint: http://collector.tracing.svc:4317
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_SERVICE_NAME
+            value: checkout
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_TRACES_SAMPLER
+            value: traceidratio
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_TRACES_SAMPLER_ARG
+            value: "0.25"
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: grpc
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://collector.tracing.svc:4317
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_RESOURCE_ATTRIBUTES
+            value: k8s.namespace.name=$(OTEL_K8S_NAMESPACE_NAME),k8s.pod.name=$(OTEL_K8S_POD_NAME),k8s.node.name=$(OTEL_K8S_NODE_NAME),k8s.deployment.name=web-helm-common-test,service.version=1.0.0
+        template: templates/deployment.yaml
+
+  - it: adds deployment.environment.name from global.environment and sorted extra attributes
+    set:
+      otel.enabled: true
+      global.environment: stage
+      otel.resourceAttributes:
+        team: payments
+        service.namespace: shop
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_RESOURCE_ATTRIBUTES
+            value: k8s.namespace.name=$(OTEL_K8S_NAMESPACE_NAME),k8s.pod.name=$(OTEL_K8S_POD_NAME),k8s.node.name=$(OTEL_K8S_NODE_NAME),k8s.deployment.name=web-helm-common-test,service.version=1.0.0,deployment.environment.name=stage,service.namespace=shop,team=payments
+        template: templates/deployment.yaml
+
+  - it: lets an extra attribute replace the generated one with the same key
+    set:
+      otel.enabled: true
+      otel.resourceAttributes:
+        service.version: 9.9.9
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_RESOURCE_ATTRIBUTES
+            value: k8s.namespace.name=$(OTEL_K8S_NAMESPACE_NAME),k8s.pod.name=$(OTEL_K8S_POD_NAME),k8s.node.name=$(OTEL_K8S_NODE_NAME),k8s.deployment.name=web-helm-common-test,service.version=9.9.9
+        template: templates/deployment.yaml
+
+  - it: fails for a resource attribute with a separator in it
+    set:
+      otel.enabled: true
+      otel.resourceAttributes:
+        team: a,b
+    asserts:
+      - failedTemplate:
+          errorPattern: "otel.resourceAttributes.team: keys and values must not contain"
+        template: templates/deployment.yaml
+
+  - it: fails without an endpoint
+    set:
+      otel.enabled: true
+      otel.endpoint: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "otel.enabled requires otel.endpoint"
+        template: templates/deployment.yaml
+
+  - it: allows egress to the collector namespace
+    set:
+      otel.enabled: true
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+        template: templates/networkpolicy.yaml
+      - equal:
+          path: spec.policyTypes
+          value:
+            - Ingress
+            - Egress
+        template: templates/networkpolicy.yaml
+      - equal:
+          path: spec.ingress
+          value: []
+        template: templates/networkpolicy.yaml
+      - equal:
+          path: spec.egress
+          value:
+            - to:
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: tracing
+              ports:
+                - port: 4318
+                  protocol: TCP
+        template: templates/networkpolicy.yaml
+
+  - it: puts the collector rule before networkPolicy.egress and keeps the ingress rules
+    set:
+      otel.enabled: true
+      otel.networkPolicy.namespace: observability
+      otel.networkPolicy.port: 4317
+      route.enabled: true
+      networkPolicy.egress:
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: database
+          ports:
+            - port: 5432
+              protocol: TCP
+    asserts:
+      - equal:
+          path: spec.egress
+          value:
+            - to:
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: observability
+              ports:
+                - port: 4317
+                  protocol: TCP
+            - to:
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: database
+              ports:
+                - port: 5432
+                  protocol: TCP
+        template: templates/networkpolicy.yaml
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: envoy-gateway-system
+        template: templates/networkpolicy.yaml
+
+  - it: adds no egress rule without a collector namespace
+    set:
+      otel.enabled: true
+      otel.networkPolicy.namespace: ""
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/networkpolicy.yaml
+      - exists:
+          path: spec.template.spec.containers[0].env
+        template: templates/deployment.yaml
+
+  - it: renders no NetworkPolicy when networkPolicy is disabled
+    set:
+      otel.enabled: true
+      networkPolicy.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/networkpolicy.yaml
+
+  - it: is enabled per environment through environments.<env>
+    set:
+      global.environment: prod
+      environments.prod.otel.enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_RESOURCE_ATTRIBUTES
+            value: k8s.namespace.name=$(OTEL_K8S_NAMESPACE_NAME),k8s.pod.name=$(OTEL_K8S_POD_NAME),k8s.node.name=$(OTEL_K8S_NODE_NAME),k8s.deployment.name=web-helm-common-test,service.version=1.0.0,deployment.environment.name=prod
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.egress[0].to[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: tracing
+        template: templates/networkpolicy.yaml
+
+  - it: stays off for another environment
+    set:
+      global.environment: dev
+      environments.prod.otel.enabled: true
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env
+        template: templates/deployment.yaml

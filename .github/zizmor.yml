@@ -1,0 +1,8 @@
+# zizmor configuration (https://docs.zizmor.sh/configuration/).
+rules:
+  # GitHub accepts `uses: $/<path>` for same-repository actions since July
+  # 2026, but actionlint 1.7.12 rejects that syntax, and both linters gate
+  # this repository. Local actions stay on `./<path>` until actionlint parses
+  # the new form; then remove this entry and apply `zizmor --fix`.
+  self-repository:
+    disable: true

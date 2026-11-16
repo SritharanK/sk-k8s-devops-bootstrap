@@ -1,0 +1,224 @@
+---
+argument_specs:
+  main:
+    short_description: OS baseline for cluster nodes and Jenkins hosts.
+    description:
+      - Installs base packages, prepares Kubernetes nodes (kernel modules, sysctls, swap), applies conservative sysctl
+        hardening, configures chrony and unattended security updates, hardens sshd and manages key-only admin users.
+    author:
+      - Sritharan K
+    options:
+      base_packages:
+        type: list
+        elements: str
+        default:
+          - ca-certificates
+          - jq
+          - openssh-server
+          - sudo
+          - tar
+        description:
+          - Packages installed on every host. Per-OS packages from vars/ are added.
+      base_packages_extra:
+        type: list
+        elements: str
+        default: []
+        description:
+          - Additional packages for this inventory.
+      base_kubernetes_node:
+        type: bool
+        default: true
+        description:
+          - Prepare the host as a Kubernetes node (kernel modules, Kubernetes sysctls, swap).
+          - Set false on Jenkins hosts.
+      base_kernel_modules:
+        type: list
+        elements: str
+        default:
+          - overlay
+          - br_netfilter
+        description:
+          - Kernel modules persisted in /etc/modules-load.d/kubernetes.conf.
+      base_kubernetes_sysctls:
+        type: dict
+        default:
+          net.ipv4.ip_forward: 1
+          net.ipv6.conf.all.forwarding: 1
+          net.bridge.bridge-nf-call-iptables: 1
+          net.bridge.bridge-nf-call-ip6tables: 1
+          fs.inotify.max_user_instances: 8192
+          fs.inotify.max_user_watches: 524288
+        description:
+          - Kernel parameters written to /etc/sysctl.d/90-kubernetes.conf.
+          - With IPv6 forwarding on, interfaces with accept_ra=1 ignore router advertisements.
+      base_disable_swap:
+        type: bool
+        default: "{{ base_kubernetes_node }}"
+        description:
+          - Turn off swap and comment out swap entries in /etc/fstab.
+      base_hardening_sysctls:
+        type: dict
+        default:
+          net.ipv4.conf.all.accept_redirects: 0
+          net.ipv4.conf.default.accept_redirects: 0
+          net.ipv4.conf.all.secure_redirects: 0
+          net.ipv4.conf.default.secure_redirects: 0
+          net.ipv4.conf.all.send_redirects: 0
+          net.ipv4.conf.default.send_redirects: 0
+          net.ipv4.conf.all.accept_source_route: 0
+          net.ipv4.conf.default.accept_source_route: 0
+          net.ipv6.conf.all.accept_redirects: 0
+          net.ipv6.conf.default.accept_redirects: 0
+          net.ipv6.conf.all.accept_source_route: 0
+          net.ipv6.conf.default.accept_source_route: 0
+          net.ipv4.tcp_syncookies: 1
+          kernel.dmesg_restrict: 1
+          kernel.kptr_restrict: 1
+        description:
+          - Host hardening written to /etc/sysctl.d/80-base-hardening.conf on every host.
+          - Reverse path filtering is not changed because CNIs manage it per interface.
+      base_kernel_runtime_apply:
+        type: bool
+        default: true
+        description:
+          - Load the kernel modules, set the sysctls and run swapoff now.
+          - When false only the files are written (used in containers).
+      base_storage_clients:
+        type: bool
+        default: false
+        description:
+          - Install the NFS client and open-iscsi, load iscsi_tcp and enable iscsid (Longhorn prerequisites).
+      base_chrony_servers:
+        type: list
+        elements: str
+        default: []
+        description:
+          - NTP servers for chrony. Empty keeps the distribution sources.
+          - Debian family adds them to /etc/chrony/sources.d next to the distribution pool, marked prefer.
+          - RedHat family templates /etc/chrony.conf with these servers instead of the distribution pool.
+      base_unattended_upgrades:
+        type: bool
+        default: true
+        description:
+          - Configure unattended security updates (unattended-upgrades or dnf-automatic).
+          - false leaves the automatic update configuration of the image untouched.
+      base_automatic_reboot:
+        type: bool
+        default: false
+        description:
+          - Reboot automatically after updates that require it.
+      base_unattended_upgrades_exclude:
+        type: list
+        elements: str
+        default:
+          - rke2-*
+        description:
+          - Package name globs never upgraded automatically.
+          - Converted to anchored regular expressions for unattended-upgrades.
+          - Passed as excludepkgs in the [base] section of the dnf-automatic configuration.
+      base_ssh_hardening:
+        type: bool
+        default: true
+        description:
+          - Write the SSH hardening drop-in /etc/ssh/sshd_config.d/00-base-hardening.conf.
+      base_ssh_permit_root_login:
+        type: str
+        default: "no"
+        choices:
+          - "no"
+          - prohibit-password
+          - forced-commands-only
+          - "yes"
+        description:
+          - PermitRootLogin value. The role fails when the play logs in as root over SSH and this is "no".
+      base_ssh_allow_tcp_forwarding:
+        type: bool
+        default: false
+        description:
+          - AllowTcpForwarding.
+      base_ssh_max_auth_tries:
+        type: int
+        default: 3
+        description:
+          - MaxAuthTries.
+      base_ssh_login_grace_time:
+        type: int
+        default: 30
+        description:
+          - LoginGraceTime in seconds.
+      base_ssh_client_alive_interval:
+        type: int
+        default: 300
+        description:
+          - ClientAliveInterval in seconds.
+      base_ssh_client_alive_count_max:
+        type: int
+        default: 2
+        description:
+          - ClientAliveCountMax.
+      base_ssh_log_level:
+        type: str
+        default: VERBOSE
+        choices:
+          - QUIET
+          - FATAL
+          - ERROR
+          - INFO
+          - VERBOSE
+          - DEBUG
+          - DEBUG1
+          - DEBUG2
+          - DEBUG3
+        description:
+          - LogLevel. VERBOSE logs the fingerprint of the key used for each login.
+      base_ssh_allow_groups:
+        type: list
+        elements: str
+        default: []
+        description:
+          - AllowGroups. Empty writes no AllowGroups line.
+      base_admin_users:
+        type: list
+        elements: dict
+        default: []
+        description:
+          - Key-only admin accounts with a locked password.
+          - Keys are managed exclusively; keys not listed are removed from authorized_keys.
+        options:
+          name:
+            type: str
+            required: true
+            description:
+              - Account name.
+          ssh_public_keys:
+            type: list
+            elements: str
+            default: []
+            description:
+              - Public keys in the form "<type> <base64> [comment]". Required (at least one) when state is present.
+          sudo:
+            type: bool
+            default: true
+            description:
+              - Grant passwordless sudo through /etc/sudoers.d/90-<name>.
+          shell:
+            type: str
+            default: /bin/bash
+            description:
+              - Login shell.
+          state:
+            type: str
+            default: present
+            choices:
+              - present
+              - absent
+            description:
+              - absent removes the account (the home directory is kept) and its sudo rule.
+      base_admin_users_allowed_key_types:
+        type: list
+        elements: str
+        default:
+          - ssh-ed25519
+          - sk-ssh-ed25519@openssh.com
+        description:
+          - Accepted public key types for admin users.

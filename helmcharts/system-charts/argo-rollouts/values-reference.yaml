@@ -1,0 +1,18 @@
+# Reference profile: 3-node RKE2 HA cluster. Two controller replicas with leader election
+# (the chart adds --leader-elect when replicas > 1), spread over nodes, with a PodDisruptionBudget.
+argo-rollouts:
+  controller:
+    replicas: 2
+    pdb:
+      enabled: true
+      minAvailable: 1
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi

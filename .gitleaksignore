@@ -1,0 +1,7 @@
+# Gitleaks findings accepted after review, by fingerprint.
+#
+# Format: <commit>:<path>:<rule>:<line> for findings in Git history, and
+# <path>:<rule>:<line> for findings in the working tree. Each entry carries
+# the reason it is accepted. Add an entry only for content that is not a
+# live credential, or for history that cannot change; never for a new
+# finding in a change under review.

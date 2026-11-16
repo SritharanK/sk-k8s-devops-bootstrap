@@ -1,0 +1,231 @@
+{{- /*
+Signature verification for owned images (cosign keyless, GitHub OIDC, or a
+public key). One policy per failure action, scoped to the namespaces of
+imageVerification.environments. Images outside imageVerification.registries
+are not verified here; the registry allowlist policy decides whether they may
+run at all. With imageVerification.vulnerabilities.enabled the same policies
+also gate on the vulnerability scan attestation of each image.
+*/ -}}
+{{- with .Values.imageVerification }}
+{{- if .enabled }}
+{{- $iv := . }}
+{{- $keyBased := ne (toString ($iv.publicKey | default "")) "" }}
+{{- if not (kindIs "bool" ($iv.insecureIgnoreTlog | default false)) }}
+{{- fail "imageVerification.insecureIgnoreTlog must be true or false" }}
+{{- end }}
+{{- if and $iv.insecureIgnoreTlog (not $keyBased) }}
+{{- fail "imageVerification.insecureIgnoreTlog is only allowed together with imageVerification.publicKey (tests without a transparency log)" }}
+{{- end }}
+{{- if and $keyBased (not (regexMatch "(?s)^\\s*-----BEGIN PUBLIC KEY-----\\n.+\\n-----END PUBLIC KEY-----\\s*$" $iv.publicKey)) }}
+{{- fail "imageVerification.publicKey must be a PEM public key (-----BEGIN PUBLIC KEY----- ... -----END PUBLIC KEY-----)" }}
+{{- end }}
+{{- $vuln := $iv.vulnerabilities | default dict }}
+{{- $vulnOn := $vuln.enabled | default false }}
+{{- if $vulnOn }}
+{{- $maxAge := toString (required "imageVerification.vulnerabilities.maxScanAge is required" $vuln.maxScanAge) }}
+{{- if or (not (regexMatch "^([0-9]+(\\.[0-9]+)?(h|m|s))+$" $maxAge)) (regexMatch "^(0+(\\.0+)?(h|m|s))+$" $maxAge) }}
+{{- fail (printf "imageVerification.vulnerabilities.maxScanAge must be a positive duration in h, m and s such as 168h, got %q" $maxAge) }}
+{{- end }}
+{{- if not (and (kindIs "slice" $vuln.severities) $vuln.severities) }}
+{{- fail "imageVerification.vulnerabilities.severities must be a non-empty list, for example [CRITICAL]" }}
+{{- end }}
+{{- range $s := $vuln.severities }}
+{{- if not (has $s (list "UNKNOWN" "LOW" "MEDIUM" "HIGH" "CRITICAL")) }}
+{{- fail (printf "imageVerification.vulnerabilities.severities: %q is not a Trivy severity (UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL, upper case)" (toString $s)) }}
+{{- end }}
+{{- end }}
+{{- if not (kindIs "bool" ($vuln.ignoreUnfixed | default false)) }}
+{{- fail "imageVerification.vulnerabilities.ignoreUnfixed must be true or false" }}
+{{- end }}
+{{- if not (kindIs "slice" ($vuln.ignoreVulnerabilityIDs | default list)) }}
+{{- fail "imageVerification.vulnerabilities.ignoreVulnerabilityIDs must be a list" }}
+{{- end }}
+{{- range $id := $vuln.ignoreVulnerabilityIDs | default list }}
+{{- if not (regexMatch "^[A-Za-z0-9][A-Za-z0-9._:-]*$" (toString $id)) }}
+{{- fail (printf "imageVerification.vulnerabilities.ignoreVulnerabilityIDs: %q is not a vulnerability ID such as CVE-2024-12345" (toString $id)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- $groups := dict }}
+{{- range $env := required "imageVerification.environments must not be empty" $iv.environments }}
+{{- $cfg := required (printf "imageVerification.environments: %q is not a key of environments" $env) (get $.Values.environments $env) }}
+{{- if ne (toString (dig "enabled" true $cfg)) "false" }}
+{{- $_ := set $groups $cfg.action (append (get $groups $cfg.action | default list) $cfg.namespace) }}
+{{- end }}
+{{- end }}
+{{- range $action, $namespaces := $groups }}
+---
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: {{ printf "verify-image-signatures-%s" (lower $action) }}
+  labels:
+    {{- include "kyverno-policies.labels" $ | nindent 4 }}
+  annotations:
+    {{- include "kyverno-policies.syncAnnotations" $ | nindent 4 }}
+    {{- if $vulnOn }}
+    policies.kyverno.io/title: "Verify image signatures and vulnerability scans"
+    {{- else }}
+    policies.kyverno.io/title: "Verify image signatures"
+    {{- end }}
+    policies.kyverno.io/category: "Supply Chain"
+    policies.kyverno.io/severity: "high"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/description: >-
+      {{- if $keyBased }}
+      Images from the owned registries must carry a cosign signature that
+      verifies with the configured public key.
+      {{- else }}
+      Images from the owned registries must carry a cosign keyless signature
+      made by the build workflow identity, recorded in the transparency log.
+      {{- end }}
+      Matching images are pinned to their digest at admission.
+      {{- if $vulnOn }}
+      They must also carry a vulnerability scan attestation from the same
+      signer, younger than {{ $vuln.maxScanAge }}, without an unaccepted
+      {{ join " or " $vuln.severities }} finding.
+      {{- end }}
+spec:
+  validationActions: {{ include "kyverno-policies.validationActions" $action }}
+  failurePolicy: {{ include "kyverno-policies.failurePolicy" $action }}
+  webhookConfiguration:
+    timeoutSeconds: {{ $iv.timeoutSeconds | int }}
+  evaluation:
+    # Signatures are checked at admission. Background re-verification would
+    # call the registry and the log for every running pod on each scan.
+    background:
+      enabled: false
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values:
+            {{- toYaml $namespaces | nindent 12 }}
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  matchImageReferences:
+    {{- range $glob := required "imageVerification.registries must not be empty" $iv.registries }}
+    - glob: {{ $glob | quote }}
+    {{- end }}
+  validationConfigurations:
+    mutateDigest: true
+    verifyDigest: true
+    required: true
+  attestors:
+    - name: buildWorkflow
+      cosign:
+        {{- if $keyBased }}
+        key:
+          data: |-
+            {{- $iv.publicKey | trim | nindent 12 }}
+        ctlog:
+          {{- if $iv.insecureIgnoreTlog }}
+          insecureIgnoreTlog: true
+          {{- else }}
+          url: {{ $iv.ctlogURL | quote }}
+          {{- end }}
+        {{- else }}
+        keyless:
+          identities:
+            - issuer: {{ required "imageVerification.issuer is required" $iv.issuer | quote }}
+              subjectRegExp: {{ required "imageVerification.subjectRegExp is required" $iv.subjectRegExp | quote }}
+        ctlog:
+          url: {{ $iv.ctlogURL | quote }}
+        {{- end }}
+  {{- if $vulnOn }}
+  attestations:
+    # cosign attest --type vuln writes this predicate type.
+    - name: vulnerabilityScan
+      intoto:
+        type: https://cosign.sigstore.dev/attestation/vuln/v1
+  {{- end }}
+  variables:
+    - name: allImages
+      expression: >-
+        images.?containers.orValue([]) + images.?initContainers.orValue([]) +
+        images.?ephemeralContainers.orValue([])
+    {{- if $vulnOn }}
+    # One {image, scan} entry per image. scan is the predicate of the
+    # vulnerability attestation, or null when none verifies with the attestor
+    # or the predicate lacks the Trivy report (scanner.result) or the scan time
+    # (metadata.scanFinishedOn). When several attestations verify, Kyverno
+    # returns the newest, so a rescan supersedes the build-time scan.
+    # Verification and payload read are one conditional, so an image without a
+    # verified attestation never reaches extractPayload. Map literals must be
+    # homogeneous, hence dyn() and string().
+    - name: vulnerabilityScans
+      expression: >-
+        variables.allImages.map(image, {'image': dyn(image), 'scan':
+        verifyAttestationSignatures(image, attestations.vulnerabilityScan, [attestors.buildWorkflow]) > 0 ?
+        extractPayload(image, attestations.vulnerabilityScan).predicate : null}).map(s, {'image': s.image, 'scan':
+        s.scan != null && s.scan.?scanner.?result.hasValue() && s.scan.?metadata.?scanFinishedOn.hasValue() ?
+        s.scan : null})
+    # One {image, ids} entry per image whose scan has blocking findings: a
+    # listed severity, an ID that is not accepted and, with ignoreUnfixed, a
+    # fixed version. ids joins "<VulnerabilityID> <Severity>" for each.
+    - name: blockingFindings
+      expression: >-
+        variables.vulnerabilityScans.filter(s, s.scan != null).map(s, {'image': string(s.image), 'ids':
+        s.scan.scanner.result.?Results.orValue([]).map(result,
+        result.?Vulnerabilities.orValue([]).filter(v,
+        v.?Severity.orValue('') in {{ toJson $vuln.severities }} &&
+        !(v.?VulnerabilityID.orValue('') in {{ toJson ($vuln.ignoreVulnerabilityIDs | default list) }})
+        {{- if $vuln.ignoreUnfixed }} &&
+        (v.?FixedVersion.orValue('') != '' || v.?Status.orValue('') == 'fixed')
+        {{- end }}).map(v,
+        v.?VulnerabilityID.orValue('unknown') + ' ' + v.Severity).join(', ')).filter(ids, ids != '').join(', ')}).filter(f,
+        f.ids != '')
+    {{- end }}
+  validations:
+    - expression: >-
+        variables.allImages.map(image, verifyImageSignatures(image, [attestors.buildWorkflow])).all(count, count > 0)
+      message: >-
+        {{- if $keyBased }}
+        Images from the owned registries must carry a cosign signature that
+        verifies with imageVerification.publicKey.
+        {{- else }}
+        Images from the owned registries must be signed by the build workflow
+        of this repository (cosign keyless, GitHub Actions OIDC).
+        {{- end }}
+    {{- if $vulnOn }}
+    - expression: >-
+        variables.vulnerabilityScans.all(s, s.scan != null)
+      messageExpression: >-
+        'Images from the owned registries must carry a vulnerability scan attestation
+        (cosign predicate type vuln) from the same signer as the image signature,
+        with scanner.result and metadata.scanFinishedOn. Missing or invalid for: ' +
+        variables.vulnerabilityScans.filter(s, s.scan == null).map(s, s.image).join(', ')
+      message: >-
+        Images from the owned registries must carry a vulnerability scan
+        attestation (cosign predicate type vuln) from the same signer as the
+        image signature, with scanner.result and metadata.scanFinishedOn.
+    - expression: >-
+        variables.vulnerabilityScans.all(s, s.scan == null ||
+        time.now() - timestamp(s.scan.metadata.scanFinishedOn) <= duration('{{ $vuln.maxScanAge }}'))
+      messageExpression: >-
+        'The newest vulnerability scan must be younger than {{ $vuln.maxScanAge }}; the daily
+        rescan of build-image.yml renews it for deployed digests. Too old: ' +
+        variables.vulnerabilityScans.filter(s, s.scan != null &&
+        time.now() - timestamp(s.scan.metadata.scanFinishedOn) > duration('{{ $vuln.maxScanAge }}')).map(s,
+        s.image + ' (scanned ' + string(s.scan.metadata.scanFinishedOn) + ')').join(', ')
+      message: >-
+        The newest vulnerability scan must be younger than {{ $vuln.maxScanAge }}; the
+        daily rescan of build-image.yml renews it for deployed digests.
+    - expression: >-
+        size(variables.blockingFindings) == 0
+      messageExpression: >-
+        'Images must have no {{ join " or " $vuln.severities }} finding in their newest
+        vulnerability scan, except for imageVerification.vulnerabilities.ignoreVulnerabilityIDs. Found: ' +
+        variables.blockingFindings.map(f, f.image + ': ' + f.ids).join('; ')
+      message: >-
+        Images must have no {{ join " or " $vuln.severities }} finding in their
+        newest vulnerability scan, except for
+        imageVerification.vulnerabilities.ignoreVulnerabilityIDs.
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,10 @@
+---
+apiVersion: v2
+name: misc
+description: Namespaces, quotas, RBAC, ClusterIssuers and PriorityClasses.
+type: application
+version: 2.0.0
+kubeVersion: ">=1.35.0-0"
+home: https://github.com/SritharanK/sk-k8s-devops-bootstrap
+sources:
+  - https://github.com/SritharanK/sk-k8s-devops-bootstrap/tree/main/helmcharts/system-charts/misc

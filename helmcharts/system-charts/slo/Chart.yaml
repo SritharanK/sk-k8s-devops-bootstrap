@@ -1,0 +1,13 @@
+apiVersion: v2
+name: slo
+description: SLO recording rules and multi-window burn-rate alerts, generated with Sloth from the specs in slos/ and installed as PrometheusRule objects.
+type: application
+version: 0.1.0
+kubeVersion: ">=1.35.0-0"
+home: https://sloth.dev
+sources:
+  - https://github.com/slok/sloth
+keywords:
+  - slo
+  - prometheus
+  - sloth

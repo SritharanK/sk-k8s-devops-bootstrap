@@ -1,0 +1,7 @@
+{{- /*
+Renders nothing. The bundled CRD subchart installs the experimental Gateway
+API channel; the CRDs are owned by the gateway-api chart instead.
+*/ -}}
+{{- if (index .Values "gateway-helm" "crds" "enabled") -}}
+{{- fail "envoy-gateway: gateway-helm.crds.enabled must stay false; CRDs are installed by the gateway-api chart" -}}
+{{- end -}}

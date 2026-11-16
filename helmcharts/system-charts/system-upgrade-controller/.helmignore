@@ -1,0 +1,27 @@
+# Patterns to ignore when building packages.
+# This supports shell glob matching, relative path matching, and
+# negation (prefixed with !). Only one pattern per line.
+.DS_Store
+# Common VCS dirs
+.git/
+.gitignore
+.bzr/
+.bzrignore
+.hg/
+.hgignore
+.svn/
+# Common backup files
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+# Various IDEs
+.project
+.idea/
+*.tmproj
+.vscode/
+# Reference copies for upgrade comparison. templates/crd.yaml reads upstream/crd.yaml,
+# so that file must stay in the package.
+upstream/system-upgrade-controller.yaml
+upstream/README.md

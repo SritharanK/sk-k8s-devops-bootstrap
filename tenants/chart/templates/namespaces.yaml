@@ -1,0 +1,26 @@
+{{- /*
+One namespace per environment, Pod Security restricted and pinned to the
+cluster's Kubernetes minor. Prune=false,Delete=false: dropping an environment
+or the whole tenant never deletes a namespace that may still hold workloads;
+an administrator removes it on purpose.
+*/ -}}
+{{- if .Values.components.namespaces }}
+{{- $psaVersion := printf "v%s" (required "cluster.kubernetesMinor is required" .Values.cluster.kubernetesMinor) }}
+{{- range $env := include "tenant.environments" . | fromJsonArray }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "tenant.namespace" (list $ $env) }}
+  labels:
+    {{- include "tenant.envLabels" (list $ $env) | nindent 4 }}
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: {{ $psaVersion }}
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: {{ $psaVersion }}
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: {{ $psaVersion }}
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+{{- end }}
+{{- end }}
