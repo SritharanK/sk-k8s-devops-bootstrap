@@ -36,7 +36,9 @@ go = "1.27.4"
 "aqua:kubernetes-sigs/kind" = "0.33.0"
 "aqua:yannh/kubeconform" = "0.8.0"
 "aqua:norwoodj/helm-docs" = "1.14.2"
-"aqua:kyverno/kyverno" = "1.20.0"
+# Installed from the GitHub release: the aqua registry entry expects a signer
+# identity that the 1.20.0 release assets do not carry, so aqua verification fails.
+"github:kyverno/kyverno" = "1.20.0"
 "aqua:kyverno/chainsaw" = "0.2.15"
 "aqua:mikefarah/yq" = "4.54.3"
 
@@ -58,7 +60,7 @@ go = "1.27.4"
 "pypi:check-jsonschema" = { version = "0.39.0", python = "3.13" }
 
 # Ansible: versions equal ansible/requirements-dev.txt; Renovate updates both together.
-"pypi:ansible-core" = { version = "2.21.6", python = "3.13" }
+"pypi:ansible-core" = { version = "2.21.6", python = "3.13", with = ["docker==7.2.0"] }
 "pypi:ansible-lint" = { version = "26.11.0", python = "3.13", with = ["ansible-core==2.21.6"] }
 "pypi:molecule" = { version = "26.11.0", python = "3.13", with = ["ansible-core==2.21.6", "molecule-plugins[docker]==26.11.0", "docker==7.2.0"] }
 

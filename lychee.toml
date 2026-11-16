@@ -99,6 +99,8 @@ exclude = [
   # your_org.github.io before matching).
   '(?i)your_org',
   '(?i)change_me',
+  # Helm repository root: it serves index.yaml and has no page.
+  '^https://charts\.longhorn\.io/?$',
 ]
 
 # Input paths (regular expressions) that are never scanned.
