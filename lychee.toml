@@ -1,7 +1,11 @@
 # lychee link checker configuration (lychee 0.24, pinned in mise.toml).
 #
-# Run:  make lint-links
-#       lychee --config lychee.toml --offline .   (local links and anchors only)
+# Run:  make lint-links           (every link, uses the network)
+#       make lint-links-offline   (local links and anchors only)
+#
+# On a pull request the docs job checks local links and anchors in every file
+# and external links only in the Markdown files that the pull request changes.
+# Pushes to main, the weekly schedule and manual runs check every link.
 # Docs: https://lychee.cli.rs/guides/config/
 #       https://github.com/lycheeverse/lychee/blob/lychee-v0.24.2/lychee.example.toml
 #

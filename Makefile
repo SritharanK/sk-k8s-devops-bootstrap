@@ -131,7 +131,7 @@ helm-plugins: ## Install the pinned helm-unittest plugin (checksum verified)
 # ---------------------------------------------------------------------------
 
 .PHONY: lint
-lint: lint-yaml lint-markdown lint-shell lint-workflows lint-dockerfiles lint-catalog ## Run every offline linter (lint-catalog downloads the pinned validator once)
+lint: lint-yaml lint-markdown lint-links-offline lint-shell lint-workflows lint-dockerfiles lint-catalog ## Run every offline linter (lint-catalog downloads the pinned validator once)
 
 .PHONY: lint-yaml
 lint-yaml: ## yamllint with .yamllint.yaml (Helm templates excluded)
@@ -144,6 +144,10 @@ lint-markdown: ## markdownlint-cli2 with .markdownlint-cli2.yaml
 .PHONY: lint-links
 lint-links: ## lychee link check of Markdown files (network)
 	lychee --config lychee.toml --no-progress './**/*.md'
+
+.PHONY: lint-links-offline
+lint-links-offline: ## lychee check of local links and anchors in Markdown files (no network)
+	lychee --config lychee.toml --offline --no-progress './**/*.md'
 
 .PHONY: lint-shell
 lint-shell: ## shellcheck and shfmt on every tracked shell script

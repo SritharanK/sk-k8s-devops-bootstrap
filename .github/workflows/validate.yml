@@ -139,6 +139,9 @@ jobs:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # On a pull request HEAD is the merge commit and HEAD^1 the base
+          # branch, so the changed files can be listed.
+          fetch-depth: 2
           persist-credentials: false
       - name: Set up tools
         uses: ./.github/actions/setup-tools
@@ -146,11 +149,29 @@ jobs:
           tools: node npm:markdownlint-cli2 aqua:lycheeverse/lychee
       - name: markdownlint
         run: make lint-markdown
-      - name: Link check
+      - name: Local links and anchors
+        run: make lint-links-offline
+      - name: External links
         env:
           # Raises the GitHub rate limit for links to github.com.
           GITHUB_TOKEN: ${{ github.token }}
-        run: make lint-links
+          EVENT_NAME: ${{ github.event_name }}
+        # A pull request checks the external links of the Markdown files it
+        # changes, so an outage of an unrelated site cannot block it. Pushes to
+        # main, the merge queue, the weekly schedule and manual runs check every
+        # file.
+        run: |
+          if [[ "${EVENT_NAME}" != "pull_request" ]]; then
+            make lint-links
+            exit 0
+          fi
+          mapfile -d '' -t files < <(git diff -z --name-only --diff-filter=ACMR HEAD^1 HEAD -- '*.md')
+          if ((${#files[@]} == 0)); then
+            echo "No Markdown file changed; every link is checked on main and weekly."
+            exit 0
+          fi
+          printf 'Checking external links in %s\n' "${files[@]}"
+          lychee --config lychee.toml --no-progress -- "${files[@]}"
 
   catalog-lint:
     name: catalog-lint

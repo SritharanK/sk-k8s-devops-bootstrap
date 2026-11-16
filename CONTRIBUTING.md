@@ -80,7 +80,7 @@ Signing off commits with the [Developer Certificate of Origin](https://developer
 - Plain, direct sentences. No marketing language, no emoji. Separate facts from recommendations.
 - Do not write component versions in prose; they come from the generated [support matrix](docs/reference/support-matrix.md).
 - Diagrams are Mermaid in the Markdown file.
-- The `docs` CI job runs markdownlint and a lychee link check that also checks external links over the network. Run `make lint` and `make lint-links` before pushing.
+- The `docs` CI job runs markdownlint and lychee. On a pull request lychee checks the local links and anchors of every file and the external links of the Markdown files you changed; `main` and the weekly run check every link. `make lint` includes the local check; run `make lint-links` as well when you add or change external links.
 
 ## Architecture decisions
 

@@ -50,10 +50,11 @@ These targets need no cluster and no credentials.
 
 | Target | What it does |
 | --- | --- |
-| `make lint` | Runs `lint-yaml`, `lint-markdown`, `lint-shell`, `lint-workflows`, `lint-dockerfiles` and `lint-catalog`. |
+| `make lint` | Runs `lint-yaml`, `lint-markdown`, `lint-links-offline`, `lint-shell`, `lint-workflows`, `lint-dockerfiles` and `lint-catalog`. |
 | `make lint-yaml` | yamllint with `.yamllint.yaml`; Helm `templates/` are excluded. |
 | `make lint-markdown` | markdownlint-cli2 with `.markdownlint-cli2.yaml`. |
-| `make lint-links` | lychee link check of the Markdown files (uses the network). |
+| `make lint-links` | lychee link check of every link in the Markdown files (uses the network). |
+| `make lint-links-offline` | lychee check of the local links and anchors in the Markdown files; no network. |
 | `make lint-shell` | shellcheck and shfmt on every tracked shell script. |
 | `make lint-workflows` | actionlint and zizmor on the GitHub workflows and composite actions. zizmor runs offline unless `GH_TOKEN` is set. |
 | `make lint-dockerfiles` | hadolint on every tracked Dockerfile. |
