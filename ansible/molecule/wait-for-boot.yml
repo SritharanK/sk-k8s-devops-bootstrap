@@ -1,0 +1,17 @@
+---
+# Shared first step of every Molecule prepare playbook. The test containers run
+# systemd as PID 1, and boot-time units such as systemd-sysusers still rewrite
+# /etc/passwd and /etc/shadow right after the container starts. Fact gathering
+# and privilege escalation start only after boot has finished.
+- name: Wait for systemd to finish booting
+  hosts: all
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Wait until systemd reports the boot as finished
+      # raw needs no Python on the target and gathers no facts.
+      ansible.builtin.raw: timeout 120 systemctl is-system-running --wait
+      register: molecule__boot
+      changed_when: false
+      # A container has units that cannot start there (degraded); boot is still finished.
+      failed_when: molecule__boot.stdout | trim not in ['running', 'degraded']
