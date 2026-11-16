@@ -131,7 +131,7 @@ Pinned in `mise.toml` (mise 2026.11.0 or later).
 | kubernetes-sigs/kind | 0.33.0 | aqua | n/a | n/a | not tracked |
 | kubernetes/kubernetes/kubectl | 1.36.6 | aqua | 1.36 | 2027-06-28 | supported |
 | kyverno/chainsaw | 0.2.15 | aqua | n/a | n/a | not tracked |
-| kyverno/kyverno | 1.20.0 | aqua | not listed (1.20) | unknown | cycle not listed |
+| kyverno/kyverno | 1.20.0 | github | not listed (1.20) | unknown | cycle not listed |
 | lycheeverse/lychee | 0.24.2 | aqua | n/a | n/a | not tracked |
 | markdownlint-cli2 | 0.24.0 | npm | n/a | n/a | not tracked |
 | mikefarah/yq | 4.54.3 | aqua | n/a | n/a | not tracked |

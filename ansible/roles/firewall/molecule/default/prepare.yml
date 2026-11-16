@@ -1,4 +1,7 @@
 ---
+- name: Prepare the test containers
+  ansible.builtin.import_playbook: ../../../../molecule/prepare-containers.yml
+
 # A cloud image ships iproute2; the container images do not. Without it Ansible cannot report
 # ansible_facts['default_ipv4'], which the role uses to find the server addresses for the etcd rule.
 - name: Prepare

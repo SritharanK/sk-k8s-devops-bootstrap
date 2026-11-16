@@ -310,7 +310,7 @@ jobs:
       - name: Set up tools
         uses: ./.github/actions/setup-tools
         with:
-          tools: aqua:helm/helm aqua:mikefarah/yq aqua:kyverno/kyverno
+          tools: aqua:helm/helm aqua:mikefarah/yq github:kyverno/kyverno
       - name: kyverno test and kyverno apply
         run: make policy-test
 
@@ -331,7 +331,7 @@ jobs:
       - name: Set up tools
         uses: ./.github/actions/setup-tools
         with:
-          tools: aqua:helm/helm aqua:kyverno/kyverno aqua:sigstore/cosign
+          tools: aqua:helm/helm github:kyverno/kyverno aqua:sigstore/cosign
       - name: Vulnerability attestation gate against a local registry
         run: make policy-test-attestations
 
@@ -417,6 +417,8 @@ jobs:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The demo pushes HEAD to the in-cluster Git server, which rejects a shallow history.
+          fetch-depth: 0
           persist-credentials: false
       - name: Set up tools
         uses: ./.github/actions/setup-tools
@@ -424,6 +426,7 @@ jobs:
           tools: >-
             aqua:kubernetes-sigs/kind aqua:kubernetes/kubernetes/kubectl
             aqua:helm/helm aqua:mikefarah/yq aqua:kyverno/chainsaw aqua:sigstore/cosign
+            aqua:astral-sh/uv pypi:check-jsonschema
       - name: Raise inotify limits for a multi-node kind cluster
         # kind known issue: "too many open files" with several nodes on
         # the default runner limits.

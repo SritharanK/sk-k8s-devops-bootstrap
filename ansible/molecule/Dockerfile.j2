@@ -4,12 +4,14 @@ FROM {{ item.image }}
 
 ENV container=docker
 
+# The apt package lists stay in the image, as on a provisioned host. Removing
+# them leaves an empty lists directory modified at build time, which the apt
+# module's cache_valid_time treats as a fresh cache, so a role run within the
+# hour installs from an empty index.
 RUN if command -v apt-get >/dev/null 2>&1; then \
       apt-get update \
       && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-         ca-certificates python3 python3-apt sudo systemd systemd-sysv \
-      && apt-get clean \
-      && rm -rf /var/lib/apt/lists/*; \
+         ca-certificates python3 python3-apt sudo systemd systemd-sysv; \
     elif command -v dnf >/dev/null 2>&1; then \
       dnf -y install python3 sudo systemd \
       && dnf clean all; \

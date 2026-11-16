@@ -194,6 +194,7 @@ render() {
   local realm="$1" out="$2"
   ANSIBLE_LOCALHOST_WARNING=false ANSIBLE_INVENTORY_UNPARSED_WARNING=false \
     ansible-playbook -i localhost, ci/jenkins/lint/render.yml \
+    -e 'ansible_python_interpreter={{ ansible_playbook_python }}' \
     -e "lint_output_dir=${out}" -e "install_jenkins_security_realm=${realm}" >"${out}.log" 2>&1 || {
     cat "${out}.log" >&2
     return 1

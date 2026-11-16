@@ -1,4 +1,7 @@
 ---
+- name: Prepare the test containers
+  ansible.builtin.import_playbook: ../../../../molecule/prepare-containers.yml
+
 # Prepares the test containers only. The Ubuntu image is minimized and has no
 # /usr/share/man/man1, so the OpenJDK post-install script cannot register its
 # man page alternative there. Full Ubuntu and Debian hosts have the directory.
