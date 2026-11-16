@@ -59,6 +59,13 @@ jobs:
       - name: Install pinned tools
         run: bash hack/e2e/install-tools.sh
 
+      # hack/validate-config.sh runs check-jsonschema through uvx when the
+      # cluster file is validated during the bootstrap.
+      - name: Install uv
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: aqua:astral-sh/uv
+
       - name: Print tool versions
         run: |
           docker version

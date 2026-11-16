@@ -426,6 +426,7 @@ jobs:
           tools: >-
             aqua:kubernetes-sigs/kind aqua:kubernetes/kubernetes/kubectl
             aqua:helm/helm aqua:mikefarah/yq aqua:kyverno/chainsaw aqua:sigstore/cosign
+            aqua:astral-sh/uv pypi:check-jsonschema
       - name: Raise inotify limits for a multi-node kind cluster
         # kind known issue: "too many open files" with several nodes on
         # the default runner limits.
